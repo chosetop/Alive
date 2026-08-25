@@ -1,0 +1,2 @@
+# sqlc query files live here, one file per domain (entry.sql, taxonomy.sql...).
+# Empty until the first business table exists.

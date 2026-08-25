@@ -1,0 +1,19 @@
+# Secrets. .env.example is the tracked template; .env never is.
+.env
+.env.*
+!.env.example
+
+# Build output
+/bin/
+/tmp/
+*.exe
+
+# Go test and coverage output
+*.test
+*.out
+coverage.html
+
+# Editor and OS noise
+.DS_Store
+.idea/
+.vscode/

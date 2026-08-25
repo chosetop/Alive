@@ -1,0 +1,43 @@
+version: "2"
+
+# sqlc reads the schema from the migration files, so there is one definition of
+# the schema rather than a separate copy kept in step by hand.
+#
+# This config produces nothing yet: no business table exists and sql/queries is
+# empty. It is here so the first query added in a later stage needs no setup.
+sql:
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "sql/queries"
+
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/postgres/sqlcgen"
+        # Match the driver used by internal/postgres.
+        sql_package: "pgx/v5"
+
+        # Generated code returns one struct per query rather than reusing a
+        # table struct, so a query that selects three columns does not hand back
+        # a value with ten zeroed fields.
+        emit_prepared_queries: false
+        emit_interface: true
+        emit_empty_slices: true
+        emit_json_tags: false
+        emit_pointers_for_null_types: true
+
+        overrides:
+          # Map jsonb to raw bytes. The Entry meta field holds a different shape
+          # per record type, so it is decoded by the domain that owns the type
+          # rather than forced into one generated Go struct.
+          - db_type: "jsonb"
+            go_type: "encoding/json.RawMessage"
+
+          - db_type: "timestamptz"
+            go_type: "time.Time"
+
+          - db_type: "timestamptz"
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true
