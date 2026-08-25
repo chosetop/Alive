@@ -1,0 +1,193 @@
+/*
+ * Base layer: reset, element defaults, and the prose styles used to render
+ * Markdown output.
+ *
+ * Design values are not defined here. They come from tokens.css, which this file
+ * imports first. Anything in this file that needs a colour, size or space reads
+ * a variable, so switching themes needs no change here.
+ */
+
+@import './tokens.css';
+
+/* ------------------------------------------------------------------- reset */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+figure,
+blockquote,
+ul,
+ol,
+dl,
+dd {
+  margin: 0;
+}
+
+ul[class],
+ol[class] {
+  padding: 0;
+  list-style: none;
+}
+
+img,
+picture,
+video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---------------------------------------------------------------- document */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  /* Anchor navigation lands below the header rather than under it. */
+  scroll-padding-top: var(--space-6);
+}
+
+body {
+  background: var(--c-paper);
+  color: var(--c-ink);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: var(--leading-body);
+
+  /*
+   * The single most important line for this typeface. ChillKai ships one weight,
+   * so any `font-weight: 700` would be synthesised by smearing the outline,
+   * which on a brush face reads as a printing defect. Turning synthesis off
+   * makes bold a no-op instead, which is why hierarchy here is carried by size,
+   * colour and space. Italic synthesis is disabled for the same reason: a
+   * slanted kai is not a real italic.
+   */
+  font-synthesis: none;
+
+  /* Kaishu's stroke contrast benefits; the browser default can look thin. */
+  -webkit-font-smoothing: antialiased;
+
+  /*
+   * Latin and Chinese have no space between them in source text. This inserts
+   * the optical gap that hand-typesetting would, without touching the markup.
+   */
+  text-spacing-trim: space-first;
+}
+
+/*
+ * Long-form Chinese wants both. `line-break: strict` stops a line ending on a
+ * character that must not open a line (closing brackets, some punctuation), and
+ * `overflow-wrap` keeps a long unbroken Latin string (a URL) from pushing the
+ * layout wider than the measure.
+ */
+/*
+ * Headings are included: entry titles come from the author, and one containing a
+ * long unbroken Latin string would otherwise push a 375px layout sideways. There
+ * is no width at which a heading should be allowed to overflow its column.
+ */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+li,
+blockquote,
+dd {
+  line-break: strict;
+  overflow-wrap: break-word;
+}
+
+a {
+  color: inherit;
+  text-decoration-color: var(--c-line-strong);
+  text-decoration-thickness: 1px;
+  /* Keeps the rule clear of descenders, which kaishu has plenty of. */
+  text-underline-offset: 0.2em;
+  transition: text-decoration-color var(--duration-fast) var(--ease-out);
+}
+
+a:hover {
+  text-decoration-color: var(--c-accent);
+}
+
+/* Retained deliberately: several resets drop it and take keyboard nav with it. */
+:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 3px;
+  border-radius: 1px;
+}
+
+::selection {
+  background: var(--c-accent);
+  color: var(--c-paper);
+}
+
+/*
+ * Headings inherit the body face because there is only one face. They are
+ * distinguished by size and by a tighter line height, set per level where used.
+ *
+ * h5 and h6 are included even though nothing sets their size: renderMarkdown
+ * demotes every heading one level, so an author's `####` arrives here as h5, and
+ * a level with no rule falls back to the browser's bold-and-shrunk default.
+ */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 400;
+  line-height: var(--leading-tight);
+}
+
+code,
+pre,
+kbd {
+  font-family: var(--font-mono);
+  /*
+   * The mono fallback has a normal x-height while the body face is low, so at
+   * equal size mono looks oversized next to prose. Stepped down to match.
+   */
+  font-size: 0.875em;
+}
+
+hr {
+  height: 0;
+  margin: var(--space-7) 0;
+  border: 0;
+  border-top: 1px solid var(--c-line);
+}
+
+/*
+ * Anyone who asked the OS to reduce motion gets none of it. The transitions in
+ * this design are all decorative, so removing them costs nothing.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

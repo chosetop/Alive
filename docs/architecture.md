@@ -201,6 +201,8 @@ JSONB 不是免费的。你会在两件事上付钱：
 **`happened_at` 为什么必须独立于 `created_at`？**
 你的需求是「记录我活过」，不是「记录我什么时候打字」。补写三年前的一趟旅行时，`created_at` 是今天，`happened_at` 是三年前。前台的人生时间线必须按 `happened_at` 排，否则那条时间线记录的是你的写作习惯，不是你的人生。这个字段是整个模型里最贴合你项目定位的一个。
 
+`happened_at` 为空时回落到 `published_at`——排序与显示用的是同一个 `COALESCE` 表达式（2026-08-25 定，见 `api.md` 的 `GET /api/v1/entries`）。一条没有发生日期的内容，读者看到的日期就是它的发布日期，那它也必须排在那个位置上。
+
 **`published_at` 语义定死：首次发布时间。**
 重新编辑已发布的内容不更新它，否则前台按发布时间排序会因为你修个错别字就把三年前的日志顶到首页。
 
@@ -218,6 +220,15 @@ CREATE INDEX idx_entries_public_feed
 CREATE INDEX idx_entries_timeline
   ON entries (happened_at DESC)
   WHERE deleted_at IS NULL AND status = 'published';
+
+-- 前台列表实际用的那一个（migration 000005）。
+-- 表达式索引，因为 ORDER BY 用的是 COALESCE：Postgres 只在索引表达式与排序
+-- 表达式文本一致时才拿它排序，上面那个 (happened_at DESC) 顶不了这个用。
+CREATE INDEX idx_entries_public_timeline
+  ON entries (COALESCE(happened_at, published_at) DESC, id DESC)
+  WHERE deleted_at IS NULL
+    AND status = 'published'
+    AND visibility = 'public';
 
 -- 按类型筛选（书架页、影单页）
 CREATE INDEX idx_entries_type
@@ -594,7 +605,7 @@ type AppError struct {
                ▼                     │        │
         ┌──────────────┐  Admin API  │        │
         │    admin     │─────────────┘        │
-        │  Vite + Vue  │  Bearer token        │
+        │  Vite + Vue  │  Cookie 会话          │
         └──────┬───────┘                      ▼
                │                       ┌──────────────┐
                │  图片直传（预签名）      │  PostgreSQL  │
@@ -624,11 +635,55 @@ type AppError struct {
 - 不负责：判断权限（只根据 API 返回的 401 决定跳登录页）。
 - 铁律：**它是纯 SPA，不需要 SSR。** 只有你一个人用，SEO 无意义，加 SSR 纯属自找麻烦。
 
+「不判断权限」这一条在 3A 落地为一条具体规则：登录态的唯一依据是 `GET /api/v1/me` 的响应，不存任何本地标记。一个持久化的 `isLoggedIn=true` 会活得比它描述的会话更久，于是界面渲染出一副已登录的外壳，而其中每个请求都 401。详见 `progress.md` 第 10 节。
+
+#### 5.2.1 前台 URL 结构（2026-08-25 定）
+
+| 页面 | 路径 | 文件 |
+|---|---|---|
+| 列表 | `/`、`/?page=N` | `pages/index.vue` |
+| 详情 | `/<slug>` | `pages/[slug].vue` |
+| 分类 | `/categories/<slug>` | `pages/categories/[slug].vue` |
+
+详情页在**根路径**下，不是 `/entries/<slug>`。理由是这是个人站，`entries` 这一段不承载任何信息，只是把每个链接都变长。
+
+代价必须写下来：**slug 与静态路径同名时，那篇内容将无法访问。** Nuxt 里静态路由优先于动态路由，所以叫 `categories` 的文章打不开。目前被占用的段只有 `categories`。新增任何顶层静态路由，都是在从内容的命名空间里划走一个词。
+
+分页用 `?page=`，不是 `/page/N`。第 2 页起标 `noindex, follow`：列表页和它链向的文章争同一批关键词，而应该被搜到的是文章。
+
+#### 5.2.2 主题切换（2026-08-25 定）
+
+两套配色：`ink`（墨与纸，浅）与 `lamp`（灯下，深）。
+
+- 值只写一遍，用 CSS `light-dark()`。写两遍是两套主题日后走偏的标准做法。
+- 选择存在 **cookie**，不是 `localStorage`。服务端渲染第一个字节时能读到 cookie，读不到 `localStorage`；存后者意味着每次加载都先渲染错的配色、水合之后再改回来，即肉眼可见的闪烁。
+- cookie 未设置时**不写** `data-theme`，于是 `light-dark()` 跟随操作系统。首访就写一个默认值会覆盖掉读者已经在系统里表达过的偏好。
+- 未知或恶意的 cookie 值一律当作未设置，不写进 HTML。
+
+后台配置主题是后续能力，`tokens.css` 里新增一个 `[data-theme]` 块即可，无需改任何组件——前提是组件只通过变量读颜色。**组件里出现硬编码颜色，等于一套切不动的主题。**
+
 ### 5.3 一个必须遵守的约束
 
 frontend 与 admin 共用一份 Markdown 渲染配置，抽成独立的共享包或 git submodule。
 
 否则会发生：你在 admin 里预览得好好的表格，发布后在 frontend 上变成一坨纯文本，因为两边插件配置不一致。这是「frontend 渲染」决策必须付的配套成本，不做这件事，那个决策就是有缺陷的。
+
+#### 5.3.1 这条约束目前无法字面满足（2026-08-25）
+
+选定 Milkdown 之后，这条约束不再可能按字面执行，必须记下来，而不是当它还成立：
+
+- frontend 用 `markdown-it` 把 Markdown 源文本渲染成 HTML；
+- admin 的 Milkdown 走 ProseMirror，用自己的 schema 解析，不经过 `markdown-it`。
+
+两边没有一份可以共享的配置对象。共享包能装的只有「同一个 `markdown-it` 实例」，而 Milkdown 用不上它。
+
+实际风险比原文小，但不是零：两边都覆盖 CommonMark + GFM，重叠面很宽。真正会出事的是**单边扩展**——只在 Milkdown 装的语法，发布后在前台就是纯文本；只在 `markdown-it` 装的插件，在编辑器里看不到效果。
+
+因此约束改成一条可执行的规则：
+
+> **两侧都只使用 CommonMark + GFM 范围内的语法。任何一侧新增语法扩展，必须同时在另一侧实现，否则不许合并。**
+
+代码里的说明在 `frontend/utils/markdown.ts` 顶部。
 
 ### 5.4 认证方案
 
@@ -774,9 +829,9 @@ MVP 阶段 `entries` 的行为简化为：
 | 配置 | env + 结构体，零依赖 | 已实现。环境变量够用，不引入 Viper |
 | Markdown | frontend `markdown-it` | 已定。backend 不需要 Markdown 库 |
 | 图片 | **阿里云 OSS** + storage 接口 | 已定。接口用于隔离 SDK 与可测试性 |
-| frontend | **Nuxt 4** | 已定 SEO 重要，Vue 生态的 SSR 就是它 |
-| admin | Vite + Vue 3 + TS | 纯 SPA，挂在 `/admin` 路径下 |
-| 编辑器 | 待确认（见开放问题） | |
+| frontend | **Nuxt 4** | 已定，2026-08-25 再次确认（`progress.md` 曾有一处误写 Astro，已改）。SEO 重要，Vue 生态的 SSR 就是它 |
+| admin | Vite + Vue 3 + TS | **已实现**（2026-08-25）。加 vue-router + Pinia，无 UI 库。纯 SPA，挂在 `/admin` 路径下 |
+| 编辑器 | **Milkdown 7.22.1** | 已定，2026-08-25。所见即所得，但存的仍是 Markdown 源文本。peer dep `vue: ^3.0.0`，与 admin 的 Vue 3.5.41 兼容 |
 | 部署 | 单机 + Caddy 反代，**同域三上游** | 见下方说明 |
 
 ### 7.1 为什么推荐 sqlc 而不是 GORM
@@ -846,16 +901,23 @@ sqlc 的工作方式：你写 SQL，它读你的 schema，生成类型安全的 
 | 统一实体命名 | `Entry` | 表 `entries`，包 `internal/entry`，URL `/api/v1/entries` |
 | 后端目录名 | `backend/` | Go module `github.com/p30huiwei/alive/backend` |
 | 认证方案 | 服务端 session，非 JWT | 见 5.4 节，已实现 |
+| frontend 框架 | **Nuxt**，非 Astro | 2026-08-25 确认。差别不只是名字：Nuxt 带 Node 运行时，部署要一个进程；Astro 默认零 JS 静态输出。SSR 渲染 Markdown 这条依赖前者 |
 | 密码哈希 | Argon2id，非 bcrypt | 见 5.4 节与 `stage-auth-plan.md` 第 7 节 |
-| `role` 列 | 建列但零代码读取 | 与决策 5「不建 RBAC」并存的唯一做法 |
+| admin 编辑器 | **Milkdown 7.22.1** | 2026-08-25 确认。所见即所得，存的仍是 Markdown 源文本。只影响 admin 的编辑体验，不影响后端与前台 |
+| `role` 列 | 建列但零代码读取 | 与决策 5「不建 RBAC」并存的唯一做法。**admin 的 TS 类型据此把 `role` 写成 `string` 而非联合类型**：该列无 CHECK 约束，联合类型会承诺 schema 没有承诺的事 |
 
-三端目录已统一为 `frontend/`、`admin/`、`backend/`。原 `back/`、`front/` 两个空目录已处理。
+三端目录已统一为 `frontend/`、`admin/`、`backend/`。原 `back/`、`front/` 两个空目录已处理。三端**均已有代码且实测可同时运行**（2026-08-25：后端 :8080、admin :5173、frontend :3000），见 `progress.md` 第 11 节。
+
+技术栈表里的 frontend 一行写「Nuxt 4」，而 `frontend/package.json` 锁的是 `nuxt: 3.21.11`。**以 package.json 为准还是以本表为准，这一条未决** —— 如果当初定的确实是 Nuxt 4，那么现在装的是错版本，该改的是依赖不是文档。见 `progress.md` 第 4 节。
+
+**4A 之后这条的代价变了（2026-08-25）：** 前台三个页面、七个 composable、四个组件全部按 Nuxt 3 的**根级目录约定**写成（`pages/`、`composables/`、`utils/` 在项目根下）。Nuxt 4 的默认布局把这些移到 `app/` 下。所以现在改版本不只是升个依赖，还要搬整棵目录树。4A 期间已经踩过一次：`useEntryType.ts` 曾按 Nuxt 4 的习惯写进 `app/composables/`，不生效。
+
+**要改就趁早**，越往后写代价越高。反过来说，如果决定就用 Nuxt 3，把技术栈表那一行改掉即可，代码不用动。
 
 **仍待确认**
 
-1. **编辑器选哪个？** CodeMirror 6 分屏预览（纯 Markdown，可控）/ Milkdown（所见即所得但仍存 Markdown）/ 纯 textarea（MVP 够用）。不阻塞后端。
-2. **服务器在哪？** 国内需备案，海外访问国内慢。OSS 已定为阿里云，服务器同样放国内在延迟上更一致。影响部署细节，不影响架构。
-3. **`type` 值第一批定哪些？** MVP 只用 `journal`，第二阶段再定 `book` / `movie` / `music` / `travel` / `photo` 的具体取值和各自的 meta 结构。
+1. **服务器在哪？** 国内需备案，海外访问国内慢。OSS 已定为阿里云，服务器同样放国内在延迟上更一致。影响部署细节，不影响架构。
+3. **各 `type` 的 meta 结构。** `type` 的取值本身已定：六值一次定齐并由 CHECK 约束限定（见 `progress.md` 第 7 节）。仍未定的是 `book` / `movie` / `music` / `travel` / `photo` 各自的 meta 形状，目前只实现了 `journal` 的。
 4. **session 要不要绝对上限？** 目前只有 7 天滑动过期。一个每天都在用的 session 可以无限续下去，即 token 泄露且攻击者保持活跃时它永不自动失效。加上限需要 `sessions.absolute_expires_at` 与一个新 migration。个人站风险有限，暂按不加处理。
 5. **Argon2id 参数是否下调？** 实测 212ms/次（m=64MiB, t=3, p=2）。OWASP 推荐约 50ms（m=46MiB, t=1, p=1）；`t=3` 是主要成本，降到 `t=1` 约 70ms 且仍在推荐线上。登录频率极低，倾向保持不变。
 

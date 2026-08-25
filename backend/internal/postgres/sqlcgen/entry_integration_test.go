@@ -275,14 +275,19 @@ func TestListPublicEntriesOrdering(t *testing.T) {
 	authorID := seedAuthor(t, q, "orderingauthor")
 
 	// The oldest happening is created last and published most recently. Ordering
-	// by created_at or by published_at would put it first, so this arrangement is
-	// what makes the assertion below able to fail.
+	// by created_at or by published_at alone would put it first, so this
+	// arrangement is what makes the assertion below able to fail.
 	recent := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 	middle := time.Date(2024, 5, 1, 0, 0, 0, 0, time.UTC)
 	oldest := time.Date(2020, 5, 1, 0, 0, 0, 0, time.UTC)
 
 	publishedLongAgo := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
 	publishedToday := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+
+	// The undated row's published_at sits between `recent` and `middle`, so the
+	// expected order interleaves it rather than putting it at either end. Both a
+	// NULLS-LAST ordering and a published_at-only ordering fail that.
+	publishedBetween := time.Date(2025, 5, 1, 0, 0, 0, 0, time.UTC)
 
 	// Generated slugs, because slugs are unique across the table. The assertions
 	// below look only at these rows: the list query reads the whole table, so a
@@ -304,18 +309,19 @@ func TestListPublicEntriesOrdering(t *testing.T) {
 		slug: oldestSlug, status: "published", visibility: "public",
 		happenedAt: &oldest, publishedAt: &publishedToday,
 	})
-	// No happened_at at all. DESC sorts NULL first by default, so without
-	// NULLS LAST this row would head the timeline.
+	// No happened_at at all, so this row sorts by its published_at. That is the
+	// date a reader is shown for it, and sorting it anywhere else puts an entry
+	// out of sequence with its own visible date.
 	insertEntry(t, q, pool, authorID, entrySeed{
 		slug: undatedSlug, status: "published", visibility: "public",
-		publishedAt: &publishedToday,
+		publishedAt: &publishedBetween,
 	})
 
 	mine := map[string]bool{
 		recentSlug: true, middleSlug: true, oldestSlug: true, undatedSlug: true,
 	}
 
-	t.Run("orders by happened_at, nulls last", func(t *testing.T) {
+	t.Run("orders by happened_at, falling back to published_at", func(t *testing.T) {
 		rows, err := q.ListPublicEntries(ctx, sqlcgen.ListPublicEntriesParams{Limit: 200, Offset: 0})
 		if err != nil {
 			t.Fatalf("ListPublicEntries: %v", err)
@@ -330,7 +336,9 @@ func TestListPublicEntriesOrdering(t *testing.T) {
 			}
 		}
 
-		want := []string{recentSlug, middleSlug, oldestSlug, undatedSlug}
+		// recent 2026-05 > undated 2025-05 (its published_at) > middle 2024-05 >
+		// oldest 2020-05.
+		want := []string{recentSlug, undatedSlug, middleSlug, oldestSlug}
 		if len(got) != len(want) {
 			t.Fatalf("found %d of this test's rows %v, want %d", len(got), got, len(want))
 		}

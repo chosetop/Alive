@@ -1,6 +1,6 @@
 # Alive 施工进度
 
-最后更新：2026-08-25
+最后更新：2026-08-25（4A `frontend/` 前台页面与设计系统完成，见第 13 节）
 
 本文档记录已完成的内容、当前状态和待办项。设计依据见 `architecture.md`，认证方案见 `stage-auth-plan.md`。
 
@@ -25,10 +25,24 @@
 | 2C | `internal/entryhttp` + 路由注册 | 完成 |
 | — | 测试库并行隔离重构（`internal/dbtest`） | 完成 |
 | 2D | Entry 的改 / 删 / 状态迁移 + Admin 读取路径 | 完成 |
+| 2E | `categories` + `unlisted` 独立查询 | 完成 |
+| 3A | `admin/` 工程初始化 + 认证闭环 | 完成 |
+| — | 开发库补 migration 000004 | 完成 |
+| 3B | `admin/` 内容管理（分类 + 文章列表 + Milkdown 编辑器） | 完成 |
+| 4A-0 | `frontend/` 工程初始化 + SSR 认证骨架 | 完成 |
+| 4A | `frontend/` 前台页面（列表 / 详情 / 分类）+ 设计系统 | 完成 |
 
-**Stage 1（users + auth）与 Stage 2 的后端 Entry API 均已完成**：建、改、软删、publish / unpublish / archive、前台列表与详情、Admin 列表与详情，共 10 个端点。`frontend/` 与 `admin/` 尚未开始，目前只有 `backend/`。
+**Stage 1（users + auth）与 Stage 2（Entry + Categories）的后端 API 均已完成**，共 19 个业务端点加 2 个探针。
 
-Stage 2 剩下两件不属于本次范围的事：`categories` 表（migration `000004`）与 `visibility=unlisted` 的独立查询，见 3.1。
+**`admin/` 已初始化并跑通认证闭环**（3A，2026-08-25，见第 10 节）：登录、刷新恢复、登出、会话中途失效四条路径都过了浏览器实测。文章 CRUD、编辑器、分类管理不在 3A 范围内，见 3.6。
+
+**`admin/` 内容管理已完成**（3B，2026-08-25，见第 12 节）：分类管理、文章列表、Milkdown 编辑器、状态迁移与删除全部接通。写路径逐条对着运行中的后端验过（见 12.4），但**界面本身没有点过**，环境里没有浏览器自动化。
+
+**`frontend/` 前台页面已完成**（4A，2026-08-25，见第 13 节）：列表、详情、分类三个页面加一套设计 token 层与两套主题。Nuxt 版本是 **3.21.11**，非 Nuxt 4（见第 11 节）。SSR 输出、路由状态码、Markdown 注入向量、配色对比度都验过，**界面本身仍然没有在浏览器里看过**，环境里没有浏览器自动化。
+
+修了一个后端行为：前台列表的排序从 `happened_at DESC NULLS LAST` 改为 `COALESCE(happened_at, published_at) DESC`（migration 000005），见 13.5。
+
+**三端已实测可同时运行**（2026-08-25，见第 11 节）：后端 :8080、`admin/` :5173、`frontend/` :3000 全部返回 200，`owner` 登录闭环通过。
 
 ## 2. 当前可用的能力
 
@@ -99,31 +113,57 @@ session:prune    删除全部过期会话，幂等
 
 | 项 | 状态 |
 |---|---|
-| PostgreSQL | 18.6 运行中（brew services），库 `alive` 与 `alive_test` 均在**版本 3**（表：`users` `sessions` `entries`） |
-| 开发库账号 | `owner` / `alive-dev-password-2026`，display_name `P30 Huiwei` |
+| PostgreSQL | 18.6 运行中（brew services） |
+| `alive`（开发库） | **版本 5**，表：`users` `sessions` `entries` `categories`。000005 是前台列表的表达式索引，见 13.5 |
+| `alive_test`（测试库） | **版本 5**，表：同上。000005 已手动 apply（`make test-db-create` 只在建库时迁移，已有库需自己跑 `migrate ... up`） |
+| 开发库账号 | `owner` / `alive-dev-password-2026`，display_name `P30 Huiwei`，role `owner`，id 105。**2026-08-25 再次验证仍有效**（登录 200 + `/me` 200）—— 需要登录时直接用它，不要另建账号 |
+| 开发库数据量 | `entries` **11 行**（未软删）、`categories` **3 行**，其中 7 篇是 4A 造的验证数据，跨 2024–2026，含 1 篇故意留的草稿。**全都不是真实内容**，见 13.8 |
+| 后端端口 | `.env` 里 `SERVER_PORT=8080`，实测监听 `127.0.0.1:8080`。`api.md` 与本文档下方提到的 8099 是 2C/2D/2E 用测试库跑验证时的临时端口，不是默认值 |
+| Vite 端口 | `admin/` 固定 5173（`strictPort: true`），因为后端 `CORS_ALLOWED_ORIGINS` 白名单是精确匹配，带凭证的 API 不能用 `*` |
+| Nuxt 端口 | `frontend/` 默认 3000，已在 `CORS_ALLOWED_ORIGINS` 白名单内 |
+| `frontend/.env` | 已创建（2026-08-25），`NUXT_PUBLIC_API_BASE=http://localhost:8080`。三个 `.env` 均被各自 `.gitignore` 忽略 |
 | `sqlc` / `golang-migrate` | 已装 |
 | `GOPROXY` | 必须走 `https://goproxy.cn,direct`。`proxy.golang.org` 从此网络连不通，Makefile 已内置，但**在 make 之外手动跑 `go get` 需自己带上** |
 | 端口检查 | 用 `lsof -iTCP:8080 -sTCP:LISTEN`。`lsof -ti:8080` 会匹配对端为 8080 的出站连接，据此杀进程会误杀无关程序（上个会话已误杀过一次 ToDesk） |
 
 ## 3. 尚未实现（按依赖顺序）
 
-### 3.1 下一步：`frontend/` 与 `admin/`
+### 3.1 已解决：开发库补 migration（2026-08-25）
 
-后端 Entry API 已经完整：改 / 删 / 状态迁移 / Admin 读取于 2026-08-25 完成（2D，见第 8 节），`categories` 与 `unlisted` 于同日完成（2E，见第 9 节）。
+**已完成，此项不再阻塞。** 保留记录是因为症状具有误导性。
 
-下一步是 `frontend/`（Astro）与 `admin/`，两者都还没有目录。**接口契约见 `docs/api.md`**，那份是按当前实现逐条核对过的。`architecture.md` 写的是设计意图与理由，两份的路径已于 2026-08-25 统一为 `/api/v1/*`，但只有 `api.md` 对着运行中的服务核对过字段与状态码，冲突以它为准。
+`alive` 曾停在版本 3 而 `alive_test` 已到 4。`categories` 表只存在于测试库，而 `entries` 的读取路径 JOIN 了它，于是**文章列表**也一起 500 —— 不只是分类接口：
 
-后端还剩的三件事都不阻塞前端，各自在 3.2 到 3.4：session 绝对过期、Argon2id 参数、trusted proxy。
+```
+GET /api/v1/entries    →  500
+GET /api/v1/categories →  500
+日志：list entries failed  error="entry: list public entries:
+      ERROR: relation \"categories\" does not exist (SQLSTATE 42P01)"
+```
 
-`tags`、`media`、`archives`、`site` 四组接口尚未开始，见 3.5。`tags` 会落在 `internal/taxonomy` 里 —— 那个包从一开始就是为「categories 今天、tags 以后」写的。
+已执行 `migrate ... up`，开发库现在是版本 4，两个端点都回 200。
 
-### 3.2 待办：绝对过期
+成因：2E 的六个端点验证是在 `alive_test` 上做的，那次没碰开发库，于是版本差一直留到 3A 之后。**新会话遇到 `relation "..." does not exist` 先查库版本，不要去怀疑查询写错了。**
+
+### 3.2 已解决：`admin/` 内容管理与 `frontend/` 前台页面
+
+**两项都已完成。** `admin/` 内容管理见第 12 节（3B），`frontend/` 前台页面与设计系统见第 13 节（4A）。
+
+**接口契约见 `docs/api.md`**，那份是按当前实现逐条核对过的。`architecture.md` 写的是设计意图与理由，两份的路径已于 2026-08-25 统一为 `/api/v1/*`，但只有 `api.md` 对着运行中的服务核对过字段与状态码，冲突以它为准。
+
+前台还没有的东西：`sitemap.xml`、`feed.xml`、按类型的页面（书架、影单）、归档页。都不阻塞已有页面。
+
+后端还剩的三件事：session 绝对过期、Argon2id 参数、trusted proxy，各自在 3.3 到 3.5。**其中 trusted proxy 是部署前必须做的**，见 3.5。
+
+`tags`、`media`、`archives`、`site` 四组接口尚未开始，见 3.8。`tags` 会落在 `internal/taxonomy` 里 —— 那个包从一开始就是为「categories 今天、tags 以后」写的。
+
+### 3.3 待办：绝对过期
 
 当前只有 7 天滑动过期，没有绝对上限。一个每天都在用的 session 可以无限续下去。这是当时确认的行为，但值得记下来：如果 token 泄露且攻击者保持活跃，这个 session 永不自动失效。
 
 补救方式是 `sessions` 表加 `absolute_expires_at`，登录时定死，续期不动它。需要新 migration。
 
-### 3.3 待办：Argon2id 参数
+### 3.4 待办：Argon2id 参数
 
 实测 **212ms/次**，参数 m=64MiB / t=3 / p=2。
 
@@ -131,7 +171,7 @@ session:prune    删除全部过期会话，幂等
 
 OWASP 推荐 m=46MiB / t=1 / p=1，约 50ms。`t=3` 是主要成本来源，降到 `t=1` 约 70ms，仍在推荐线上。个人站登录频率极低，倾向保持不变。**未决。**
 
-### 3.4 待办：`trusted proxy` 与真实客户端 IP
+### 3.5 待办：`trusted proxy` 与真实客户端 IP
 
 **这一项现在有了实际后果，不再只是理论问题。** 限流已上线，而它按 `c.ClientIP()` 分桶。
 
@@ -141,16 +181,62 @@ OWASP 推荐 m=46MiB / t=1 / p=1，约 50ms。`t=3` 是主要成本来源，降�
 
 注意顺序：先配 `SetTrustedProxies` 再上代理。反过来做，中间那段时间限流是全局的。
 
-### 3.5 后续阶段
+### 3.6 已完成：`admin/` 内容管理（3B，2026-08-25）
 
-Media 与对象存储（OSS）、Tag / Category、Markdown 渲染（前端负责，后端只存源文本）、Public API 与 Admin API 的分离、SEO 相关的服务端渲染、Docker、CI/CD。均未开始。
+四步都已落地，详见第 12 节。仍未做的是**界面实测**：所有验证都是对着后端发请求做的，没有人点过按钮。
+
+3B 之后 `admin/` 剩下的缺口：媒体上传（依赖 OSS，未开始）、批量操作、搜索。
+
+原先列在这里的「`private` 可见性在前台的实际拦截」已在 4A 验过：`/draft-not-ready` 与 `/nonexistent-slug` 的响应体逐字节相同，见 13.7。
+
+### 3.7 待办：`Retry-After` 在开发环境读不到
+
+429 响应确实带 `Retry-After`（3A 实测 43 秒），但 `internal/config/config.go:249` 把 `ExposedHeaders` 硬编码成 `["X-Request-ID"]`，跨域 `fetch` **读不到未 expose 的头**。所以开发环境下 admin 只能显示兜底文案「尝试次数过多，请稍后重试。」，拿不到具体秒数。
+
+生产环境 admin 与 API 同域，同源请求不受 expose 限制，秒数会正常出现。所以这不是 bug，只是开发与生产的行为差异，代码里按可选处理并注释了原因。
+
+要让开发环境也显示秒数，就给 `ExposedHeaders` 加 `"Retry-After"`。这是后端改动，3A 没做。
+
+### 3.8 后续阶段
+
+Media 与对象存储（OSS）、Tag、Markdown 渲染（前端负责，后端只存源文本）、Public API 与 Admin API 的分离、SEO 相关的服务端渲染、Docker、CI/CD。均未开始。
 
 ## 4. 悬而未决的产品问题
 
-1. **编辑器选型** — CodeMirror 6 / Milkdown / 朴素 textarea。做 admin 时才需要定。
-2. **服务器位置** — 影响延迟与备案。部署前定。
+1. **服务器位置** — 影响延迟与备案。部署前定。
+2. **admin 的部署形态** — 后端 `.env` 注释里写的是「admin 从站点自有域名的 `/admin` 提供，浏览器调 `/api` 是同源，生产环境 `CORS_ALLOWED_ORIGINS` 应为空」。3A 是按这个前提做的（也正因如此 `Retry-After` 在生产环境能读到，见 3.7）。如果改成独立子域，那条前提和 CORS 配置都要重新算。
 
-原第 3 条「第一批 `type` 取值」已定：六值一次定齐，见第 7 节。
+已定的三条，留在这里是因为「为什么是它」比「是它」更容易被重新提出：
+
+- **第一批 `type` 取值** — 六值一次定齐，见第 7 节。
+- **`frontend/` 的框架** — **Nuxt**，2026-08-25 确认，见下。
+- **admin 的编辑器** — **Milkdown**，2026-08-25 确认，见下。
+
+### admin 的编辑器是 Milkdown（2026-08-25 确认）
+
+三个候选：朴素 textarea + 预览、CodeMirror 6、Milkdown。**已定 Milkdown**，版本 7.22.1。
+
+选它意味着**所见即所得**：`##` 打完当场变成标题，而不是在左边写源码右边看预览。代价是三个候选里依赖最重的一个，且粘贴外部内容时容易带进意外结构。
+
+这个选型的影响面比它看起来小：后端只存 Markdown 源文本（`content_md`），渲染由前台在 SSR 阶段做，所以**它既不影响后端也不影响前台**，只决定站主在 admin 里的编辑体验。换掉的成本是重写 admin 的一个视图，不涉及数据迁移。
+
+已核实 `@milkdown/*` 7.22.1 的 peer dependency 是 `vue: ^3.0.0`，admin 装的是 Vue 3.5.41，兼容，不需要降级。3A 刻意没引入任何 UI 库，所以这次是在干净的地基上装。
+
+### `frontend/` 是 Nuxt，不是 Astro（2026-08-25 确认）
+
+3A 期间发现两份文档对不上：`progress.md` 有一处写 Astro，而 `architecture.md` 技术栈表、架构图、部署图、部署说明共四处写 Nuxt，`backend/.env.example` 的 CORS 白名单也早已为 Nuxt 的 3000 端口开着。
+
+已确认 **Nuxt 是真实决策**，那一处 Astro 是笔误，已改。
+
+这条值得留下记录，因为两个框架的差别不只是名字：Astro 默认零 JS 静态输出，Nuxt 是带 Node 运行时的 SSR。选 Nuxt 意味着部署时 `frontend/` 需要一个 Node 进程（部署图里就是这么画的：Caddy 反代到 Nuxt、admin 静态文件、Go 二进制三个上游），而不是一堆丢给 CDN 的静态文件。「frontend 负责 Markdown 渲染」也因此是在 SSR 阶段做，不是构建期做完就固定了。
+
+选它的理由见 `architecture.md` 技术栈表：SEO 重要，而 Vue 生态里成熟的 SSR 方案就是它。
+
+**版本是 Nuxt 3，不是 Nuxt 4。** `architecture.md:779` 与本文档原先都写「Nuxt 4」，而 `frontend/package.json` 锁的是 `nuxt: 3.21.11`（精确版本，非 range）。以 `package.json` 为准：它是运行的那个。`architecture.md` 那处尚未改，因为技术栈表属于决策记录，**如果当初确实定的是 Nuxt 4，那么现在装的是错版本，该改的是代码不是文档** —— 这一条留给决策者定。
+
+**4A 之后代价变了（2026-08-25）：** 前台的三个页面、七个 composable、四个组件全部按 **Nuxt 3 的根级目录约定**写成（`pages/`、`composables/`、`utils/` 直接在 `frontend/` 下）。Nuxt 4 默认把这些移到 `app/` 子目录。所以升版本不再只是改一行依赖，还要搬整棵目录树。4A 期间实际踩过：`useEntryType.ts` 一度按 Nuxt 4 的习惯写进 `app/composables/`，不生效，移回根级才行。
+
+**要改趁早。** 决定用 Nuxt 3 的话，改 `architecture.md` 技术栈表那一行即可，代码不动。
 
 ## 5. 目录结构现状
 
@@ -202,6 +288,56 @@ backend/
   migrations/             000001 扩展与触发器，000002 users + sessions，000003 entries，
                           000004 categories + entries.category_id
   sql/queries/            sqlc 输入：auth.sql / entry.sql / category.sql
+
+admin/                    Vue 3 + TS + Vite（3A）
+  src/
+    api/
+      client.ts           唯一的 HTTP 出口：信封拆解、错误归一、credentials
+      errors.ts           ApiClientError + code 到中文文案的映射
+      auth.ts             login / logout / fetchMe
+      index.ts            对外的桶文件
+    types/api.ts          按 api.md 抄的类型；枚举用 union
+    stores/auth.ts        Pinia：user / isInitializing / initializationError
+    router/index.ts       路由表 + beforeEach 守卫
+    layouts/AdminLayout.vue   顶栏 + 侧栏 + 内容区
+    views/                Login.vue / Dashboard.vue / NotFound.vue
+    style.css             设计变量与元素默认值
+  .env.example            VITE_API_BASE_URL
+  vite.config.ts          端口固定 5173
+
+frontend/                 Nuxt 3.21.11 + TS（4A 完成，见第 13 节）
+  assets/css/
+    tokens.css            设计值的唯一来源，不含组件样式
+    main.css              reset 与元素默认值
+    prose.css             .prose 下的全部样式（全局引入，见 13.1）
+  pages/
+    index.vue             列表页
+    [slug].vue            详情页（根级 URL）
+    categories/[slug].vue 分类页
+  components/
+    EntryTimeline.vue     按年份分组的时间线
+    EntryRow.vue          单条列表项，版式随 type 变
+    ThePager.vue          分页（链接，不是按钮）
+    ThemeToggle.vue       主题切换
+  layouts/default.vue     顶栏 + 内容区 + 页脚
+  error.vue               错误页
+  app.vue                 NuxtLayout + NuxtPage
+  plugins/auth.server.ts  SSR 期间带 cookie 探一次 /me
+  stores/auth.ts          Pinia：user / loading / initialized
+  composables/
+    useApi.ts             唯一的 HTTP 出口，拼 /api/v1 前缀
+    useEntriesApi.ts      文章读取
+    useCategoriesApi.ts   分类读取
+    useSiteCategories.ts  分类列表的共享 useAsyncData
+    useEntryType.ts       六种 type 到版式的查表
+    useTheme.ts           主题读写（cookie）
+  utils/
+    api-error.ts          错误归一
+    markdown.ts           markdown-it 实例与渲染
+    date.ts               日期格式化，时区钉死 Asia/Shanghai
+  types/                  api / auth / entry / category
+  nuxt.config.ts          含字体反代的 routeRules，见 13.3
+  .env / .env.example     NUXT_PUBLIC_API_BASE=http://localhost:8080
 ```
 
 `internal/entry` 与 `internal/entryhttp` 的拆分理由与 auth 那对相同，见下面的偏离说明。三个适配层之间**没有依赖**：`entryhttp` 自己声明 `AuthorResolver` 与 `CategoryResolver` 两个函数类型，由 router 分别接到 `authhttp.Authenticated` 和 `taxonomy.Service.ResolveSlug`，所以谁都不用 import 谁。
@@ -209,6 +345,8 @@ backend/
 `taxonomy` 没有 Clock，`entry` 有。这不是遗漏：分类的 `created_at` 来自列默认值、`updated_at` 来自触发器，这个包里没有任何东西需要盖时间戳。文章的 `published_at` 才需要。
 
 `internal/media` 与 `internal/storage` **尚未创建**，连空目录都没有。
+
+`admin/src/components/` 是空目录：3A 没有任何一处需要复用的片段，为「架构完整」先摆几个组件进去只会造出还没有第二个调用点的抽象。
 
 ### 测试现状
 
@@ -359,7 +497,7 @@ SET status = 'published',
 
 ## 9. 2E 已对齐的三项决策（均已落地，2026-08-25）
 
-本阶段有一个新 migration：`000004`，加 `categories` 表、`entries.category_id`、以及此前推迟的 `idx_entries_category`。因此现在是 **6 个部分索引 + 1 个 GIN + 1 个部分唯一索引**，与 architecture.md 一致，3.1 里那条「差一个索引」的记录已经作废。
+本阶段有一个新 migration：`000004`，加 `categories` 表、`entries.category_id`、以及此前推迟的 `idx_entries_category`。因此当时是 **6 个部分索引 + 1 个 GIN + 1 个部分唯一索引**，与 architecture.md 一致，3.1 里那条「差一个索引」的记录已经作废。（4A 的 000005 又加了表达式索引 `idx_entries_public_timeline`。`entries` 上现为 **6 个非唯一部分索引 + 1 个 GIN + 1 个部分唯一索引**，已用 `pg_indexes` 核对，见 13.5。）
 
 | 项 | 结论 | 理由 |
 |---|---|---|
@@ -433,3 +571,452 @@ SET status = 'published',
 ### dbtest 新增 `CleanupCategories`
 
 按 slug 前缀删，和其余清理一样。不写 entries 语句，也不需要：`entries.category_id` 是 `ON DELETE SET NULL`，删分类不碰内容。这和 `author_id` 的 RESTRICT 正好相反——`CleanupUsers` 必须先删 entries 才能删 users。
+
+## 10. 3A：`admin/` 工程初始化与认证闭环（2026-08-25）
+
+只做认证与骨架。文章 CRUD、Markdown 编辑器、自动保存、分类管理、tags、media、archives、site 均**不在**本次范围。后端一行未改（`git diff -- backend/` 为空）。
+
+### 技术栈
+
+`npm create vite@latest admin -- --template vue-ts` 拉到的当前稳定版：
+
+| 包 | 版本 |
+|---|---|
+| Vue | 3.5.41 |
+| TypeScript | 6.0.2 |
+| Vite | 8.2.2 |
+| vue-router | 5.2.0 |
+| Pinia | 4.0.3 |
+| vue-tsc | 3.3.11 |
+
+手动装的依赖只有 `vue-router` 与 `pinia`。没有 UI 库；没有 axios —— 原生 `fetch` 够用，且少一层要理解的东西。
+
+strict 来自 `@vue/tsconfig` 的 `strict: true`，脚手架另给的 `noUnusedLocals` / `noUnusedParameters` / `noFallthroughCasesInSwitch` 都保留。全项目零 `any`。
+
+### API Client 的三个决定
+
+**一、信封在 client 里拆完，页面拿到的是 `User` 而不是 `{ data: User }`。**
+
+底层是 `requestEnvelope`（返回整个信封），上面两个出口：`request` 取 `data`，`requestPaginated` 保留 `meta`。分页端点少，但把 `meta` 丢在 client 里会逼将来的列表页自己发第二次请求。
+
+`requestPaginated` 在缺 `meta` 时抛 `INTERNAL` 而不是伪造一个默认值。`GET /categories` 就是不带 `meta` 的，用错函数应当当场炸而不是静默给出「一页，总数等于本页条数」——后者会让分页控件显示正确却永远翻不到第二页。
+
+**二、每个请求自动带 `credentials: 'include'`，不给调用方选择。**
+
+会话是 HttpOnly Cookie，漏一个就是「登录看起来成功了但后续全 401」。这类错误没有编译期信号，所以不能靠记性。
+
+代码里没有任何 token 处理，也没有 `localStorage` / `sessionStorage` / `document.cookie` / `Bearer`。全仓库唯一出现 `localStorage` 字样的地方是 `client.ts` 里解释为什么不用它的注释。
+
+**三、错误归一成 `ApiClientError`，文案不取后端 `message`。**
+
+带 `code` / `status` / `fields` / `requestId` / `retryAfter`。网络层失败（离线、DNS、CORS 被拒、abort）没有响应体，给一个本地伪码 `NETWORK`，于是调用方只有一种东西要 catch，也不必判断「这是不是一个真的 HTTP 错误」。
+
+文案映射在 `errors.ts` 的 `toUserMessage`。**后端 `message` 一个字都不进 UI**：它是写给读日志的人的，而 500 时它正是驱动层字符串最可能漏进界面的地方。`INVALID_INPUT` 那一支还要看 `status`——405 也是这个 code，那是调用方写错了方法，不是用户输入有问题。
+
+### 401 为什么用注册式回调
+
+`client.ts` 暴露 `setUnauthorizedHandler`，`main.ts` 在启动时把它接到 store 和 router：
+
+```
+main.ts  →  setUnauthorizedHandler(清 store + 跳 /login)
+```
+
+直接在 client 里 import store 和 router 会形成 `store → api → store` 的循环依赖。反过来让每个页面自己处理 401，则等于把同一段逻辑抄 N 遍，且漏掉任何一处都表现为「界面还在但什么都点不动」。
+
+**两个端点显式跳过这个回调**（`skipUnauthorizedHandler: true`）：
+
+- `login` —— 它的 401 是 `INVALID_CREDENTIALS`，意思是「密码错了」。跑会话过期逻辑会清空状态并跳到用户已经在看的那一页，把他需要看到的报错顶掉。
+- `/me` —— 它的 401 是「没登录」，而调用方就是 auth store，它自己会解释。让回调也跑等于两处响应同一个 401，且在启动阶段会在路由决定任何事之前就跳转。
+
+这正是 `api.md` 1.2 强调 `INVALID_CREDENTIALS` 与 `UNAUTHORIZED` 分开的实际用途：两个都是 401，但一个留在原地报错，一个跳走。
+
+### Auth Store：三态而非两态
+
+`user` / `isInitializing` / `initializationError` / `isAuthenticated` / `displayName`，动作 `login` / `logout` / `fetchMe` / `initialize` / `clearSession`。
+
+**`fetchMe` 把 401 当正常答案**（返回 `false` 并清 user），其他错误照抛。这条边界是有意的：「服务器坏了」不能被记成「你没登录」，否则后端一挂，界面就显示一个登录页，而登录同样不可能成功。
+
+**`initialize` 永不 reject。** 失败落进 `initializationError`，所以守卫永远能完成路由。它还去重——并发调用共享同一个 promise，否则守卫和启动流程会各发一次 `/me` 并抢着写状态。
+
+**`initializationError` 与「未登录」是分开的两件事**，登录页因此能说「无法连接到服务器」，而不是让人怀疑自己记错了密码。
+
+`displayName` 在 `display_name` 为空时回退到 `username`。数据库里该列可空且序列化成 `""`，所以空串和缺失要同样对待。
+
+`role` **没有**做成 union type：`migrations/000002` 里它是 `VARCHAR(16)` 带默认值 `'owner'`，**没有 CHECK 约束**，列注释也明说「记录但从不读取」。写成联合类型等于替 schema 承诺了它没有承诺的事。`status` / `visibility` / `type` 有 CHECK 约束，都做了 union。
+
+### Router Guard：`await` 而不是读标志
+
+守卫里是 `await auth.initialize()`，不是读 `isInitializing` 然后期待它已经是 `false`。
+
+这一条是整个 3A 最容易写错的地方。错误写法的表现很具体：
+
+```
+刷新页面 → 守卫立刻跑 → /me 还没回来 → isAuthenticated 是 false → 跳 /login
+```
+
+已登录的人每次刷新都被踹回登录页，而登录页因为 `guestOnly` 又把他送回来，看起来像闪烁。`initialize` 自带去重，所以首次之后每次导航拿到的都是已 resolve 的 promise，等待成本为零。
+
+`main.ts` 里也 `await` 了一次才 `mount`。这一次不是为了正确性（守卫已经保证了），而是为了避免挂载后先画一帧未登录外壳再跳转。
+
+回跳只接受以 `/` 开头的路径：`redirect` 来自 URL，跟着它跳绝对地址会让这个表单变成一个开放重定向。
+
+路由表里 `/entries`、`/entries/new`、`/entries/:id`、`/categories` **没有预留占位路由**。侧栏把 Entries 与 Categories 渲染成 `aria-disabled` 的文字而不是链接：指向一个不存在页面的链接比没有链接更糟。
+
+### 实机验证（浏览器，Playwright 驱动真实 Chromium）
+
+后端 8080 + Vite 5173，全部走真实 Cookie：
+
+| 场景 | 结果 |
+|---|---|
+| 未登录访问 `/dashboard` | → `/login?redirect=/dashboard` |
+| 正确登录 | `Set-Cookie` 建立，回跳到 `/dashboard` |
+| **刷新页面** | 停在 `/dashboard`，`/me` 恢复状态，**不误跳** |
+| 已登录访问 `/login` | → `/dashboard` |
+| 访问 `/` | → `/dashboard` |
+| 退出 | 204 + `Max-Age=0`，回 `/login`，且服务端会话真的失效 |
+| 错误密码 | `INVALID_CREDENTIALS` → 「用户名或密码错误」 |
+| **会话中途被吊销**（直接 `delete from sessions`） | 401 handler 触发，跳登录并保留 redirect |
+| 后端进程停掉 | 初始化提示 + 「无法连接到服务器」，应用不卡死仍能路由 |
+| **连点 3 次登录按钮** | 只发出 **1** 个请求 |
+| 连续错误密码触发 429 | 「尝试次数过多，请稍后重试。」 |
+
+连点那条是用 Playwright 同时发三次 `click({ force: true })` 做的——服务端密码哈希约 200ms，三次点击都落在同一个在途请求内。计数来自监听 `page.on('request')`，不是看界面。
+
+`isSubmitting` 的判断放在 `handleSubmit` 函数体里而不是只靠按钮的 `disabled`：文本框里按 Enter 也会触发提交，`disabled` 拦不住那条路径。
+
+### 3A 期间发现的三处文档与实现不一致
+
+**一、端口容易被误读。** `api.md` 开头说「对着 `alive_test` + 8099 端口核对过」——这句本身是准确的，它陈述的是验证环境，不是默认值。但只读那一句很容易以为后端跑在 8099，而 `.env` 里是 `SERVER_PORT=8080`。`admin/.env.example` 按实际默认值配了 8080，环境事实表也补了这一行。`api.md` 第 11 行已补一句说明默认端口。
+
+**二、`Retry-After` 浏览器读不到。** 详见 3.7。这一条是先从 CORS 配置推出来、再用浏览器实测确认的：curl 能看到头，页面上却只出现兜底文案。
+
+**三、开发库缺 `categories`，`GET /entries` 返回 500。** 详见 3.1。这是本次唯一一个真正阻塞下一阶段的发现，也与 admin 无关——后端在开发库上本来就是这个状态。
+
+### Dashboard 上没有数字
+
+后端没有 dashboard 统计端点，所以 Dashboard 只有问候语和一个「最近编辑」占位块。
+
+没有文章总数、阅读量、访问量、增长率。**编出来的数字和真实数字在界面上长得一模一样**，这正是它比一片空白更糟的原因：空白会促使人去把接口做出来，假数字会让人以为已经做完了。
+
+### 清理
+
+验证期间建过临时账号 `admintest` 和一个临时哈希工具 `backend/cmd/tmphash`，**都已删除**，库里只剩 `owner`。`git diff -- backend/` 为空。
+
+事后发现建临时账号是多余的：`progress.md` 环境事实表里一直写着 `owner` 的开发密码，且当天验证仍然有效。**下次需要登录先读那张表。** 环境事实表现在明确写了这一句。
+
+`npm run build` 通过：43 modules，JS 100.74 kB（gzip 39.76 kB）。中途 `vue-tsc` 报过一次 TS2352——`isRecord` 收窄后直接断言不合法，改成经 `unknown` 转换并注释了为什么不逐字段校验（API 契约就是那个保证，再校验一遍等于维护第二份 schema）。
+
+## 11. 三端联合启动验证（2026-08-25）
+
+第一次把后端、`admin/`、`frontend/` 同时跑起来。结论：**三端都能启动**，过程中暴露两个真问题，均已修。
+
+### 实测结果
+
+```
+                    ┌──────────────────────┐
+  :3000  Nuxt 前台 ─┤ CORS 白名单           │
+                    │ 3000 / 5173（精确匹配）├─→ :8080 Go ─→ :5432 PostgreSQL 18.6
+  :5173  admin 后台─┤                      │      schema v4
+                    └──────────────────────┘
+```
+
+| 组件 | 构建 | 运行 | 证据 |
+|---|---|---|---|
+| backend | 通过 | :8080 | `/health/ready` 200，池 6/25 空闲，DB 延迟 376µs |
+| `admin/` | 通过 167ms | :5173 | `vue-tsc` 类型检查过；43 modules |
+| `frontend/` | 通过 | :3000 | `.output` 2.22 MB（gzip 548 kB） |
+
+`owner` / `alive-dev-password-2026` 登录闭环：登录 200 且下发 `alive_session` cookie，带 cookie 请求 `/me` 200、`/api/v1/admin/entries` 200。错密码 401 `INVALID_CREDENTIALS`，空 body 400 `INVALID_INPUT`。5173 的 CORS 预检 204，带 `Allow-Credentials: true` 与精确 origin。
+
+### 问题一：开发库缺 migration 000004
+
+见 3.1。`/entries` 与 `/categories` 双双 500。已 apply，库到版本 4。
+
+### 问题二：`frontend/` 的 API 端口写成 8099
+
+`nuxt.config.ts` 的 `runtimeConfig.public.apiBase` 默认值、`.env.example`、`README.md` 两处都写 `http://localhost:8099`，而后端在 8080。SSR 阶段直接暴露：
+
+```
+WARN [auth] session check failed:
+     [GET] "http://localhost:8099/api/v1/me": <no response> fetch failed
+```
+
+这不是「哪个端口更好」的问题：`backend/.env`、`backend/.env.example`、`admin/.env.example` 三处都是 8080，**8099 是唯一的离群值**，来源是 2C 那次用测试库验证的临时端口被当成了默认值抄进前端。四处已全部改为 8080。
+
+`frontend/.env` 原本不存在，只有 `.env.example`，于是实际生效的是 `nuxt.config.ts` 里那个错的 fallback —— 两个问题叠在一起才让它一直没被发现。已创建 `frontend/.env`，并确认三个 `.env` 都在各自 `.gitignore` 内。
+
+改完重启 Nuxt、不带任何环境变量覆盖，渲染出的 payload 里 `apiBase:"http://localhost:8080"`，session 探测报错归零。
+
+### 两个已知噪音，未处理
+
+Nuxt dev 启动时反复报 `Failed to resolve import "#app-manifest"` 的 pre-transform error。页面照常 200 渲染，SSR 与 Nitro 构建都正常，未深查。
+
+裸 `go build` 在此网络下必挂（`proxy.golang.org` i/o timeout）。Makefile 已内置 `GOPROXY=https://goproxy.cn,direct`，**走 `make` 而不是直接 `go build`**；环境事实表早有这一条，这次又踩了一次。
+
+### 未验证
+
+`make test` 与 `make test-integration` 这次都没跑，测试是否全绿未知。`entries` 与 `categories` 均为 0 行，前台没有真实数据可展示。三端的浏览器实测只到「页面返回 200」，没有点过 UI。
+
+## 12. 3B：`admin/` 内容管理（2026-08-25）
+
+3.6 列的四步全部落地：migration（3.1 已解决）、分类管理、文章列表、Milkdown 编辑器。
+
+### 12.1 新增的文件
+
+```
+admin/src/
+├── api/
+│   ├── categories.ts      读写路径不对称都收在这里
+│   ├── entries.ts         列表 / 详情 / CRUD / 三个状态迁移
+│   └── patch.ts           api.md 1.7 的唯一实现处
+├── components/
+│   ├── CategoryForm.vue   新建与编辑共用，不发请求
+│   ├── EntryRow.vue       列表一行
+│   └── MarkdownEditor.vue Milkdown 封装
+└── views/
+    ├── Categories.vue     列表 + 行内删除确认
+    ├── Entries.vue        状态页签 + 分页
+    └── EntryEditor.vue    新建与编辑共用
+```
+
+`types/api.ts` 补齐了 Category 与 Entry 两组类型。路由新增 `entries`、`entry-new`、`entry-edit`、`categories`，`AdminLayout` 里对应的导航项解锁。
+
+### 12.2 三个值得记的实现决定
+
+**`patch.ts` 是 1.7 规则的唯一住址。** 每个字段和加载时的原值逐项比对，只有真的变了才进 body。`happened_at` 清空发的是零时间戳 `0001-01-01T00:00:00Z`，不是 `null`。`isEmptyPatch` 在发请求前拦下空 patch —— 空 body 是 400，而「什么都没改」不该报错。视图层不碰这些规则。
+
+**`EntryUpdateRequest` 里没有 `status` 字段。** PATCH 带 `status` 会 400，所以让类型系统直接堵住这条路，而不是靠注释提醒。发布走三个专用端点。
+
+**`MarkdownEditor` 不是 `v-model`。** Milkdown 只在构造时读一次初始内容，之后文档归它自己管。每次变更再把 prop 灌回去，要么打断输入和撤销栈，要么被忽略。所以初始值读一次，变更单向往外走 `update` 事件。代价是调用方必须等内容加载完再挂载，`EntryEditor` 用 `v-if` 加 `:key="original?.id ?? 'new'"` 处理。
+
+另有两处小的：文章列表按 `?status=` 走**服务端**筛选，客户端切分页数据只会漏报；新建保存成功后 `router.replace` 到编辑路由，否则第二次保存会用同一个 slug 再 create 一次，撞 409。
+
+### 12.3 Milkdown 的实际成本
+
+`@milkdown/kit` + `@milkdown/vue` + `@milkdown/theme-nord`，均锁 `7.22.1`。
+
+编辑器被拆成懒加载 chunk：**459.93 kB / gzip 139.32 kB**，只在打开编辑页时下载，列表页不受影响。CSS 从 6.14 kB 涨到 22.56 kB —— 主题样式必须显式 import 三个文件（`prosemirror.css`、`gapcursor.css`、`theme-nord/style.css`），少了任何一个编辑器就是无样式的裸块。这一点在 `MarkdownEditor.vue` 里注释了。
+
+### 12.4 写路径实测（对着运行中的后端）
+
+| 验的是什么 | 结果 |
+|---|---|
+| `PATCH {"status":"published"}` | 400，`fields.status: use POST /entries/:id/publish or /unpublish` |
+| 发布 → 撤回 → 隔 2 秒再发布 | `published_at` 微秒级完全一致，没有前移 |
+| 写响应的 category 形状 | `category_id: 2` 但 `category: null` |
+| admin 读响应的 category 形状 | `category_id: 2` 且 `category: {id, name, slug}` |
+| `happened_at` 设置后用零时间戳清空 | 变回 `null` |
+| `category_id: 0` | 变为未分类 |
+| `category_id: 9999` | 400，`fields.category_id: no category has this id` |
+| 创建时 slug 重复 | 409，`fields.slug: already taken` |
+| PATCH slug 改成它自己 | 200，不会自我冲突 |
+| 非法 `type` | 400，列出六个合法值 |
+
+`admin/` 构建通过（930 modules，`✓ built in 414ms`），三个新模块在 dev 下都能 transform，`/entries`、`/entries/new`、`/entries/1` 三条路由都返回 200。
+
+### 12.5 没验证的
+
+**界面没有点过。** 环境里没有浏览器自动化，装一套的代价超过这次任务本身。所以「Milkdown 敲字能出富文本」「页签点了会切」「删除确认会拦住」这些都只是代码上应该成立，没有实证。
+
+`make test` 与 `make test-integration` 这次仍未跑。
+
+开发库里留了我造的验证数据，不是真实内容：分类 `旅行/travel`（id 2），文章 `first-post`（草稿）、`kyoto-spring`（已发布/公开/旅行）、`reading-notes`（已发布/不列出）、`old-review`（已归档）。要清掉说一声。
+
+---
+
+## 13. 4A：`frontend/` 前台页面与设计系统（2026-08-25）
+
+三个页面加一套设计系统。排印是这个站的产品，所以 token 层不是「顺手抽的变量」，而是这一阶段的主要交付物。
+
+### 13.1 新增文件
+
+**样式层**
+
+| 文件 | 作用 |
+|---|---|
+| `assets/css/tokens.css` | 设计值的唯一来源。字体、字阶、行高、间距、两套配色。**不含任何组件样式** |
+| `assets/css/main.css` | reset 与元素默认值。只通过变量读值 |
+| `assets/css/prose.css` | `.prose` 下的全部样式，即 Markdown 渲染结果 |
+
+`prose.css` 是全局引入而非 scoped：scoped 样式加不到 `v-html` 的内容上，那段 HTML 不带组件的生成属性。
+
+**逻辑层**
+
+| 文件 | 作用 |
+|---|---|
+| `utils/markdown.ts` | markdown-it 实例与渲染函数 |
+| `utils/date.ts` | 日期格式化，时区钉死 `Asia/Shanghai` |
+| `composables/useEntryType.ts` | 六种类型 → 版式规则的查表 |
+| `composables/useTheme.ts` | 主题读写 |
+| `composables/useSiteCategories.ts` | 分类列表的共享 `useAsyncData` |
+
+**视图层**
+
+| 文件 | 作用 |
+|---|---|
+| `pages/index.vue` | 列表页（重写，原为十行占位） |
+| `pages/[slug].vue` | 详情页 |
+| `pages/categories/[slug].vue` | 分类页 |
+| `components/EntryTimeline.vue` | 按年份分组的时间线 |
+| `components/EntryRow.vue` | 单条列表项，版式随类型变 |
+| `components/ThePager.vue` | 分页 |
+| `components/ThemeToggle.vue` | 主题切换 |
+| `layouts/default.vue` | 站点框架（重写） |
+| `error.vue` | 错误页（重写） |
+
+### 13.2 设计方向
+
+**方向：墨与纸的编辑排印**（ink-on-paper editorial）。中文正楷做正文，一切层级靠字号、颜色、留白，不靠字重。
+
+**设计签名：类型差异化排版**（type-differentiated layout）。六种 `type` 不是六个标签，是六种版式：
+
+| type | 封面处理 | 摘要 |
+|---|---|---|
+| `journal` 日志 | 不显示 | 显示 |
+| `book` 书 / `movie` 影 / `music` 乐 | 行内小图，2:3 竖版（书封、影海报） | 显示 |
+| `travel` 行 | 领头大图，3:2 | 显示 |
+| `photo` 影像 | 领头大图，3:2 | 不显示（图就是内容） |
+
+规则集中在 `composables/useEntryType.ts` 一张查表里，不散在组件的 `v-if` 里。新增一种类型是加一行，不是改版式代码。
+
+`travel` / `photo` 的领头图钉死 `aspect-ratio: 3 / 2`，因为一列混着 4:3 与 16:9 的图，边缘会参差。
+
+### 13.3 字体：寒蝉正楷体（ChillKai）
+
+用户选定，全站使用，包含正文。事实是从**字体文件本身**读出来的，不是猜的（fonttools）：
+
+| 事实 | 对设计的影响 |
+|---|---|
+| 3.1 MB，**6763 个汉字 = 恰好 GB2312 的边界** | 现代日常汉字全覆盖；繁体、生僻字、许多人名字符**不在其中**，会在句子中间掉到 fallback，看起来像渲染故障。fallback 栈因此按「衬线优先」排，让替换尽量安静 |
+| **只有一个字重**（400） | 全局 `font-synthesis: none`。合成粗体在毛笔字面上是涂抹，比没有粗体更糟。层级只能靠字号、颜色、留白 |
+| **自然行高恰好 1.000**（零内建行距） | `line-height` 必须处处显式设置，否则行会贴在一起。`--leading-none` 定为 1.1 而不是 1.0，正是因为字体自己不留 |
+| x-height 0.454（偏低） | 拉丁字母在同字号下显得比旁边的汉字小。用更大的基准字号补（`--text-base: 1.125rem`），而不是给拉丁另设样式 |
+
+**CORS 是个真问题。** 用户提供的 CDN 不返回 `Access-Control-Allow-Origin`（GET、HEAD、OPTIONS 预检都试过，只有 `Timing-Allow-Origin`）。而 `@font-face` 的请求**永远**是 CORS 模式，所以直接跨域引用的结果是：3.2 MB 下载完，浏览器丢掉，页面用 fallback 渲染——**下载照付，字体不生效**。
+
+解法是 Nitro 的 `routeRules` 反代到 `/fonts/chillkai.woff2`，变成同源请求，CORS 不再适用。代价是字体流量过 Nuxt 服务器一次。已验证：开发模式与 `nuxt build` 产物里 `url()` 都指向 `/fonts/chillkai.woff2`，取回的字节以 `wOF2` 开头，长度 3227920。
+
+`font-display: swap`：3.1 MB 在慢网络上是好几秒，fallback 字面下可读的文字胜过正确字面下的空白。
+
+### 13.4 值得记下的实现决策
+
+**1. 配色只写一遍：`light-dark()`**
+
+最初写成了两份——`[data-theme='lamp']` 一份、`prefers-color-scheme` 媒体查询里一份。那正是两套主题日后走偏的标准做法。改用 CSS `light-dark()` 后，每个颜色只有一行，`color-scheme` 决定取哪个参数。
+
+**2. `html: false`，这是唯一的安全决策**
+
+`utils/markdown.ts` 里 markdown-it 关掉了原始 HTML。**要打开它必须同时接一个真实的消毒器**（DOMPurify 或等价物），否则 `v-html` 就是一条 XSS 通道。
+
+已跑 11 个注入向量：`javascript:` 链接、`data:text/html`、`<script>`、事件处理属性、`<iframe>`、`<img onerror>` 等。真实泄漏 0 个。
+
+这里犯过一次错，值得记：第一版检测脚本用正则在整段输出里找 `javascript:` 字面量，报出 5 个「泄漏」。实际输出显示 markdown-it **根本没生成链接**——`[click](javascript:alert(1))` 保持为纯文本。误报来自检测脚本，不是渲染器。改成只在真实的 `href`/`src` 属性值里查危险 scheme、在真实元素上查事件属性后，11 个向量 0 泄漏。**在断言「发现漏洞」之前先看渲染出来的到底是什么。**
+
+**3. 日期时区钉死 `Asia/Shanghai`**
+
+`toLocaleDateString()` 用运行时时区。服务端（UTC）与读者（UTC+8）会对「一个深夜的时间戳属于哪一天」给出不同答案，那就是一次 SSR 水合不一致。`utils/date.ts` 里每个函数都显式传 `Asia/Shanghai`。
+
+**4. 标题降级，保证 `h1` 唯一**
+
+`renderMarkdown` 把正文里 h1–h5 各降一级，页面标题是唯一的 `h1`。因此作者写的 `##` 到达前台时是 `h3`。
+
+配套的坑：`h5`/`h6` 原先既不在 margin reset 里、也不在标题字号规则里，于是作者写 `####`（降级后为 h5）会掉到浏览器默认样式。已补齐到 h6。降级在 h6 封顶（无匹配则不动），所以 `#####` 与 `######` 都落在 h6。
+
+**5. 「粗体」与「斜体」都不能用常规做法**
+
+单字重字面下 `font-weight: 700` 是空操作。所以 `.prose strong` 用**颜色加底色渐变**，`.prose em` 用 `text-emphasis: dot`（中文的着重号传统）。合成斜体的楷书看起来像 bug。
+
+**6. 年份分组用「连续段」，不是 map**
+
+API 已经排好序，对象键顺序是另一回事，不能依赖。所以按相邻元素是否同年累积。**前提是排序键与分组键一致**——这个前提当初不成立，见 13.5。
+
+**7. 分页是链接，不是按钮**
+
+每一页都是可分享、可抓取的真实 URL。`?page=1` 不生成，它是首页的重复 URL。不可用的方向用 `visibility: hidden` 保留位置，不用淡色：一个看得见又点不动的控件，任何颜色都解决不了——淡到像禁用就淡到读不了（原值实测 1.79:1）。
+
+**8. 分类导航过滤掉空分类**
+
+`entry_count > 0` 才出现在页脚。一个通向空页面的导航链接是条死路。但分类页自身仍要处理空列表：直接输入 URL 还是会到那里。
+
+### 13.5 修掉的后端行为：排序键与显示键必须是同一个
+
+**症状：**首页年份分组读出来是 **2026、2025、2024、2026**——2026 出现了两次。
+
+**诊断：**把 API 返回顺序和实际显示的日期并排打出来：
+
+```
+slug                     happened_at                published_at                 显示年份
+on-writing-things-down   2026-01-04T10:00:00+08:00  2026-08-25T20:55:19.942983   2026
+faces-i-cannot-recall    2025-11-14T21:30:00+08:00  ...                          2025
+convenience-store...     2025-09-19T02:14:00+08:00  ...                          2025
+kafka-on-the-shore       2025-06-02T00:00:00+08:00  ...                          2025
+bill-evans-alone         2024-12-11T23:00:00+08:00  ...                          2024
+kyoto-sakura-in-water    2024-03-28T13:00:00+08:00  ...                          2024
+kyoto-spring             —                          2026-08-25T17:49:01.215343   2026  ← 排在末尾
+```
+
+`kyoto-spring` 没有 `happened_at`，SQL 的 `NULLS LAST` 把它排到末尾；而前台 `entryDate()` 回落到 `published_at`，给它贴了个 2026。**按一个表达式排序、按另一个表达式显示，就会这样。**
+
+**为什么不能在前端修。**在前端对当前页重新排序不解决问题：是后端决定哪些内容落在第 1 页，重排只是把断裂点从页面中间移到页面边界上。这个 bug 属于查询。
+
+**改动：**
+
+- `ListPublicEntries` 的 `ORDER BY` 改为 `COALESCE(e.happened_at, e.published_at) DESC, e.id DESC`
+- 新增 migration **000005**，建表达式索引 `idx_entries_public_timeline`
+
+`COALESCE` 在这些行上不可能是 NULL：`entries_published_at_check` 保证任何 `published` 内容都有 `published_at`。于是 `NULLS LAST` 这个特例一起消失了——**从不同角度看问题，让特例变成常规情况**，而不是再加一个条件判断。
+
+索引不是可选项：Postgres 只在索引表达式与排序表达式文本一致时才用它排序，原来的 `(happened_at DESC)` 顶不了 `COALESCE(...)`。已用 `EXPLAIN` 确认走的是新索引。
+
+**测试原来在断言旧契约。**`entry_integration_test.go` 的 `orders by happened_at, nulls last` 明确要求无日期的行排在末尾。它没红，因为 `make test` 在没有 `TEST_DATABASE_URL` 时跳过库测试——**`make test` 全绿不等于库层行为验过，要跑 `make test-integration`。** 该用例已改写：无日期行的 `published_at` 特意放在中间，于是「NULLS LAST」和「只按 published_at 排」两种错法都会被它抓住。
+
+### 13.6 对比度：两处实测不合格，已改
+
+配色写的是 OKLCH，肉眼估不出对比度，所以照 WCAG 公式算了一遍（OKLCH → sRGB → 相对亮度）。
+
+改前：
+
+| 前景 | 浅色主题 | 深色主题 | 判定 |
+|---|---|---|---|
+| `--c-ink` | 15.74 | 12.87 | AA |
+| `--c-ink-muted` | 6.26 | 6.41 | AA |
+| `--c-ink-faint` | **3.22** | **3.35** | **仅够大字号** |
+| `--c-accent` | 5.60 | 6.61 | AA |
+| `--c-line-strong` 当文字用 | **1.79** | **2.00** | **不合格** |
+
+`--c-ink-faint` 有 13 处调用，承载的是日期、分类眉标、页脚计数、空状态——读者要读的东西，3.22:1 是真的不够。改为浅色 55%、深色 60%（实测 4.64:1 / 4.68:1，是这个纸色下刚过线的极值再收一点余量）。与 `--c-ink-muted` 的分离度是 1.35 / 1.37，两套主题一致。
+
+**注释里写下了这条规则：比这更淡的需求属于边框 token，不属于文字 token。**
+
+`--c-line-strong` 当文字用的两处已改：分页禁用态改成 `visibility: hidden`（见 13.4 第 7 条），错误页的大号状态码改用 `--c-ink-faint`。后者本来就免于 4.5:1（`aria-hidden` 且下方标题已复述），但「淡」得是能看见的淡。
+
+### 13.7 验过什么
+
+| 项 | 方法 | 结果 |
+|---|---|---|
+| 六条路由状态码 | curl | `/` `/?page=2` `/<slug>` `/categories/travel` 200；`/categories/nope` `/nonexistent-slug` `/draft-not-ready` 404 |
+| **草稿与不存在的 404 不可区分** | 两份响应体逐字节比对（仅归一化 slug 本身） | 完全相同。后端的不可探测性穿过前台仍然成立 |
+| 年份分组顺序 | 解析 SSR HTML | 2026 / 2025 / 2024，各一次 |
+| Markdown 注入 | 11 个向量 | 0 泄漏（`href`/`src` 的 scheme 与元素事件属性两条口径） |
+| 详情页结构 | 解析渲染结果 | `h1` 恰好 1 个；表格被 `.table-scroll` 包住；JSON-LD 与 canonical 都在 |
+| 主题 cookie | 三种 cookie 值 | 无 cookie → 不写 `data-theme`；`ink`/`lamp` → 服务端渲染即带上；`bogus` 与 `"><script>` → 不写属性 |
+| 字体反代 | curl + 构建产物 | 开发与构建产物都指向 `/fonts/chillkai.woff2`；取回 3227920 字节，magic 为 `wOF2` |
+| 对比度 | 按 WCAG 公式算 OKLCH | 见 13.6 |
+| 375px 宽度 | 算盒模型 | 内容列 327px；行内小图版式文字列 255px（≈14 字）；`.meta` 行实测约 108px，远未换行；`h1`–`h6` 已补 `overflow-wrap`，并用一条含长 URL 的真实标题验过 |
+| 类型检查 / lint | `vue-tsc --noEmit`、`eslint` | 均无输出 |
+| 生产构建 | `nuxt build` | 成功，2.75 MB（gzip 732 kB） |
+| 后端 | `make test`、`make test-integration` | 全绿（本次两个都跑了） |
+
+### 13.8 没验过什么
+
+**界面没有在浏览器里看过。** 环境里没有浏览器自动化。上面所有结论来自 SSR HTML、构建产物、状态码与计算，**没有一条来自「看见它长什么样」**。具体而言，以下都只是代码上应该成立：
+
+- 楷体实际渲染出来好不好看，fallback 掉字时有多明显
+- 两套主题切换的观感，以及跟随系统时的初始状态
+- 悬停交互（领头图 `scale: 1.02`、纯文字条目的墨线从左侧生长）
+- 年份在侧栏 `position: sticky` 的实际吸附行为
+- 375px 下的真实观感（盒模型算得出「不溢出」，算不出「好看」）
+
+请在浏览器里核对：`/`、任意一篇详情页、`/categories/travel`，宽屏与 375px 各一遍。
+
+**开发库里有我造的验证数据**，不是真实内容：分类 `读与看/reading`、`日常/daily`（另有 3B 留下的 `旅行/travel`），7 篇文章跨 2024–2026，其中 1 篇故意留作草稿以验证状态过滤。要清掉说一声。

@@ -730,7 +730,7 @@ WHERE e.deleted_at IS NULL
   AND e.visibility = 'public'
   AND ($1::bigint IS NULL
        OR e.category_id = $1::bigint)
-ORDER BY e.happened_at DESC NULLS LAST, e.id DESC
+ORDER BY COALESCE(e.happened_at, e.published_at) DESC, e.id DESC
 LIMIT $3 OFFSET $2
 `
 
@@ -768,10 +768,18 @@ type ListPublicEntriesRow struct {
 // nothing on a list view renders the body.
 //
 // Ordered by happened_at, not created_at: the timeline records when things
-// happened, not when they were typed. NULLS LAST keeps entries with no recorded
-// date at the end instead of at the top, since DESC sorts NULL first by default.
+// happened, not when they were typed. Entries with no happened_at fall back to
+// published_at rather than sorting to the end, because that is the date the
+// reader is shown for them, and a list sorted by one date while labelled with
+// another puts a 2026 entry below the 2024 block.
+//
+// COALESCE cannot be NULL on these rows: entries_published_at_check requires
+// published_at on every published entry, which is why there is no NULLS LAST.
 // id DESC breaks ties, which is what stops a row appearing on two pages when
-// several share a happened_at.
+// several share a date.
+//
+// idx_entries_public_timeline (000005) indexes this exact expression. Changing
+// the ORDER BY without changing that index turns the list into a full sort.
 // The category filter is a nullable id: NULL means every category. The caller
 // passes an id, not a slug, because the service resolves the slug first — that
 // way an unknown category is a 404 saying the URL is wrong, rather than an empty

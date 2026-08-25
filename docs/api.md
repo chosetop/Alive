@@ -10,6 +10,8 @@
 
 基础路径 `/api/v1`。探针在根路径，不带版本前缀：探针 URL 不应该因为 API 升版而改变。
 
+端口：上面提到的 8099 是那次核对用的临时端口，**不是默认值**。默认是 `.env` 里的 `SERVER_PORT=8080`。
+
 ---
 
 ## 1. 通用约定
@@ -267,6 +269,14 @@ Set-Cookie: alive_session=<token>; Path=/api/v1; HttpOnly; Secure; SameSite=Stri
 - **解析不到是 404，不是空列表。** `?category=nope`（打错的链接）和 `?category=空分类` 是两回事，客户端分不清就会把前者显示成「这个分类下暂无内容」
 - **传空串（`?category=`）等同于没传。** 前端从表单状态拼查询串时，分类选「全部」发出的就是这个，对它报 400 会打断这个筛选器唯一要服务的场景
 - 分类筛选**只会收窄可见范围，不会放宽**：加了 `category` 之后上面那三个条件一个都不少
+
+**排序（2026-08-25 改）：`COALESCE(happened_at, published_at) DESC, id DESC`。**
+
+原来是 `happened_at DESC NULLS LAST`。改的原因是前台按同一个 `COALESCE` 表达式显示日期，于是没有 `happened_at` 的内容被排在末尾、却顶着一个今年的日期，年份分组读出来是 2026、2025、2024、2026。**按一个表达式排序、按另一个表达式显示，就是这个结果。**
+
+`COALESCE` 在这些行上不可能是 NULL：`entries_published_at_check` 要求任何 `published` 内容必须有 `published_at`，所以不需要 `NULLS LAST`。`id DESC` 断同值，这是防止一行出现在两页上的那一半。
+
+配套的表达式索引是 `idx_entries_public_timeline`（migration 000005）。**改 ORDER BY 而不改索引，这个列表就退化成全表排序**：Postgres 只在索引表达式与排序表达式文本一致时才用索引。
 
 响应（`data` 是数组，`meta` 见 1.1）：
 
@@ -596,4 +606,9 @@ level=INFO msg="category deleted, its entries are now uncategorised" category_id
 6. **列表响应没有 `content_md` 也没有 `id`**。需要正文走详情，需要 id 走后台接口。
 7. **不要用 `message` 做判断**，用 `code`。前者会改，后者不会。
 8. 报错时把 `request_id` 带上，那一个值就能定位到对应日志行。
+9. **`INVALID_CREDENTIALS` 和 `UNAUTHORIZED` 要分开处理**，虽然都是 401。前者留在登录页显示报错，后者清状态并跳登录。把两者合并的后果很具体：登录页上密码打错一次，界面会跳到它自己那一页，把用户需要看到的报错顶掉。
+10. **429 的 `Retry-After` 跨域读不到。** 后端 `ExposedHeaders` 只列了 `X-Request-ID`，而浏览器不允许 `fetch` 读取未 expose 的响应头。开发环境（admin 5173 → API 8080，跨域）拿不到秒数，生产环境同域才能拿到。所以要按「可能没有」来写，不能假设 429 一定带得到时间。
+11. **空的 `data` 数组序列化成 `[]` 不是 `null`**，但 204 响应（logout）根本没有 body，别去解析它。
+
+第 9 到 11 条是 2026-08-25 写 `admin/` 时实际踩到或实测确认的。
 

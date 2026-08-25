@@ -1,0 +1,130 @@
+/*
+ * Design tokens and element defaults.
+ *
+ * Per-component styling lives in that component's `scoped` block. What is here
+ * is either a shared value or a browser default worth correcting once.
+ *
+ * The palette is deliberately quiet: warm off-white paper, near-black ink, one
+ * restrained accent. This is a tool someone sits in to write for long stretches,
+ * so contrast carries the hierarchy instead of colour.
+ */
+
+:root {
+  /* Surfaces, lightest to darkest. */
+  --c-paper: #faf9f7;
+  --c-surface: #ffffff;
+  --c-surface-sunken: #f2f0ec;
+
+  /* Ink, strongest to faintest. */
+  --c-ink: #1b1a18;
+  --c-ink-muted: #5f5b54;
+  --c-ink-faint: #8d8880;
+
+  --c-line: #e3dfd8;
+  --c-line-strong: #cfc9c0;
+
+  /* One accent, used for focus and the primary action only. */
+  --c-accent: #3a5a72;
+  --c-accent-hover: #2e4a5f;
+  --c-danger: #a5342c;
+  --c-danger-surface: #fdf2f0;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-8: 3rem;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --sidebar-width: 13rem;
+  --header-height: 3.5rem;
+
+  font-family: var(--font-sans);
+  /* Rendering hints, not layout: these keep long prose from looking thin. */
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--c-ink);
+  background-color: var(--c-paper);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background-color: var(--c-paper);
+}
+
+#app {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+  /* Headings are short lines; the body's 1.6 leaves them looking loose. */
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--c-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+input {
+  font: inherit;
+}
+
+/*
+ * One focus treatment for everything focusable. `:focus-visible` rather than
+ * `:focus` so a mouse click does not leave a ring behind, while keyboard
+ * navigation always shows one.
+ */
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}
+
+/* Respect a system-level request for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

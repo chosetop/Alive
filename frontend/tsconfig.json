@@ -1,0 +1,7 @@
+{
+  // https://nuxt.com/docs/guide/concepts/typescript
+  // Extends the config Nuxt generates from the project structure, which carries
+  // the path aliases and auto-import types. `strict` is set in nuxt.config.ts so
+  // it survives regeneration.
+  "extends": "./.nuxt/tsconfig.json"
+}

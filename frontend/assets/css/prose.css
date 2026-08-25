@@ -1,0 +1,261 @@
+/*
+ * Styles for rendered Markdown.
+ *
+ * Kept separate from main.css because it applies to HTML this app did not write:
+ * markdown-it output carries no classes, so everything here is a descendant
+ * selector under `.prose`. Scoping it to that one class is what stops these rules
+ * from leaking into the interface.
+ *
+ * Loaded globally rather than in a component's `<style scoped>`, since scoped
+ * styles cannot reach `v-html` content.
+ */
+
+.prose {
+  /*
+   * The measure lives here rather than on the page container so that a wide
+   * element (a full-bleed image) can opt out by overriding its own width, while
+   * text stays at a comfortable line length.
+   */
+  max-width: var(--measure);
+}
+
+/* ------------------------------------------------------------ block rhythm */
+
+/*
+ * Vertical rhythm via the lobotomised-owl selector: space between siblings, and
+ * never a stray margin at either end of the flow. Setting margins on elements
+ * individually is what produces the collapsed-margin surprises this avoids.
+ */
+.prose > * + * {
+  margin-top: var(--space-5);
+}
+
+/*
+ * Headings need more space above than below: the gap belongs to the section
+ * starting, not to the paragraph ending. This is the one rule that makes long
+ * documents scannable.
+ */
+.prose > :is(h2, h3, h4) {
+  margin-top: var(--space-8);
+}
+
+.prose > :is(h2, h3, h4) + * {
+  margin-top: var(--space-4);
+}
+
+/*
+ * The body's h1 is the entry title, rendered by the page rather than by
+ * Markdown, so document headings start at h2. If an h1 appears in content
+ * anyway it is styled as an h2 to keep the outline single-rooted, which is
+ * what assistive technology and search engines read.
+ */
+.prose :is(h1, h2) {
+  font-size: var(--text-xl);
+}
+
+.prose h3 {
+  font-size: var(--text-lg);
+}
+
+.prose h4 {
+  font-size: var(--text-base);
+  color: var(--c-ink-muted);
+}
+
+/*
+ * The floor of the scale. Deeper than this the difference from body text has to
+ * come from something other than size, since h4 is already at body size: these
+ * sit at the small step and are set apart by colour and letter-spacing instead.
+ * Reached by an author writing `####` or deeper, which demotion turns into h5.
+ */
+.prose :is(h5, h6) {
+  font-size: var(--text-sm);
+  color: var(--c-ink-muted);
+  letter-spacing: 0.03em;
+}
+
+/* ------------------------------------------------------------------- inline */
+
+.prose a {
+  /* In prose, links are underlined by default: colour alone is not enough. */
+  text-decoration-color: var(--c-accent);
+}
+
+/*
+ * `strong` cannot use weight, since the face has one. A colour shift plus the
+ * subtlest background tint marks emphasis without faking a bold.
+ */
+.prose strong {
+  font-weight: 400;
+  color: light-dark(oklch(14% 0.015 60), oklch(97% 0.008 75));
+  background: linear-gradient(transparent 62%, var(--c-paper-sunken) 62%);
+}
+
+/* Kaishu is already calligraphic; a synthesised slant on top reads as a bug. */
+.prose em {
+  font-style: normal;
+  /* The CJK convention for emphasis: a dot beside each character. */
+  text-emphasis: dot var(--c-accent);
+  text-emphasis-position: under right;
+}
+
+.prose del {
+  color: var(--c-ink-faint);
+}
+
+.prose code {
+  padding: 0.1em 0.3em;
+  border-radius: 2px;
+  background: var(--c-paper-sunken);
+}
+
+.prose sup {
+  /* Keeps footnote markers from opening up the line they sit on. */
+  line-height: 0;
+}
+
+/* -------------------------------------------------------------------- lists */
+
+.prose :is(ul, ol) {
+  padding-left: 1.4em;
+}
+
+.prose li + li {
+  margin-top: var(--space-2);
+}
+
+/* Nested lists belong to their parent item, so they sit closer. */
+.prose li > :is(ul, ol) {
+  margin-top: var(--space-2);
+}
+
+.prose li::marker {
+  color: var(--c-ink-faint);
+}
+
+/* ------------------------------------------------------------------- quotes */
+
+/*
+ * A quote is set apart by an ink rule and a colour shift, not by a tinted box.
+ * Boxes turn a quotation into a callout, which is a different thing.
+ */
+.prose blockquote {
+  padding-left: var(--space-5);
+  border-left: 2px solid var(--c-line-strong);
+  color: var(--c-ink-muted);
+}
+
+.prose blockquote > * + * {
+  margin-top: var(--space-4);
+}
+
+/* ------------------------------------------------------------------ figures */
+
+.prose img {
+  /* Images may exceed the measure; text should not. */
+  width: 100%;
+  border-radius: 2px;
+  box-shadow: var(--shadow-image);
+}
+
+.prose figure > figcaption,
+.prose img + em {
+  display: block;
+  margin-top: var(--space-3);
+  color: var(--c-ink-faint);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  line-height: var(--leading-tight);
+  text-align: center;
+}
+
+/* --------------------------------------------------------------------- code */
+
+.prose pre {
+  padding: var(--space-4);
+  overflow-x: auto;
+  border: 1px solid var(--c-line);
+  border-radius: 3px;
+  background: var(--c-paper-sunken);
+  /* Code is one place where wrapping loses meaning, so it scrolls instead. */
+  line-height: 1.6;
+  tab-size: 2;
+}
+
+.prose pre code {
+  padding: 0;
+  background: none;
+  /* Inherits the block's size so the inline step-down does not compound. */
+  font-size: 1em;
+}
+
+/* ------------------------------------------------------------------- tables */
+
+/*
+ * Wrapped in a scroll container by the renderer, because a table with more
+ * columns than the measure allows would otherwise widen the whole page.
+ */
+.prose .table-scroll {
+  overflow-x: auto;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  line-height: var(--leading-tight);
+}
+
+.prose :is(th, td) {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--c-line);
+  text-align: left;
+  vertical-align: baseline;
+}
+
+.prose th {
+  border-bottom-color: var(--c-line-strong);
+  color: var(--c-ink-muted);
+  font-weight: 400;
+  /* Small caps carry the header role without needing a bold weight. */
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* Digits align in columns only if they share one advance width. */
+.prose td {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------- task lists */
+
+.prose li:has(> input[type='checkbox']) {
+  list-style: none;
+  /* Pulls the checkbox into the space the marker vacated. */
+  margin-left: -1.4em;
+}
+
+.prose input[type='checkbox'] {
+  margin-right: var(--space-2);
+  accent-color: var(--c-accent);
+}
+
+/* ---------------------------------------------------------------- footnotes */
+
+/*
+ * markdown-it's footnote output, if that plugin is enabled later. Styled now so
+ * enabling it does not produce unstyled text.
+ */
+.prose .footnotes {
+  margin-top: var(--space-8);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--c-line);
+  color: var(--c-ink-muted);
+  font-size: var(--text-sm);
+}
+
+.prose .footnotes hr {
+  display: none;
+}
