@@ -1051,3 +1051,61 @@ kyoto-spring             —                          2026-08-25T17:49:01.215343
 ### 14.4 用户人工验收补充（2026-08-26）
 
 用户反馈已自行完成并确认以下两项真实浏览器场景：断网编辑后 reload 恢复、恢复网络后的同步；双标签 revision 冲突及冲突解决动作。该结果作为用户人工验收记录，不附加自动化日志或截图声明。
+
+## 15. Plan 2 沉浸式写作工作区：阶段一（Task 1–3，2026-08-26）
+
+在独立 worktree `.claude/worktrees/immersive-writing-workspace`（分支 `worktree-immersive-writing-workspace`）执行，从 `main` 的 `cc1a610` 起步。主检出里未提交的 `admin/src/App.vue`（MilkdownProvider）和 `.superpowers/brainstorm/` 没有动过。
+
+### 15.1 环境前置问题（先于本计划存在，未修复）
+
+**admin 测试在 Node 20 下完全跑不起来。** `jsdom@30.0.1` 要求 `node: ^22.22.2 || ^24.15.0 || >=26.0.0`，并依赖 `undici@8`（`>=22.19.0`）；`undici` 调用 `worker_threads.markAsUncloneable`，该 API 在本机 Node 20.19.4 上不存在，于是 4 个 worker 全部启动失败，报 `webidl.util.markAsUncloneable is not a function`。
+
+在 `main` 上同样失败，因此不是本计划引入的。本次改用本机已有的 Node 22.17.0 完成全部 admin 工作。注意 22.17.0 仍低于 jsdom 声明的 22.22.2 下限，能跑只是因为所缺的那一个 API 存在，并不在官方支持区间内。
+
+**这件事没有在本计划里修**：它属于工具链基线，`engines`/`.nvmrc` 该钉在 22.22.2+ 还是把 jsdom 降级，是需要另行决定的事。
+
+**另有一个先前存在的测试失败**：`TestRepositoryAdminReadsSeeEveryStatus/ordered_by_the_last_edit` 在设置 `TEST_DATABASE_URL` 时失败于 `version conflict`——它调用 `repo.Update` 时没带 `ExpectedRevision`，而 Plan 1 已把该字段变成必需。`make check` 不设该变量，数据库测试整体跳过，所以基线看起来是干净的。已在 `main` 上复现确认，同样未在本计划中修改。
+
+### 15.2 Task 1：后台文章目录搜索
+
+`GET /api/v1/admin/entries?q=` 按 `title`、`slug`、`summary` 做大小写不敏感匹配，**不搜正文**。服务签名改为 `ListAdmin(ctx, status, query, page, pageSize)`。
+
+先写测试再实现，三层都有覆盖：service（假 store）、handler（HTTP 参数）、repository（真实 SQL）。
+
+代码审查发现并修掉一个真实缺陷：**LIKE 元字符未转义**。`%`、`_`、`\` 会作为模式语法进入 ILIKE，实测确认打一个 `_` 会返回整个目录，标题「读完了 80% 的书」按名字搜不到。不是注入问题（值是绑定参数），是「搜索框回答了另一个问题」。转义放在 repository 层，因为它是这一层构造的 LIKE 模式的属性，而 trim 空查询是 service 的领域规则；这样也让内存假 store 的纯子串比较继续成立。
+
+修复前后都验证过：先让新测试红（`_` 匹配 2 行而非 1 行），修复后绿。另加一条测试钉住「不搜正文」这个决定——在此之前删掉这条规则不会有任何测试反对。
+
+审查提的查询长度上限没做：单用户已认证端点，且这些列本来没有索引，属于推测性加固。
+
+### 15.3 Task 2：共享 Markdown 渲染
+
+渲染实现移入本地包 `@alive/markdown`，前台与 admin 预览各 re-export。可执行代码与原 `frontend/utils/markdown.ts` 逐字节相同（排除注释后 diff 为空），22 条测试在移动之前写好，钉住的是前台已经发布的行为。
+
+代码审查发现一个 **Critical**：**全新 clone 装不起来**。`npm install` 不会为 `file:` 依赖安装目标包自己的依赖，而包导出裸 `.ts`，`markdown-it` 必须从 `packages/markdown/` 往上找得到——它不在两个应用的 `node_modules` 里，也不在它们的 lockfile 里。本机两个 build 能过，只因为那个目录已经被手动装好了。把目录移走即可复现 `Cannot find module 'markdown-it'`。
+
+处理方式：新增 `resolution.test.ts` 守住这条约束（移走 `markdown-it` 会让它失败，已验证），给包加上 `typescript` 与 `tsconfig.json` 让它能自检类型，并在 `architecture.md` 记下必须先跑 `cd packages/markdown && npm install` 的安装顺序。同时删掉 admin 里未被引用的 `markdown-it` 直接依赖——它解析出第二份独立钉版的渲染内核，正是共享包要消除的分叉风险。
+
+没有把仓库改成 npm workspace。那会引入根 manifest、改变三个应用各自独立安装的现状，超出本计划范围，属于需要单独决定的结构变更。
+
+### 15.4 Task 3：Alive UI 基元层
+
+`admin/src/components/ui/` 下六个 Reka UI 薄封装 + `index.ts` + `ui.css`，业务组件不再直接 import `reka-ui`。
+
+几个决定值得记：`UiDialog` 的 `title` 是必需 prop，因为 Reka 只在有 `DialogTitle` 渲染时才接 `aria-labelledby`，漏写就会得到一个「未命名」的对话框；`UiIconButton` 的 `label` 同理，目录收起等纯图标控件没有名字就只会被读成「按钮」。`UiMenu` 的条目走数据而非插槽，选中回传 id 不回传下标，避免列表被过滤后作用到错误条目。`UiToastRegion` 没有建在 Reka Toast 上，并且是命令式 API：一次播报是事件不是状态，做成 prop 会把 id 生成和过期计时推给每个调用方。
+
+测试写完后做了变异验证：删掉 Reka 的 `triggerElement.focus()` 调用，焦点返回测试确实失败。过程中也发现 popover 的焦点返回断言原本是**假通过**——焦点从未进入浮层，所以「返回」无从验证；现在先塞一个可聚焦子元素再断言。
+
+`vue-tsc` 还抓到两个 `vitest` 不会报的类型错误（未使用的 import、`aria-pressed` 的 `string | undefined` 不匹配），已修；顺带补了 `aria-pressed` 在「非开关」与「开关未按下」两种情形下的行为测试。
+
+### 15.5 阶段一验证结果
+
+| 项 | 命令 | 结果 |
+|---|---|---|
+| backend | `make check`（fmt + vet + test -race） | 通过 |
+| backend + 数据库 | `TEST_DATABASE_URL=... go test ./internal/entry ./internal/entryhttp` | 除 15.1 那条先前存在的失败外全部通过 |
+| packages/markdown | `npx vitest run` / `npm run typecheck` | 26 通过 / 通过 |
+| admin | `npm test -- --run` / `npm run build` | 82 通过 / 通过 |
+| frontend | `npm run typecheck` / `npm run build` | 通过 / 通过 |
+
+浏览器验收留到 Task 7，因为 Task 4–6 才产出实际可看的写作界面。Task 3 的基元层目前还没有任何业务页面引用它，这在本阶段是对的。
