@@ -88,6 +88,20 @@ func TestCreateIncompleteDraft(t *testing.T) {
 	}
 }
 
+func TestCreateAllowsMultipleEmptySlugDrafts(t *testing.T) {
+	service, _ := newTestService(t)
+
+	for i := 0; i < 2; i++ {
+		created, err := service.Create(context.Background(), entry.CreateInput{AuthorID: 1})
+		if err != nil {
+			t.Fatalf("Create empty-slug draft %d: %v", i+1, err)
+		}
+		if created.Slug != "" {
+			t.Errorf("slug = %q, want empty", created.Slug)
+		}
+	}
+}
+
 func TestUpdateAcceptsIncompleteDraftFields(t *testing.T) {
 	service, store := newTestService(t)
 	store.Seed(entry.Entry{ID: 7, Revision: 1, Status: entry.StatusDraft})
@@ -105,6 +119,23 @@ func TestUpdateAcceptsIncompleteDraftFields(t *testing.T) {
 	}
 	if store.SlugExistsExcludingCalls != 0 {
 		t.Errorf("empty draft slug checked %d times", store.SlugExistsExcludingCalls)
+	}
+}
+
+func TestUpdateClearsSlugBesideAnEmptySlugDraft(t *testing.T) {
+	service, store := newTestService(t)
+	store.Seed(entry.Entry{ID: 7, Revision: 1, Status: entry.StatusDraft})
+	store.Seed(entry.Entry{ID: 8, Revision: 1, Slug: "second", Status: entry.StatusDraft})
+
+	updated, err := service.Update(context.Background(), 8, entry.UpdateInput{
+		ExpectedRevision: 1,
+		Slug:             ptr(""),
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if updated.Slug != "" {
+		t.Errorf("slug = %q, want cleared", updated.Slug)
 	}
 }
 

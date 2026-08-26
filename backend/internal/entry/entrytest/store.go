@@ -90,9 +90,11 @@ func (s *Store) Create(ctx context.Context, params entry.CreateParams) (entry.En
 	// The unique index is part of the contract this fake stands in for: the
 	// service treats a conflict from the write as equivalent to one from the
 	// pre-check, and that path needs to be reachable here.
-	for _, existing := range s.entries {
-		if existing.Slug == params.Slug {
-			return entry.Entry{}, fmt.Errorf("%w: %s", entry.ErrSlugTaken, params.Slug)
+	if params.Slug != "" {
+		for _, existing := range s.entries {
+			if existing.Slug == params.Slug {
+				return entry.Entry{}, fmt.Errorf("%w: %s", entry.ErrSlugTaken, params.Slug)
+			}
 		}
 	}
 
@@ -295,7 +297,7 @@ func (s *Store) Update(ctx context.Context, params entry.UpdateParams) (entry.En
 	}
 
 	// The unique index applies to an update too, and this fake stands in for it.
-	if params.SetSlug {
+	if params.SetSlug && params.Slug != "" {
 		for _, candidate := range s.entries {
 			if candidate.Slug == params.Slug && candidate.ID != params.ID {
 				return entry.Entry{}, fmt.Errorf("%w: %s", entry.ErrSlugTaken, params.Slug)
