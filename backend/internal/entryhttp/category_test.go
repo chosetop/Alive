@@ -263,7 +263,7 @@ func TestUpdateMovesAnEntryBetweenCategories(t *testing.T) {
 	store.Seed(categorised(1, "in-travel"))
 
 	t.Run("a new id is written", func(t *testing.T) {
-		rec := do(t, handler, http.MethodPatch, "/api/v1/entries/1", `{"category_id":9}`)
+		rec := do(t, handler, http.MethodPatch, "/api/v1/entries/1", `{"revision":1,"category_id":9}`)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
 		}
@@ -274,7 +274,7 @@ func TestUpdateMovesAnEntryBetweenCategories(t *testing.T) {
 	})
 
 	t.Run("an absent id leaves it alone", func(t *testing.T) {
-		rec := do(t, handler, http.MethodPatch, "/api/v1/entries/1", `{"title":"a new title"}`)
+		rec := do(t, handler, http.MethodPatch, "/api/v1/entries/1", `{"revision":2,"title":"a new title"}`)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
 		}
@@ -295,7 +295,7 @@ func TestUpdateWithZeroUncategorisesTheEntry(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 	store.Seed(categorised(1, "in-travel"))
 
-	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/1", `{"category_id":0}`)
+	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/1", `{"revision":1,"category_id":0}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
 	}
@@ -322,7 +322,7 @@ func TestUpdateWithNullLeavesTheCategoryAlone(t *testing.T) {
 	store.Seed(categorised(1, "in-travel"))
 
 	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/1",
-		`{"title":"a new title","category_id":null}`)
+		`{"revision":1,"title":"a new title","category_id":null}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
 	}

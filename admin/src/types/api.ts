@@ -162,6 +162,7 @@ export interface EntryListItem {
  * `category` is populated only on the admin detail read.
  */
 export interface EntryDetail extends Omit<EntryListItem, 'category'> {
+  revision: number
   content_md: string
   /** `0` means uncategorised, not "unset". */
   category_id: number
@@ -171,23 +172,12 @@ export interface EntryDetail extends Omit<EntryListItem, 'category'> {
 /**
  * `POST /api/v1/entries`.
  *
- * `title`, `slug` and `content_md` are required; everything else has a server
- * default. `word_count` is absent on purpose — the server computes it and does
- * not accept a submitted value.
+ * Creates an incomplete draft. Publication-stage fields are supplied later by
+ * revision-aware PATCH requests.
  */
 export interface EntryCreateRequest {
-  title: string
-  slug: string
-  content_md: string
   type?: EntryType
-  status?: EntryStatus
   visibility?: EntryVisibility
-  summary?: string
-  cover_url?: string
-  /** An id, never a slug. `0` or absent means uncategorised. */
-  category_id?: number
-  meta?: Record<string, unknown>
-  happened_at?: string
 }
 
 /**
@@ -201,6 +191,7 @@ export interface EntryCreateRequest {
  * `archive`.
  */
 export interface EntryUpdateRequest {
+  revision: number
   title?: string
   slug?: string
   summary?: string
@@ -212,6 +203,8 @@ export interface EntryUpdateRequest {
   meta?: Record<string, unknown>
   happened_at?: string
 }
+
+export type EntryPatchFields = Omit<EntryUpdateRequest, 'revision'>
 
 /** Query for `GET /admin/entries`. Omit `status` for every state at once. */
 export interface EntryListQuery {

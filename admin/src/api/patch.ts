@@ -2,6 +2,7 @@ import type {
   Category,
   CategoryUpdateRequest,
   EntryDetail,
+  EntryPatchFields,
   EntryType,
   EntryUpdateRequest,
   EntryVisibility,
@@ -96,7 +97,7 @@ export function buildEntryPatch(
   original: EntryDetail,
   form: EntryFormState,
 ): EntryUpdateRequest {
-  const patch: EntryUpdateRequest = {}
+  const patch: EntryPatchFields = {}
 
   if (form.title !== original.title) patch.title = form.title
   if (form.slug !== original.slug) patch.slug = form.slug
@@ -116,7 +117,7 @@ export function buildEntryPatch(
     patch.happened_at = form.happenedAt === '' ? ZERO_TIME : fromFormDateTime(form.happenedAt)
   }
 
-  return patch
+  return { revision: original.revision, ...patch }
 }
 
 /**
@@ -145,5 +146,5 @@ export function fromFormDateTime(value: string): string {
 
 /** True when a patch would change nothing, so the request must be skipped. */
 export function isEmptyPatch(patch: object): boolean {
-  return Object.keys(patch).length === 0
+  return Object.keys(patch).every((key) => key === 'revision')
 }

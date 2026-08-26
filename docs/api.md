@@ -142,6 +142,24 @@ Set-Cookie: alive_session=<token>; Path=/api/v1; HttpOnly; Secure; SameSite=Stri
 
 **推论：一个只含 `null` 的 body 也是 400。** `{"summary": null}` 单独发出去等于 `{}`——既然 `null` 读作「未提交」，那这个请求就没有提交任何字段。`null` 只有在**和至少一个真实字段同时出现**时才是「保持原样」（上面最后一个例子）。这一条实测过，内容和分类两边都是 400 `INVALID_INPUT` / `fields.body`。
 
+### 1.8 内容写入的 revision
+
+作者视角的内容详情带一个从 1 开始递增的 `revision`。`PATCH` 以及 publish / unpublish / archive 三个状态迁移都必须回传它；服务端只接受与当前记录一致的 revision，并在成功写入后返回新的 revision。这样较晚到达的旧请求不会静默覆盖较新的内容。
+
+revision 过期统一返回 409：
+
+```json
+{
+  "error": {
+    "code": "CONFLICT",
+    "message": "entry changed since it was loaded",
+    "fields": {"revision": "请重新载入或保留当前内容为恢复草稿"}
+  }
+}
+```
+
+公开列表与公开详情**不含 `revision`**；读者既不能用它写入，也不需要知道作者修改了多少次。
+
 ---
 
 ## 2. 接口总览
@@ -156,9 +174,9 @@ Set-Cookie: alive_session=<token>; Path=/api/v1; HttpOnly; Secure; SameSite=Stri
 | POST | `/api/v1/entries` | 需登录 | 201 / 400 / 401 / 409 |
 | PATCH | `/api/v1/entries/:id` | 需登录 | 200 / 400 / 401 / 404 / 409 |
 | DELETE | `/api/v1/entries/:id` | 需登录 | 204 / 400 / 401 / 404 |
-| POST | `/api/v1/entries/:id/publish` | 需登录 | 200 / 400 / 401 / 404 |
-| POST | `/api/v1/entries/:id/unpublish` | 需登录 | 200 / 400 / 401 / 404 |
-| POST | `/api/v1/entries/:id/archive` | 需登录 | 200 / 400 / 401 / 404 |
+| POST | `/api/v1/entries/:id/publish` | 需登录 | 200 / 400 / 401 / 404 / 409 |
+| POST | `/api/v1/entries/:id/unpublish` | 需登录 | 200 / 400 / 401 / 404 / 409 |
+| POST | `/api/v1/entries/:id/archive` | 需登录 | 200 / 400 / 401 / 404 / 409 |
 | GET | `/api/v1/admin/entries` | 需登录 | 200 / 400 / 401 |
 | GET | `/api/v1/admin/entries/:id` | 需登录 | 200 / 400 / 401 / 404 |
 | GET | `/api/v1/categories` | 公开 | 200 |
@@ -319,13 +337,14 @@ Set-Cookie: alive_session=<token>; Path=/api/v1; HttpOnly; Secure; SameSite=Stri
 
 需登录。201。
 
+创建的永远是草稿，而且允许内容不完整。最小请求就是 `{}`；先拿到 `id` 和 `revision`，再用 PATCH 逐步保存。标题、slug 和正文只在发布时才是必填。
+
 ```jsonc
 {
-  "title": "京都的春天",          // 必填，最长 255 字符（按字符数，非字节）
-  "slug": "kyoto-spring",        // 必填，最长 255，格式见下
-  "content_md": "在鸭川边...",     // 必填
+  "title": "京都的春天",          // 可选，最长 255 字符（按字符数，非字节）
+  "slug": "kyoto-spring",        // 可选，非空时格式见下
+  "content_md": "在鸭川边...",     // 可选
   "type": "travel",              // 可选，默认 journal
-  "status": "draft",             // 可选，默认 draft
   "visibility": "public",        // 可选，默认 public
   "summary": "",                 // 可选
   "cover_url": "",               // 可选
@@ -350,6 +369,7 @@ slug 由客户端提供，**不从标题派生**：从中文标题派生需要�
 ```jsonc
 {
   "id": 42,
+  "revision": 1,
   "type": "travel", "title": "京都的春天", "slug": "kyoto-spring",
   "summary": "", "content_md": "在鸭川边...", "cover_url": "",
   "status": "draft", "visibility": "public",
@@ -369,16 +389,24 @@ slug 由客户端提供，**不从标题派生**：从中文标题派生需要�
 
 | 失败 | 状态 | 说明 |
 |---|---|---|
-| 缺必填 / JSON 不合法 | 400 | |
+| JSON 不合法 | 400 | |
 | slug 格式错 / 过长 | 400 | `fields.slug` |
 | 标题过长 | 400 | `fields.title` |
-| `type` / `status` / `visibility` 不在枚举内 | 400 | 对应 `fields` |
-| slug 已被占用 | 409 | `fields.slug` |
+| `type` / `visibility` 不在枚举内 | 400 | 对应 `fields` |
+| 非空 slug 已被占用 | 409 | `fields.slug` |
 | `category_id` 指向不存在的分类 | 400 | `fields.category_id` |
 
 #### `PATCH /api/v1/entries/:id`
 
 需登录。200。**字段约定见 1.7，动这个接口之前先读那一节。**
+
+请求必须带加载时拿到的 `revision`：
+
+```json
+{"revision": 3, "title": "改过的标题"}
+```
+
+缺少 revision 或小于 1 返回 400；revision 已过期返回 409，响应见 1.8。成功响应中的 revision 已加一，下一次写入必须使用新值。`revision` 本身不算可编辑字段，所以只发 `{"revision": 3}` 仍是 400「没有改任何字段」。
 
 可改：`title` `slug` `summary` `content_md` `cover_url` `type` `visibility` `category_id` `meta` `happened_at`
 
@@ -410,13 +438,15 @@ slug 由客户端提供，**不从标题派生**：从中文标题派生需要�
 
 ### 4.4 状态迁移
 
-三个独立端点，都是 200，都返回作者视角形状。
+三个独立端点，都是 200，都返回作者视角形状。请求体统一是 `{"revision": 3}`；缺少 revision 返回 400，过期返回 409（见 1.8）。
 
 已实测：`publish` → `unpublish` → `publish` → `archive` 四次调用，`published_at` 逐字符相同。
 
 #### `POST /api/v1/entries/:id/publish`
 
 `draft` 或 `archived` → `published`。
+
+发布是草稿宽松校验结束的边界：`title`、`slug`、`content_md` 必须完整，`visibility` 必须合法。正文为空或只有空白时返回 400 `INVALID_INPUT` 且 `fields.content_md`；其他字段也在各自的 `fields` 下报告。校验失败时仍保持草稿。
 
 **`published_at` 只在第一次发布时写入，之后永不移动。** 撤回再发布，这个字段仍然是最初那个值（已实测：三次发布之间隔了 2 秒，返回值逐字符相同）。
 
@@ -430,7 +460,7 @@ slug 由客户端提供，**不从标题派生**：从中文标题派生需要�
 
 → `archived`。**不清 `published_at`**，前台立即 404，后台按 id 仍可读。
 
-这个端点存在的理由：不加的话 `archived` 是一个数据库接受、却没有任何路径能写进去的状态（`PATCH` 拒收 `status`，publish / unpublish 只写 `published` 和 `draft`，只有 create 能设）。
+这个端点存在的理由：不加的话 `archived` 是一个数据库接受、却没有任何路径能写进去的状态（`PATCH` 拒收 `status`，publish / unpublish 只写 `published` 和 `draft`）。
 
 ### 4.5 后台读取
 
@@ -609,6 +639,6 @@ level=INFO msg="category deleted, its entries are now uncategorised" category_id
 9. **`INVALID_CREDENTIALS` 和 `UNAUTHORIZED` 要分开处理**，虽然都是 401。前者留在登录页显示报错，后者清状态并跳登录。把两者合并的后果很具体：登录页上密码打错一次，界面会跳到它自己那一页，把用户需要看到的报错顶掉。
 10. **429 的 `Retry-After` 跨域读不到。** 后端 `ExposedHeaders` 只列了 `X-Request-ID`，而浏览器不允许 `fetch` 读取未 expose 的响应头。开发环境（admin 5173 → API 8080，跨域）拿不到秒数，生产环境同域才能拿到。所以要按「可能没有」来写，不能假设 429 一定带得到时间。
 11. **空的 `data` 数组序列化成 `[]` 不是 `null`**，但 204 响应（logout）根本没有 body，别去解析它。
+12. **内容 PATCH 和状态迁移都要带当前 `revision`**。成功后用响应里的新 revision；409 时不要覆盖服务端内容，按 `fields.revision` 引导重新载入或保留恢复草稿。
 
-第 9 到 11 条是 2026-08-25 写 `admin/` 时实际踩到或实测确认的。
-
+第 9 到 11 条是 2026-08-25 写 `admin/` 时实际踩到或实测确认的；第 12 条是 revision-aware 写入合约。

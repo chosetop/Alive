@@ -98,13 +98,19 @@ export function deleteEntry(id: number): Promise<void> {
  * `published_at` is written on the first publish only and never moves again, so
  * unpublishing and republishing keeps the original date.
  */
-export function publishEntry(id: number): Promise<EntryDetail> {
-  return request<EntryDetail>(`/entries/${id}/publish`, { method: 'POST' })
+export function publishEntry(id: number, revision: number): Promise<EntryDetail> {
+  return request<EntryDetail>(`/entries/${id}/publish`, {
+    method: 'POST',
+    body: { revision },
+  })
 }
 
 /** POST /api/v1/entries/:id/unpublish — back to `draft`, keeping `published_at`. */
-export function unpublishEntry(id: number): Promise<EntryDetail> {
-  return request<EntryDetail>(`/entries/${id}/unpublish`, { method: 'POST' })
+export function unpublishEntry(id: number, revision: number): Promise<EntryDetail> {
+  return request<EntryDetail>(`/entries/${id}/unpublish`, {
+    method: 'POST',
+    body: { revision },
+  })
 }
 
 /**
@@ -113,6 +119,9 @@ export function unpublishEntry(id: number): Promise<EntryDetail> {
  * This endpoint is the only way into `archived` after creation: PATCH refuses
  * `status`, and publish/unpublish only write `published` and `draft`.
  */
-export function archiveEntry(id: number): Promise<EntryDetail> {
-  return request<EntryDetail>(`/entries/${id}/archive`, { method: 'POST' })
+export function archiveEntry(id: number, revision: number): Promise<EntryDetail> {
+  return request<EntryDetail>(`/entries/${id}/archive`, {
+    method: 'POST',
+    body: { revision },
+  })
 }

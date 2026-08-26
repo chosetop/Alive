@@ -154,22 +154,16 @@ async function save(): Promise<void> {
   try {
     if (original.value === null) {
       const created = await entriesApi.createEntry({
-        title: form.value.title.trim(),
-        slug: form.value.slug,
-        content_md: form.value.contentMd,
         type: form.value.type,
         visibility: form.value.visibility,
-        summary: form.value.summary,
-        cover_url: form.value.coverUrl,
-        category_id: form.value.categoryId,
-        ...(form.value.happenedAt === ''
-          ? {}
-          : { happened_at: new Date(form.value.happenedAt).toISOString() }),
       })
-      // Redirect to the edit route so a second save patches instead of trying to
-      // create the same slug again, which would be a 409.
-      await router.replace({ name: 'entry-edit', params: { id: String(created.id) } })
-      original.value = created
+      const initialPatch = buildEntryPatch(created, form.value)
+      const saved = isEmptyPatch(initialPatch)
+        ? created
+        : await entriesApi.updateEntry(created.id, initialPatch)
+      // Redirect to the edit route so later saves patch this revisioned draft.
+      await router.replace({ name: 'entry-edit', params: { id: String(saved.id) } })
+      original.value = saved
       savedAt.value = new Date()
       return
     }
@@ -200,12 +194,13 @@ async function transition(action: 'publish' | 'unpublish' | 'archive'): Promise<
   saveError.value = null
   try {
     const id = original.value.id
+    const revision = original.value.revision
     original.value =
       action === 'publish'
-        ? await entriesApi.publishEntry(id)
+        ? await entriesApi.publishEntry(id, revision)
         : action === 'unpublish'
-          ? await entriesApi.unpublishEntry(id)
-          : await entriesApi.archiveEntry(id)
+          ? await entriesApi.unpublishEntry(id, revision)
+          : await entriesApi.archiveEntry(id, revision)
   } catch (error) {
     applyError(error)
   } finally {
