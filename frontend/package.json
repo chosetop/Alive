@@ -18,6 +18,7 @@
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
+    "@alive/markdown": "file:../packages/markdown",
     "markdown-it": "14.1.0",
     "nuxt": "3.21.11",
     "pinia": "3.0.4",
@@ -26,8 +27,8 @@
   },
   "devDependencies": {
     "@nuxt/eslint": "1.15.2",
-    "@types/markdown-it": "14.1.2",
     "@pinia/nuxt": "0.11.2",
+    "@types/markdown-it": "14.1.2",
     "eslint": "10.9.1",
     "eslint-config-prettier": "10.1.8",
     "prettier": "3.9.6",
