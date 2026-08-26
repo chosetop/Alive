@@ -50,6 +50,7 @@ const categories = ref<Category[]>([])
 
 const isLoading = ref(true)
 const loadError = ref<string | null>(null)
+const categoryError = ref<string | null>(null)
 const saveError = ref<string | null>(null)
 const fieldErrors = ref<Record<string, string>>({})
 const editorSession = ref(0)
@@ -115,7 +116,7 @@ const localError = computed<string | null>(() => {
 
 const currentStatus = computed<EntryStatus | null>(() => original.value?.status ?? null)
 const controlsDisabled = computed(
-  () => isTransitioning.value || isRecovering.value || isDeleting.value,
+  () => isLoading.value || isTransitioning.value || isRecovering.value || isDeleting.value,
 )
 
 const saveStatusText = computed(() => {
@@ -134,6 +135,7 @@ async function load(targetId: number | null = entryId.value): Promise<void> {
   const generation = ++loadGeneration
   isLoading.value = true
   loadError.value = null
+  categoryError.value = null
   try {
     const entry =
       targetId === null ? await entriesApi.createEntry({}) : await entriesApi.getEntry(targetId)
@@ -159,7 +161,7 @@ async function load(targetId: number | null = entryId.value): Promise<void> {
       const cats = await categoriesApi.listCategoriesAdmin()
       if (isCurrentLoad(generation)) categories.value = cats
     } catch (error) {
-      if (isCurrentLoad(generation)) loadError.value = toUserMessage(error)
+      if (isCurrentLoad(generation)) categoryError.value = toUserMessage(error)
     }
   } catch (error) {
     if (isCurrentLoad(generation)) loadError.value = toUserMessage(error)
@@ -469,8 +471,8 @@ function createCoordinatorBridge(): CoordinatorBridge {
 
 <template>
   <div class="page">
-    <p v-if="isLoading && original === null" class="state">载入中…</p>
-    <p v-else-if="loadError && original === null" class="alert" role="alert">{{ loadError }}</p>
+    <p v-if="isLoading" class="state">载入中…</p>
+    <p v-else-if="loadError" class="alert" role="alert">{{ loadError }}</p>
 
     <template v-else>
       <header class="head">
@@ -626,7 +628,7 @@ function createCoordinatorBridge(): CoordinatorBridge {
         </fieldset>
       </div>
 
-      <p v-if="loadError" class="alert" role="alert">{{ loadError }}</p>
+      <p v-if="categoryError" class="alert" role="alert">{{ categoryError }}</p>
       <p v-if="localError && (form.title !== '' || form.slug !== '')" class="alert alert--soft">
         {{ localError }}
       </p>

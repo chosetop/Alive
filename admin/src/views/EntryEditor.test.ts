@@ -407,6 +407,35 @@ describe('EntryEditor autosave integration', () => {
     })
   })
 
+  it('locks the previous entry while the next route loads and keeps it locked after failure', async () => {
+    const previous = entry({ id: 57, revision: 4, title: '上一篇' })
+    const nextLoad = deferred<EntryDetail>()
+    api.getEntry.mockImplementation((id: number) =>
+      id === previous.id ? Promise.resolve(previous) : nextLoad.promise,
+    )
+    api.updateEntry.mockResolvedValue(entry({ ...previous, revision: 5 }))
+    const wrapper = await mountEditorWithProps({ id: String(previous.id) })
+    const previousTitle = wrapper.get('#e-title')
+
+    await wrapper.setProps({ id: '58' })
+    await flushPromises()
+    const showedLoading = wrapper.text().includes('载入中')
+    const showedPreviousEditor = wrapper.find('#e-title').exists()
+
+    await previousTitle.setValue('切换期间不应保存')
+    nextLoad.reject(
+      new ApiClientError({ code: NETWORK_ERROR, status: 0, message: 'next entry offline' }),
+    )
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect.soft(showedLoading).toBe(true)
+    expect.soft(showedPreviousEditor).toBe(false)
+    expect.soft(wrapper.get('[role="alert"]').text()).toContain('无法连接到服务器')
+    expect.soft(wrapper.find('#e-title').exists()).toBe(false)
+    expect(api.updateEntry).not.toHaveBeenCalled()
+  })
+
   it('does not navigate or bind autosave when draft creation resolves after unmount', async () => {
     const creation = deferred<EntryDetail>()
     api.createEntry.mockReturnValue(creation.promise)
@@ -844,10 +873,16 @@ function entry(overrides: Partial<EntryDetail> = {}): EntryDetail {
   }
 }
 
-function deferred<T>(): { promise: Promise<T>; resolve(value: T): void } {
+function deferred<T>(): {
+  promise: Promise<T>
+  resolve(value: T): void
+  reject(error: unknown): void
+} {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((done) => {
+  let reject!: (error: unknown) => void
+  const promise = new Promise<T>((done, fail) => {
     resolve = done
+    reject = fail
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }
