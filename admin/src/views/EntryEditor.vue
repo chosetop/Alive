@@ -114,7 +114,9 @@ const localError = computed<string | null>(() => {
 })
 
 const currentStatus = computed<EntryStatus | null>(() => original.value?.status ?? null)
-const controlsDisabled = computed(() => isTransitioning.value || isRecovering.value)
+const controlsDisabled = computed(
+  () => isTransitioning.value || isRecovering.value || isDeleting.value,
+)
 
 const saveStatusText = computed(() => {
   const labels: Record<SaveStatus, string> = {
@@ -133,10 +135,8 @@ async function load(targetId: number | null = entryId.value): Promise<void> {
   isLoading.value = true
   loadError.value = null
   try {
-    const [cats, entry] = await Promise.all([
-      categoriesApi.listCategoriesAdmin(),
-      targetId === null ? entriesApi.createEntry({}) : entriesApi.getEntry(targetId),
-    ])
+    const entry =
+      targetId === null ? await entriesApi.createEntry({}) : await entriesApi.getEntry(targetId)
     if (!isCurrentLoad(generation)) return
     recoveryDraft = null
 
@@ -150,9 +150,17 @@ async function load(targetId: number | null = entryId.value): Promise<void> {
       applyEntryToForm(entry)
     }
 
-    categories.value = cats
     editorSession.value += 1
     await bindCoordinator(entry)
+    if (!isCurrentLoad(generation)) return
+    isLoading.value = false
+
+    try {
+      const cats = await categoriesApi.listCategoriesAdmin()
+      if (isCurrentLoad(generation)) categories.value = cats
+    } catch (error) {
+      if (isCurrentLoad(generation)) loadError.value = toUserMessage(error)
+    }
   } catch (error) {
     if (isCurrentLoad(generation)) loadError.value = toUserMessage(error)
   } finally {
@@ -207,6 +215,7 @@ function handleContentUpdate(markdown: string): void {
 }
 
 function queueUpdate(fields: EntryPatchFields): void {
+  if (controlsDisabled.value) return
   saveError.value = null
   fieldErrors.value = {}
   coordinatorBridge.update(fields)
@@ -288,6 +297,7 @@ async function overwriteServerWithLocal(): Promise<void> {
   saveError.value = null
   const conflictedId = original.value.id
   try {
+    await autosave.flush()
     const serverEntry = await entriesApi.getEntry(conflictedId)
     const recovery = await recoveryStore.get(conflictedId)
     if (recovery === null) throw new Error('Recovery record is unavailable')
@@ -313,6 +323,7 @@ async function recoverAsDraft(): Promise<void> {
   saveError.value = null
   const conflictedId = original.value.id
   try {
+    await autosave.flush()
     const recovery = await recoveryStore.get(conflictedId)
     if (recovery === null) throw new Error('Recovery record is unavailable')
 
@@ -337,8 +348,6 @@ async function recoverAsDraft(): Promise<void> {
     await recoveryStore.remove(conflictedId)
     recoveryDraft = null
     original.value = recovered
-    applyEntryToForm(recovered)
-    editorSession.value += 1
     await bindCoordinator(recovered)
   } catch (error) {
     applyError(error)
@@ -460,8 +469,8 @@ function createCoordinatorBridge(): CoordinatorBridge {
 
 <template>
   <div class="page">
-    <p v-if="isLoading" class="state">载入中…</p>
-    <p v-else-if="loadError" class="alert" role="alert">{{ loadError }}</p>
+    <p v-if="isLoading && original === null" class="state">载入中…</p>
+    <p v-else-if="loadError && original === null" class="alert" role="alert">{{ loadError }}</p>
 
     <template v-else>
       <header class="head">
@@ -617,6 +626,7 @@ function createCoordinatorBridge(): CoordinatorBridge {
         </fieldset>
       </div>
 
+      <p v-if="loadError" class="alert" role="alert">{{ loadError }}</p>
       <p v-if="localError && (form.title !== '' || form.slug !== '')" class="alert alert--soft">
         {{ localError }}
       </p>
