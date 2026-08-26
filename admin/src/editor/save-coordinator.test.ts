@@ -139,6 +139,38 @@ describe('createSaveCoordinator', () => {
     })
   })
 
+  it('debounces a change queued synchronously by the final saved notification', async () => {
+    const recoveryStore = createRecoveryStore()
+    const save = vi
+      .fn<(entryId: number, body: EntryUpdateRequest) => Promise<EntryDetail>>()
+      .mockResolvedValueOnce(entryAtRevision(2))
+      .mockResolvedValueOnce(entryAtRevision(3))
+    const coordinator = createSaveCoordinator({
+      entryId: 42,
+      initialRevision: 1,
+      waitMs: 1000,
+      recoveryStore,
+      save,
+    })
+    coordinator.subscribe((snapshot) => {
+      if (snapshot.status === 'saved' && snapshot.revision === 2) {
+        coordinator.update({ summary: 'saved 回调内写入' })
+      }
+    })
+
+    coordinator.update({ title: '第一版' })
+    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(999)
+
+    expect(save).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(save).toHaveBeenCalledTimes(2)
+    expect(save).toHaveBeenNthCalledWith(2, 42, {
+      revision: 2,
+      summary: 'saved 回调内写入',
+    })
+  })
+
   it('flushes a pending change immediately and returns the saved entry', async () => {
     const recoveryStore = createRecoveryStore()
     const savedEntry = entryAtRevision(2)
@@ -157,6 +189,94 @@ describe('createSaveCoordinator', () => {
 
     expect(result).toBe(savedEntry)
     expect(save).toHaveBeenCalledOnce()
+  })
+
+  it('reports an error and retains recoverable fields when cleanup fails after saving', async () => {
+    const cleanupError = new Error('cleanup failed')
+    const recoveryStore = createRecoveryStore({
+      remove: vi.fn().mockRejectedValue(cleanupError),
+    })
+    const save = vi.fn().mockResolvedValue(entryAtRevision(2))
+    const coordinator = createSaveCoordinator({
+      entryId: 42,
+      initialRevision: 1,
+      waitMs: 1000,
+      recoveryStore,
+      save,
+    })
+    const snapshots = observe(coordinator)
+
+    coordinator.update({ title: '已提交但未清理' })
+    const result = await coordinator.flush()
+
+    expect(result).toBeNull()
+    expect(last(snapshots)).toMatchObject({
+      status: 'error',
+      revision: 2,
+      pendingFields: { title: '已提交但未清理' },
+      error: { code: 'INTERNAL', status: 0, message: 'cleanup failed' },
+    })
+    expect(recoveryStore.put).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        revision: 2,
+        fields: { title: '已提交但未清理' },
+        syncState: 'pending',
+      }),
+    )
+  })
+
+  it('settles disposal in the error state when cleanup fails', async () => {
+    const cleanupError = new Error('cleanup failed')
+    const recoveryStore = createRecoveryStore({
+      remove: vi.fn().mockRejectedValue(cleanupError),
+    })
+    const save = vi.fn().mockResolvedValue(entryAtRevision(2))
+    const coordinator = createSaveCoordinator({
+      entryId: 42,
+      initialRevision: 1,
+      waitMs: 1000,
+      recoveryStore,
+      save,
+    })
+    const snapshots = observe(coordinator)
+
+    coordinator.update({ title: '卸载前保存' })
+    await expect(coordinator.dispose()).resolves.toBeUndefined()
+
+    expect(last(snapshots)).toMatchObject({
+      status: 'error',
+      revision: 2,
+      pendingFields: { title: '卸载前保存' },
+    })
+  })
+
+  it('keeps every public entry point inert after disposal', async () => {
+    const recoveryStore = createRecoveryStore({
+      remove: vi.fn().mockRejectedValueOnce(new Error('cleanup failed')).mockResolvedValue(undefined),
+    })
+    const save = vi
+      .fn<(entryId: number, body: EntryUpdateRequest) => Promise<EntryDetail>>()
+      .mockResolvedValueOnce(entryAtRevision(2))
+      .mockResolvedValueOnce(entryAtRevision(3))
+    const coordinator = createSaveCoordinator({
+      entryId: 42,
+      initialRevision: 1,
+      waitMs: 1000,
+      recoveryStore,
+      save,
+    })
+
+    coordinator.update({ title: '卸载后不可重启' })
+    await coordinator.dispose()
+    const lateListener = vi.fn<(snapshot: SaveSnapshot) => void>()
+    coordinator.subscribe(lateListener)
+    coordinator.update({ summary: '忽略此变更' })
+
+    await expect(coordinator.flush()).resolves.toBeNull()
+    await expect(coordinator.retry()).resolves.toBeNull()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(save).toHaveBeenCalledOnce()
+    expect(lateListener).not.toHaveBeenCalled()
   })
 
   it('keeps pending recovery state and reports offline after a network failure', async () => {

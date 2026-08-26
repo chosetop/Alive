@@ -113,6 +113,7 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
 
   const savePending = async (): Promise<EntryDetail | null> => {
     let latestEntry: EntryDetail | null = null
+    let recoverableFields: EntryPatchFields = {}
 
     while (true) {
       while (snapshot.pendingFields !== null) {
@@ -143,10 +144,15 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
         }
 
         latestEntry = savedEntry
+        recoverableFields = fields
         publish({ ...snapshot, status: 'saving', revision: savedEntry.revision, error: null })
       }
 
-      await options.recoveryStore.remove(options.entryId)
+      try {
+        await options.recoveryStore.remove(options.entryId)
+      } catch (error) {
+        return fail(error, recoverableFields, 'pending')
+      }
       if (snapshot.pendingFields !== null) continue
 
       publish({ status: 'saved', revision: snapshot.revision, pendingFields: null, error: null })
@@ -161,6 +167,7 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
 
     inFlight = savePending().finally(() => {
       inFlight = null
+      if (!disposed && snapshot.status === 'saving' && snapshot.pendingFields !== null) schedule()
     })
     return inFlight
   }
@@ -179,13 +186,18 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
       if (inFlight === null) schedule()
     },
 
-    flush: startSave,
+    flush() {
+      if (disposed) return Promise.resolve(null)
+      return startSave()
+    },
 
     retry() {
+      if (disposed) return Promise.resolve(null)
       return startSave()
     },
 
     subscribe(listener) {
+      if (disposed) return () => undefined
       listeners.add(listener)
       listener(copySnapshot(snapshot))
       return () => listeners.delete(listener)
