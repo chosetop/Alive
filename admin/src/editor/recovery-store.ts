@@ -21,9 +21,7 @@ export class EntryRecoveryStore {
   }
 
   async put(record: RecoveryRecord): Promise<void> {
-    await this.withDatabase(async (database) => {
-      await runRequest(database, 'readwrite', (store) => store.put(record))
-    })
+    await this.withDatabase((database) => putIfCurrent(database, record))
   }
 
   async remove(entryId: number): Promise<void> {
@@ -50,6 +48,7 @@ export class EntryRecoveryStore {
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(databaseName, databaseVersion)
+    let settled = false
 
     request.onupgradeneeded = () => {
       const database = request.result
@@ -57,8 +56,69 @@ function openDatabase(): Promise<IDBDatabase> {
         database.createObjectStore(storeName, { keyPath: 'entryId' })
       }
     }
-    request.onerror = () => reject(request.error ?? new Error('Opening IndexedDB failed'))
-    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => {
+      if (!settled) {
+        settled = true
+        reject(request.error ?? new Error('Opening IndexedDB failed'))
+      }
+    }
+    request.onblocked = () => {
+      if (!settled) {
+        settled = true
+        reject(new Error('Opening IndexedDB was blocked'))
+      }
+    }
+    request.onsuccess = () => {
+      if (settled) {
+        request.result.close()
+      } else {
+        settled = true
+        resolve(request.result)
+      }
+    }
+  })
+}
+
+function putIfCurrent(database: IDBDatabase, record: RecoveryRecord): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const settle = (callback: () => void) => {
+      if (!settled) {
+        settled = true
+        callback()
+      }
+    }
+
+    let transaction: IDBTransaction
+    try {
+      transaction = database.transaction(storeName, 'readwrite')
+      const store = transaction.objectStore(storeName)
+      const getRequest = store.get(record.entryId)
+
+      getRequest.onerror = () => {
+        settle(() => reject(getRequest.error ?? new Error('IndexedDB request failed')))
+      }
+      getRequest.onsuccess = () => {
+        const current = getRequest.result
+        if (current === undefined || record.revision >= current.revision) {
+          const putRequest = store.put(record)
+          putRequest.onerror = () => {
+            settle(() => reject(putRequest.error ?? new Error('IndexedDB request failed')))
+          }
+        }
+      }
+      transaction.onerror = () => {
+        settle(() => reject(transaction.error ?? new Error('IndexedDB transaction failed')))
+      }
+      transaction.onabort = () => {
+        settle(() => reject(transaction.error ?? new Error('IndexedDB transaction aborted')))
+      }
+      transaction.oncomplete = () => {
+        settle(resolve)
+      }
+    } catch (error) {
+      settle(() => reject(error))
+    }
   })
 }
 

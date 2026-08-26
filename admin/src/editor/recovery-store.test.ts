@@ -38,6 +38,44 @@ describe('EntryRecoveryStore', () => {
     expect(await store.get(42)).toEqual(record)
   })
 
+  it('keeps a newer record when an older local revision reaches IndexedDB later', async () => {
+    const store = new EntryRecoveryStore()
+    const olderRecord: RecoveryRecord = {
+      ...record,
+      revision: 2,
+      fields: { title: '旧标题', content_md: '旧正文' },
+      savedLocallyAt: '2026-08-26T11:59:00.000Z',
+    }
+
+    await store.put(record)
+    await store.put(olderRecord)
+
+    expect(await store.get(42)).toEqual(record)
+  })
+
+  it('returns an empty field patch unchanged', async () => {
+    const store = new EntryRecoveryStore()
+    const emptyPatchRecord: RecoveryRecord = {
+      ...record,
+      entryId: 43,
+      fields: {},
+    }
+
+    await store.put(emptyPatchRecord)
+
+    expect(await store.get(43)).toEqual(emptyPatchRecord)
+  })
+
+  it('rejects a recovery record that IndexedDB cannot clone', async () => {
+    const store = new EntryRecoveryStore()
+    const uncloneableRecord: RecoveryRecord = {
+      ...record,
+      fields: { meta: { callback: () => undefined } },
+    }
+
+    await expect(store.put(uncloneableRecord)).rejects.toBeInstanceOf(DOMException)
+  })
+
   it('lists every unsynced recovery record', async () => {
     const store = new EntryRecoveryStore()
     const conflictRecord: RecoveryRecord = {
@@ -114,13 +152,38 @@ describe('EntryRecoveryStore', () => {
 
     await expect(operation).rejects.toBe(transactionError)
   })
+
+  it('rejects a blocked upgrade and closes a connection that opens later', async () => {
+    const close = vi.fn()
+    const database = {
+      close,
+      transaction: vi.fn(),
+    } as unknown as IDBDatabase
+    const { openRequest } = stubDatabase({} as IDBTransaction, database)
+    const operation = new EntryRecoveryStore().get(42)
+
+    openRequest.onblocked?.call(openRequest, new Event('blocked') as IDBVersionChangeEvent)
+    const outcome = await Promise.race([
+      operation.then(
+        () => 'resolved',
+        () => 'rejected',
+      ),
+      new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), 0)),
+    ])
+
+    expect(outcome).toBe('rejected')
+    openRequest.onsuccess?.call(openRequest, new Event('success'))
+    expect(close).toHaveBeenCalledTimes(1)
+  })
 })
 
-function stubDatabase(transaction: IDBTransaction): { openRequest: IDBOpenDBRequest } {
-  const database = {
+function stubDatabase(
+  transaction: IDBTransaction,
+  database: IDBDatabase = {
     close: vi.fn(),
     transaction: vi.fn(() => transaction),
-  } as unknown as IDBDatabase
+  } as unknown as IDBDatabase,
+): { openRequest: IDBOpenDBRequest } {
   const openRequest = {
     error: null,
     onerror: null,
