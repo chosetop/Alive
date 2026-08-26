@@ -1109,3 +1109,52 @@ kyoto-spring             —                          2026-08-25T17:49:01.215343
 | frontend | `npm run typecheck` / `npm run build` | 通过 / 通过 |
 
 浏览器验收留到 Task 7，因为 Task 4–6 才产出实际可看的写作界面。Task 3 的基元层目前还没有任何业务页面引用它，这在本阶段是对的。
+
+### 15.6 Task 3 代码审查结论与修复（2026-08-26）
+
+审查独立复现了我声称的变异测试（把 Reka 的 `triggerElement.focus()` 挖掉，焦点返回测试确实失败），并额外指出了几个真问题。已全部修掉，每一处都先用变异验证过测试真的会红：
+
+**无障碍两处，都在 DOM 里核实过，不是推断：**
+
+- **每个对话框都带着一个指向不存在元素的 `aria-describedby`。** Reka 的 `DialogContentImpl` 无条件把它设成一个生成的 id，而我从没渲染 `DialogDescription`。探针实测 `describedby=reka-dialog-description-v-1 targetExists=false`。现在加了可选 `description` prop，没有描述时用 Reka 官方的 `aria-describedby="undefined"` 退出。commit message 里为 `title` 写的那套理由，同等适用于这里，当时没做到。
+- **`UiPopover` 的注释说错了 role，后果是真的漏洞。** 我写「popover 不会被当作命名区域播报」，但 Reka 实际渲染 `role="dialog"`（实测 `role=dialog label=null`）。也就是说没有 `label` 的 popover 就是一个未命名对话框——正是 `UiDialog` 的必需 `title` 要防的那件事。`label` 已改为必需。
+
+**Toast 计时器两处缺陷：** 用 `Set` 存计时器时，提前 `dismiss` 不会取消它，计时器会继续空转到时长结束，`Set` 里还留着已不存在的 toast 的条目；改成按 id 存的 `Map`。另外 unmount 之后调 `publish` 没有防护，会往废弃的 ref 写并且再武装一个没人清理的计时器——它不抛错，只是静默泄漏，所以必须显式挡住。
+
+**`ui.css` 里有两个字面颜色**，而这个文件的头部注释恰恰声明「这里只用语义 token」：primary 按钮文字的 `#ffffff` 和遮罩的 `rgb(27 26 24 / 32%)`。这正是注释警告的那种失败——主题化之后它们会变成唯一两个不跟随主题的元素，深色主题下遮罩会变成浅色蒙层，读起来像渲染故障。已提为 `--c-on-accent` 与 `--c-overlay` 两个新 token。
+
+**三条测试是假通过的，已换掉或补上：**
+
+- 「空状态不渲染任何文字」只断言 `textContent` 不含某串，那不管 region 元素在不在都成立——而「region 常驻挂载，好让屏幕阅读器在文字到达前就观察到它」正是这个组件的核心设计主张。现在给 region 套上 `v-if="toasts.length"` 会让测试失败（已验证）。
+- 「Reka 类型不泄漏到 prop 表面」实际只断言了「一个按钮渲染出 button」，跟标题毫无关系。换成源码级守卫：`components/ui/` 之外任何文件 import `reka-ui` 就失败（在 `views/` 放一个探针文件验证过会红）。类型层面的那一半运行时无法表达，这是能真正回归的那一半。
+- **计划要求的 popover 外部点击关闭测试当时没写。** 补上了，用 `pointerdown` 而不是 `click`——Reka 在 pointer-down 阶段就 dismiss，只测 click 的话，一个永不 dismiss 的组件也能通过。另补了 toast 自动过期与提前取消两条：把 `setTimeout` 的回调挖空会让其中两条失败。
+
+顺带：`vue-tsc` 又抓到 `vitest` 不报的问题——那条源码级守卫要读文件系统，而 `tsconfig.app.json` 只给了 `vite/client` 类型。已在该配置加上 `node` 类型并写明理由（浏览器产物不受影响，`src` 下没有任何地方 import node 内置模块，真有的话 Vite 会直接报错）。
+
+审查里两条没做，理由记下来：`UiButton` 的 loading 态目前只是变成 disabled，屏幕阅读器用户点了发布会得到一个安静且不可聚焦的控件——把它接到 toast 区域是 Task 5 发布面板的事，本任务不铺。以及 `UiMenu` 方向键测试只断言了移到第一项，第二次 ArrowDown 跳过 disabled 项这半没测；探针确认行为正确，留作后续。
+
+### 15.7 当前状态与下次继续的入口
+
+**在此暂停**（用户要求：Task 3 审查完成后停下，先记录文档）。**Task 4–7 未开始**，Plan 3 主题系统与 Plan 4 媒体上传按要求完全没有触碰。
+
+分支 `worktree-immersive-writing-workspace`，worktree 位于 `.claude/worktrees/immersive-writing-workspace`，工作树干净，7 个 commit：
+
+```
+7194c4a fix: close accessibility and timer gaps in the UI primitives
+e8cd4cb docs: record Plan 2 stage one progress
+f845608 feat: add accessible Alive UI primitives
+8f14d76 fix: make the markdown package installable from a clean clone
+dbe44a4 refactor: share markdown rendering
+eb6e44c feat: search the admin article directory
+```
+
+主检出里未提交的 `admin/src/App.vue`（MilkdownProvider）与 `.superpowers/brainstorm/` 始终没有改动。
+
+**最终验证（全部通过）：** backend `make check` 无失败；`packages/markdown` 26 测试 + typecheck；admin 85 测试 + build；frontend typecheck + build。
+
+**下次继续前需要知道的两件事：**
+
+1. **admin 的一切必须在 Node 22 下跑**（见 15.1）。`export PATH="$HOME/.nvm/versions/node/v22.17.0/bin:$PATH"`。Node 20 下 vitest 一个测试都起不来。
+2. **`packages/markdown` 的安装顺序是硬要求**：先 `cd packages/markdown && npm install`，否则 admin 与 frontend 的 typecheck/build 都会失败在 `Cannot find module 'markdown-it'`。`resolution.test.ts` 守着这条。
+
+**Task 4 的起点：** 路由要加第二个顶层 `WritingLayout` 记录（`/entries` 带 `new` 与 `:id` 子路由），与现有 `/entries` 库列表并存而不嵌套；`admin/src/views/EntryEditor.vue` 目前 1047 行，是待拆的主体；Plan 1 的 `save-coordinator.ts` / `recovery-store.ts` / `useEntryAutosave.ts` 已就位待接入；Task 3 的基元层目前还没有任何业务页面引用，Task 4 是第一个消费者。
