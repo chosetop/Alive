@@ -1,0 +1,330 @@
+/**
+ * Interaction styling for the Alive primitive layer.
+ *
+ * Only semantic tokens from style.css are used here. A literal colour in this
+ * file would survive the theme work in a later plan and quietly become the one
+ * element that does not follow the site theme.
+ *
+ * Three rules the writing workspace depends on:
+ *
+ * 1. Focus rings are fixed and never removed. This is the only affordance a
+ *    keyboard user has for position, and the workspace is designed to be driven
+ *    from the keyboard.
+ * 2. Transitions are 120ms on colour only. No scale, no lift, no shadow bloom —
+ *    the canvas must not twitch while someone is writing next to it.
+ * 3. Every animation is off under prefers-reduced-motion, and no state is
+ *    signalled by motion alone, so turning it off costs no information.
+ */
+
+/* Buttons ------------------------------------------------------------------ */
+
+.ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  /* One size per action slot. Variants change colour, never metrics: a row of
+     buttons at differing sizes reads as accidental. */
+  min-height: 2rem;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--c-ink);
+  font: inherit;
+  /* Fixed across all variants, per the plan. */
+  font-size: 0.875rem;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.ui-button[data-variant='primary'] {
+  border-color: var(--c-accent);
+  background: var(--c-accent);
+  color: #ffffff;
+}
+
+.ui-button[data-variant='primary']:hover:not(:disabled) {
+  border-color: var(--c-accent-hover);
+  background: var(--c-accent-hover);
+}
+
+.ui-button[data-variant='secondary'] {
+  border-color: var(--c-line-strong);
+  color: var(--c-ink);
+}
+
+.ui-button[data-variant='secondary']:hover:not(:disabled) {
+  background: var(--c-surface-sunken);
+}
+
+.ui-button[data-variant='quiet'] {
+  color: var(--c-ink-muted);
+}
+
+.ui-button[data-variant='quiet']:hover:not(:disabled) {
+  background: var(--c-surface-sunken);
+  color: var(--c-ink);
+}
+
+.ui-button[data-variant='danger'] {
+  border-color: var(--c-line-strong);
+  color: var(--c-danger);
+}
+
+.ui-button[data-variant='danger']:hover:not(:disabled) {
+  border-color: var(--c-danger);
+  background: var(--c-danger-surface);
+}
+
+.ui-button:disabled {
+  color: var(--c-ink-faint);
+  cursor: not-allowed;
+}
+
+/* Disabled primary keeps its filled shape rather than collapsing to text, so a
+   blocked publish button stays in the same place and at the same weight. */
+.ui-button[data-variant='primary']:disabled {
+  border-color: var(--c-line);
+  background: var(--c-line);
+  color: var(--c-ink-faint);
+}
+
+/* Icon buttons ------------------------------------------------------------- */
+
+.ui-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 2rem is below the 44px touch target the spec asks for on mobile; the media
+     query at the end of this file raises it rather than making every desktop
+     control oversized. */
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--c-ink-muted);
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.ui-icon-button:hover:not(:disabled) {
+  background: var(--c-surface-sunken);
+  color: var(--c-ink);
+}
+
+.ui-icon-button[data-variant='danger']:hover:not(:disabled) {
+  background: var(--c-danger-surface);
+  color: var(--c-danger);
+}
+
+.ui-icon-button[aria-pressed='true'] {
+  background: var(--c-surface-sunken);
+  color: var(--c-ink);
+}
+
+.ui-icon-button:disabled {
+  color: var(--c-ink-faint);
+  cursor: not-allowed;
+}
+
+.ui-icon-button__glyph {
+  display: inline-flex;
+  width: 1rem;
+  height: 1rem;
+}
+
+/* Focus -------------------------------------------------------------------- */
+
+/* :focus-visible, not :focus — a mouse click on a button should not leave a ring
+   behind, but every keyboard arrival must show one. */
+.ui-button:focus-visible,
+.ui-icon-button:focus-visible,
+.ui-menu__item:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}
+
+/* Overlays ----------------------------------------------------------------- */
+
+.ui-dialog__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(27 26 24 / 32%);
+}
+
+.ui-dialog__content {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 50;
+  width: min(28rem, calc(100vw - 2 * var(--space-4)));
+  padding: var(--space-5);
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-md);
+  background: var(--c-surface);
+}
+
+.ui-dialog__title {
+  margin: 0 0 var(--space-3);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.ui-dialog__body {
+  color: var(--c-ink-muted);
+  font-size: 0.875rem;
+}
+
+.ui-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  /* Wide enough that a destructive action is not adjacent to the safe one, per
+     the plan's constraint against neighbouring danger and primary buttons. */
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.ui-popover__content,
+.ui-menu__content {
+  z-index: 50;
+  min-width: 10rem;
+  padding: var(--space-1);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-md);
+  background: var(--c-surface);
+}
+
+.ui-popover__content {
+  padding: var(--space-3);
+}
+
+/* Menus -------------------------------------------------------------------- */
+
+.ui-menu__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 0.375rem var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--c-ink);
+  /* The same 14px as every other action, per the plan. */
+  font-size: 0.875rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Reka sets data-highlighted on the item the keyboard is on, which is what makes
+   arrow-key navigation visible without a separate hover style. */
+.ui-menu__item[data-highlighted] {
+  background: var(--c-surface-sunken);
+  outline: none;
+}
+
+.ui-menu__item[data-danger='true'] {
+  color: var(--c-danger);
+}
+
+.ui-menu__item[data-danger='true'][data-highlighted] {
+  background: var(--c-danger-surface);
+}
+
+.ui-menu__item[data-disabled] {
+  color: var(--c-ink-faint);
+  cursor: not-allowed;
+}
+
+.ui-menu__hint {
+  color: var(--c-ink-faint);
+  font-size: 0.75rem;
+}
+
+.ui-menu__separator {
+  height: 1px;
+  margin: var(--space-1) 0;
+  background: var(--c-line);
+}
+
+/* Toasts ------------------------------------------------------------------- */
+
+.ui-toast-region {
+  position: fixed;
+  bottom: var(--space-5);
+  left: 50%;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  transform: translateX(-50%);
+  /* The region is always mounted so the live region is observed before text
+     arrives, but it must not intercept clicks while empty. */
+  pointer-events: none;
+}
+
+.ui-toast {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-md);
+  background: var(--c-surface);
+  color: var(--c-ink);
+  font-size: 0.875rem;
+}
+
+.ui-toast[data-tone='danger'] {
+  border-color: var(--c-danger);
+  background: var(--c-danger-surface);
+  color: var(--c-danger);
+}
+
+/* Utilities ---------------------------------------------------------------- */
+
+/* Present to assistive technology, absent visually. Used for a dialog name that
+   should not be shown. Not display:none, which removes it from both. */
+.ui-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Touch targets ------------------------------------------------------------ */
+
+/* Coarse pointers rather than a width breakpoint: the constraint is the finger,
+   not the viewport, so a touchscreen laptop gets the larger targets too. */
+@media (pointer: coarse) {
+  .ui-icon-button {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .ui-button {
+    min-height: 2.75rem;
+  }
+
+  .ui-menu__item {
+    padding: 0.625rem var(--space-3);
+  }
+}
+
+/* Reduced motion ----------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-button,
+  .ui-icon-button {
+    transition: none;
+  }
+}

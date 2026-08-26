@@ -5,6 +5,11 @@ import App from './App.vue'
 import router from './router'
 import { useAuthStore } from './stores/auth'
 import './style.css'
+// After style.css, which defines the tokens these rules read. The primitives are
+// styled globally rather than in scoped blocks because Reka teleports overlay
+// content out of the component that declared it, where a scoped selector would no
+// longer reach it.
+import './components/ui/ui.css'
 
 const app = createApp(App)
 const pinia = createPinia()
