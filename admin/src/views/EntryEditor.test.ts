@@ -436,6 +436,39 @@ describe('EntryEditor autosave integration', () => {
     expect(api.updateEntry).not.toHaveBeenCalled()
   })
 
+  it('restores the previous entry after the next route fails to load', async () => {
+    const previous = entry({ id: 59, revision: 4, title: '可返回的上一篇' })
+    const nextLoad = deferred<EntryDetail>()
+    api.getEntry.mockImplementation((id: number) =>
+      id === previous.id ? Promise.resolve(previous) : nextLoad.promise,
+    )
+    api.updateEntry.mockResolvedValue(entry({ ...previous, revision: 5, title: '返回后继续写' }))
+    const wrapper = await mountEditorWithProps({ id: String(previous.id) })
+
+    await wrapper.setProps({ id: '60' })
+    await flushPromises()
+    nextLoad.reject(
+      new ApiClientError({ code: NETWORK_ERROR, status: 0, message: 'next entry offline' }),
+    )
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toContain('无法连接到服务器')
+
+    await wrapper.setProps({ id: String(previous.id) })
+    await flushPromises()
+
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    expect(wrapper.get('#e-title').element).toHaveProperty('value', '可返回的上一篇')
+    expect(wrapper.get('#e-title').attributes('disabled')).toBeUndefined()
+
+    await wrapper.get('#e-title').setValue('返回后继续写')
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(api.updateEntry).toHaveBeenCalledWith(previous.id, {
+      revision: 4,
+      title: '返回后继续写',
+    })
+  })
+
   it('does not navigate or bind autosave when draft creation resolves after unmount', async () => {
     const creation = deferred<EntryDetail>()
     api.createEntry.mockReturnValue(creation.promise)

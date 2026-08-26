@@ -190,7 +190,9 @@ watch(
   () => props.id,
   (nextId) => {
     const numericId = nextId === undefined ? null : Number(nextId)
-    if (numericId !== null && numericId !== original.value?.id) void load(numericId)
+    if (numericId !== null && (numericId !== original.value?.id || loadError.value !== null)) {
+      void load(numericId)
+    }
   },
 )
 
