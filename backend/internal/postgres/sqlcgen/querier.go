@@ -17,7 +17,7 @@ type Querier interface {
 	// this one is still listed and still editable.
 	//
 	// published_at survives here for the same reason it survives unpublishing.
-	ArchiveEntry(ctx context.Context, id int64) (ArchiveEntryRow, error)
+	ArchiveEntry(ctx context.Context, arg ArchiveEntryParams) (ArchiveEntryRow, error)
 	// Whether any category already holds this slug.
 	//
 	// Asked before an insert so the caller gets a conflict naming the field rather
@@ -293,7 +293,7 @@ type Querier interface {
 	// published_at is deliberately untouched: it records the first publication, which
 	// is a fact that withdrawing does not undo. Clearing it would make a
 	// re-publication look like a first one and move the entry to the top of the feed.
-	UnpublishEntry(ctx context.Context, id int64) (UnpublishEntryRow, error)
+	UnpublishEntry(ctx context.Context, arg UnpublishEntryParams) (UnpublishEntryRow, error)
 	// Apply a partial update to one category.
 	//
 	// The same paired-flag shape as UpdateEntry, and for the same reason: description

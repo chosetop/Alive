@@ -13,11 +13,15 @@ import (
 
 const archiveEntry = `-- name: ArchiveEntry :one
 UPDATE entries
-SET status = 'archived'
+SET
+    revision = revision + 1,
+    status = 'archived'
 WHERE id = $1
+  AND revision = $2
   AND deleted_at IS NULL
 RETURNING
     id,
+    revision,
     author_id,
     category_id,
     type,
@@ -36,8 +40,14 @@ RETURNING
     updated_at
 `
 
+type ArchiveEntryParams struct {
+	ID               int64
+	ExpectedRevision int64
+}
+
 type ArchiveEntryRow struct {
 	ID          int64
+	Revision    int64
 	AuthorID    int64
 	CategoryID  *int64
 	Type        string
@@ -64,11 +74,12 @@ type ArchiveEntryRow struct {
 // this one is still listed and still editable.
 //
 // published_at survives here for the same reason it survives unpublishing.
-func (q *Queries) ArchiveEntry(ctx context.Context, id int64) (ArchiveEntryRow, error) {
-	row := q.db.QueryRow(ctx, archiveEntry, id)
+func (q *Queries) ArchiveEntry(ctx context.Context, arg ArchiveEntryParams) (ArchiveEntryRow, error) {
+	row := q.db.QueryRow(ctx, archiveEntry, arg.ID, arg.ExpectedRevision)
 	var i ArchiveEntryRow
 	err := row.Scan(
 		&i.ID,
+		&i.Revision,
 		&i.AuthorID,
 		&i.CategoryID,
 		&i.Type,
@@ -150,6 +161,7 @@ INSERT INTO entries (
 )
 RETURNING
     id,
+    revision,
     author_id,
     category_id,
     type,
@@ -187,6 +199,7 @@ type CreateEntryParams struct {
 
 type CreateEntryRow struct {
 	ID          int64
+	Revision    int64
 	AuthorID    int64
 	CategoryID  *int64
 	Type        string
@@ -262,6 +275,7 @@ func (q *Queries) CreateEntry(ctx context.Context, arg CreateEntryParams) (Creat
 	var i CreateEntryRow
 	err := row.Scan(
 		&i.ID,
+		&i.Revision,
 		&i.AuthorID,
 		&i.CategoryID,
 		&i.Type,
@@ -335,6 +349,7 @@ func (q *Queries) EntrySlugExistsExcluding(ctx context.Context, arg EntrySlugExi
 const getAdminEntryByID = `-- name: GetAdminEntryByID :one
 SELECT
     e.id,
+    e.revision,
     e.author_id,
     e.category_id,
     c.name AS category_name,
@@ -361,6 +376,7 @@ WHERE e.id = $1
 
 type GetAdminEntryByIDRow struct {
 	ID           int64
+	Revision     int64
 	AuthorID     int64
 	CategoryID   *int64
 	CategoryName *string
@@ -390,6 +406,7 @@ func (q *Queries) GetAdminEntryByID(ctx context.Context, id int64) (GetAdminEntr
 	var i GetAdminEntryByIDRow
 	err := row.Scan(
 		&i.ID,
+		&i.Revision,
 		&i.AuthorID,
 		&i.CategoryID,
 		&i.CategoryName,
@@ -831,12 +848,15 @@ func (q *Queries) ListPublicEntries(ctx context.Context, arg ListPublicEntriesPa
 const publishEntry = `-- name: PublishEntry :one
 UPDATE entries
 SET
+    revision = revision + 1,
     status = 'published',
     published_at = COALESCE(published_at, $1)
 WHERE id = $2
+  AND revision = $3
   AND deleted_at IS NULL
 RETURNING
     id,
+    revision,
     author_id,
     category_id,
     type,
@@ -856,12 +876,14 @@ RETURNING
 `
 
 type PublishEntryParams struct {
-	PublishedAt *time.Time
-	ID          int64
+	PublishedAt      *time.Time
+	ID               int64
+	ExpectedRevision int64
 }
 
 type PublishEntryRow struct {
 	ID          int64
+	Revision    int64
 	AuthorID    int64
 	CategoryID  *int64
 	Type        string
@@ -890,10 +912,11 @@ type PublishEntryRow struct {
 // keeps its original date, so fixing a typo years later does not move a
 // three-year-old entry to the top of the feed.
 func (q *Queries) PublishEntry(ctx context.Context, arg PublishEntryParams) (PublishEntryRow, error) {
-	row := q.db.QueryRow(ctx, publishEntry, arg.PublishedAt, arg.ID)
+	row := q.db.QueryRow(ctx, publishEntry, arg.PublishedAt, arg.ID, arg.ExpectedRevision)
 	var i PublishEntryRow
 	err := row.Scan(
 		&i.ID,
+		&i.Revision,
 		&i.AuthorID,
 		&i.CategoryID,
 		&i.Type,
@@ -947,11 +970,15 @@ func (q *Queries) SoftDeleteEntry(ctx context.Context, arg SoftDeleteEntryParams
 
 const unpublishEntry = `-- name: UnpublishEntry :one
 UPDATE entries
-SET status = 'draft'
+SET
+    revision = revision + 1,
+    status = 'draft'
 WHERE id = $1
+  AND revision = $2
   AND deleted_at IS NULL
 RETURNING
     id,
+    revision,
     author_id,
     category_id,
     type,
@@ -970,8 +997,14 @@ RETURNING
     updated_at
 `
 
+type UnpublishEntryParams struct {
+	ID               int64
+	ExpectedRevision int64
+}
+
 type UnpublishEntryRow struct {
 	ID          int64
+	Revision    int64
 	AuthorID    int64
 	CategoryID  *int64
 	Type        string
@@ -995,11 +1028,12 @@ type UnpublishEntryRow struct {
 // published_at is deliberately untouched: it records the first publication, which
 // is a fact that withdrawing does not undo. Clearing it would make a
 // re-publication look like a first one and move the entry to the top of the feed.
-func (q *Queries) UnpublishEntry(ctx context.Context, id int64) (UnpublishEntryRow, error) {
-	row := q.db.QueryRow(ctx, unpublishEntry, id)
+func (q *Queries) UnpublishEntry(ctx context.Context, arg UnpublishEntryParams) (UnpublishEntryRow, error) {
+	row := q.db.QueryRow(ctx, unpublishEntry, arg.ID, arg.ExpectedRevision)
 	var i UnpublishEntryRow
 	err := row.Scan(
 		&i.ID,
+		&i.Revision,
 		&i.AuthorID,
 		&i.CategoryID,
 		&i.Type,
@@ -1023,6 +1057,7 @@ func (q *Queries) UnpublishEntry(ctx context.Context, id int64) (UnpublishEntryR
 const updateEntry = `-- name: UpdateEntry :one
 UPDATE entries
 SET
+    revision = revision + 1,
     type = CASE WHEN $1::boolean
                 THEN $2::varchar ELSE type END,
     title = CASE WHEN $3::boolean
@@ -1049,9 +1084,11 @@ SET
     category_id = CASE WHEN $20::boolean
                        THEN $21::bigint ELSE category_id END
 WHERE id = $22
+  AND revision = $23
   AND deleted_at IS NULL
 RETURNING
     id,
+    revision,
     author_id,
     category_id,
     type,
@@ -1071,32 +1108,34 @@ RETURNING
 `
 
 type UpdateEntryParams struct {
-	SetType       bool
-	Type          string
-	SetTitle      bool
-	Title         string
-	SetSlug       bool
-	Slug          string
-	SetSummary    bool
-	Summary       *string
-	SetContentMd  bool
-	ContentMd     string
-	WordCount     int32
-	SetCoverUrl   bool
-	CoverUrl      *string
-	SetVisibility bool
-	Visibility    string
-	SetMeta       bool
-	Meta          json.RawMessage
-	SetHappenedAt bool
-	HappenedAt    *time.Time
-	SetCategoryID bool
-	CategoryID    *int64
-	ID            int64
+	SetType          bool
+	Type             string
+	SetTitle         bool
+	Title            string
+	SetSlug          bool
+	Slug             string
+	SetSummary       bool
+	Summary          *string
+	SetContentMd     bool
+	ContentMd        string
+	WordCount        int32
+	SetCoverUrl      bool
+	CoverUrl         *string
+	SetVisibility    bool
+	Visibility       string
+	SetMeta          bool
+	Meta             json.RawMessage
+	SetHappenedAt    bool
+	HappenedAt       *time.Time
+	SetCategoryID    bool
+	CategoryID       *int64
+	ID               int64
+	ExpectedRevision int64
 }
 
 type UpdateEntryRow struct {
 	ID          int64
+	Revision    int64
 	AuthorID    int64
 	CategoryID  *int64
 	Type        string
@@ -1158,10 +1197,12 @@ func (q *Queries) UpdateEntry(ctx context.Context, arg UpdateEntryParams) (Updat
 		arg.SetCategoryID,
 		arg.CategoryID,
 		arg.ID,
+		arg.ExpectedRevision,
 	)
 	var i UpdateEntryRow
 	err := row.Scan(
 		&i.ID,
+		&i.Revision,
 		&i.AuthorID,
 		&i.CategoryID,
 		&i.Type,

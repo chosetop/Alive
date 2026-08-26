@@ -3,9 +3,11 @@ package sqlcgen_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/p30huiwei/alive/backend/internal/dbtest"
 	"github.com/p30huiwei/alive/backend/internal/postgres"
 	"github.com/p30huiwei/alive/backend/internal/postgres/sqlcgen"
@@ -161,6 +163,55 @@ func TestCreateEntry(t *testing.T) {
 			t.Errorf("summary = %v, want nil", row.Summary)
 		}
 	})
+}
+
+// createEntry supplies the non-draft defaults that the schema already requires
+// while leaving title, slug and content_md exactly as the caller supplied them.
+func createEntry(t *testing.T, q *sqlcgen.Queries, params sqlcgen.CreateEntryParams) sqlcgen.CreateEntryRow {
+	t.Helper()
+
+	if params.Type == "" {
+		params.Type = "journal"
+	}
+	if params.Visibility == "" {
+		params.Visibility = "public"
+	}
+	if len(params.Meta) == 0 {
+		params.Meta = json.RawMessage(`{}`)
+	}
+
+	row, err := q.CreateEntry(context.Background(), params)
+	if err != nil {
+		t.Fatalf("CreateEntry: %v", err)
+	}
+	return row
+}
+
+func updateParams(id, expectedRevision int64, title string) sqlcgen.UpdateEntryParams {
+	return sqlcgen.UpdateEntryParams{
+		ID:               id,
+		ExpectedRevision: expectedRevision,
+		SetTitle:         true,
+		Title:            title,
+	}
+}
+
+func TestEntryIncompleteDraftAndRevision(t *testing.T) {
+	q, _ := newTestQueries(t)
+	ctx := context.Background()
+	userID := seedAuthor(t, q, "incomplete-draft-author")
+
+	first := createEntry(t, q, sqlcgen.CreateEntryParams{AuthorID: userID, Status: "draft"})
+	_ = createEntry(t, q, sqlcgen.CreateEntryParams{AuthorID: userID, Status: "draft"})
+
+	updated, err := q.UpdateEntry(ctx, updateParams(first.ID, first.Revision, "first title"))
+	if err != nil || updated.Revision != 2 {
+		t.Fatalf("first update = (%+v, %v), want revision 2", updated, err)
+	}
+	_, err = q.UpdateEntry(ctx, updateParams(first.ID, first.Revision, "stale title"))
+	if !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("stale update error = %v, want pgx.ErrNoRows", err)
+	}
 }
 
 // visibilityCase is one row that either must or must not be publicly readable.

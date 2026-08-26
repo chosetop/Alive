@@ -57,6 +57,7 @@ INSERT INTO entries (
 )
 RETURNING
     id,
+    revision,
     author_id,
     category_id,
     type,
@@ -244,6 +245,7 @@ WHERE deleted_at IS NULL
 -- updated_at is left to the entries_set_updated_at trigger from 000001.
 UPDATE entries
 SET
+    revision = revision + 1,
     type = CASE WHEN sqlc.arg(set_type)::boolean
                 THEN sqlc.arg(type)::varchar ELSE type END,
     title = CASE WHEN sqlc.arg(set_title)::boolean
@@ -270,9 +272,11 @@ SET
     category_id = CASE WHEN sqlc.arg(set_category_id)::boolean
                        THEN sqlc.narg(category_id)::bigint ELSE category_id END
 WHERE id = sqlc.arg(id)
+  AND revision = sqlc.arg(expected_revision)
   AND deleted_at IS NULL
 RETURNING
     id,
+    revision,
     author_id,
     category_id,
     type,
@@ -320,12 +324,15 @@ RETURNING id;
 -- three-year-old entry to the top of the feed.
 UPDATE entries
 SET
+    revision = revision + 1,
     status = 'published',
     published_at = COALESCE(published_at, sqlc.arg(published_at))
 WHERE id = sqlc.arg(id)
+  AND revision = sqlc.arg(expected_revision)
   AND deleted_at IS NULL
 RETURNING
     id,
+    revision,
     author_id,
     category_id,
     type,
@@ -350,11 +357,15 @@ RETURNING
 -- is a fact that withdrawing does not undo. Clearing it would make a
 -- re-publication look like a first one and move the entry to the top of the feed.
 UPDATE entries
-SET status = 'draft'
+SET
+    revision = revision + 1,
+    status = 'draft'
 WHERE id = sqlc.arg(id)
+  AND revision = sqlc.arg(expected_revision)
   AND deleted_at IS NULL
 RETURNING
     id,
+    revision,
     author_id,
     category_id,
     type,
@@ -382,11 +393,15 @@ RETURNING
 --
 -- published_at survives here for the same reason it survives unpublishing.
 UPDATE entries
-SET status = 'archived'
+SET
+    revision = revision + 1,
+    status = 'archived'
 WHERE id = sqlc.arg(id)
+  AND revision = sqlc.arg(expected_revision)
   AND deleted_at IS NULL
 RETURNING
     id,
+    revision,
     author_id,
     category_id,
     type,
@@ -497,6 +512,7 @@ WHERE deleted_at IS NULL
 -- may change during editing while the thing being edited does not.
 SELECT
     e.id,
+    e.revision,
     e.author_id,
     e.category_id,
     c.name AS category_name,
