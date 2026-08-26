@@ -70,7 +70,8 @@ type CreateParams struct {
 // No Status. Publishing writes published_at under a rule that Publish owns, and a
 // status field here would be a second way to reach it.
 type UpdateParams struct {
-	ID int64
+	ID               int64
+	ExpectedRevision int64
 
 	SetType bool
 	Type    Type
@@ -137,7 +138,7 @@ func (r *Repository) Create(ctx context.Context, params CreateParams) (Entry, er
 	// No category name or slug: RETURNING sees only the inserted row. A caller that
 	// needs them reads the entry back.
 	return entryFromRow(rowFields{
-		ID: row.ID, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
+		ID: row.ID, Revision: row.Revision, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
 		Type: row.Type, Title: row.Title, Slug: row.Slug, Summary: row.Summary,
 		ContentMD: row.ContentMd, CoverURL: row.CoverUrl, Status: row.Status,
 		Visibility: row.Visibility, Meta: row.Meta, WordCount: row.WordCount,
@@ -285,44 +286,58 @@ func (r *Repository) SlugExistsExcluding(ctx context.Context, slug string, exclu
 // that never existed.
 func (r *Repository) Update(ctx context.Context, params UpdateParams) (Entry, error) {
 	row, err := r.q.UpdateEntry(ctx, sqlcgen.UpdateEntryParams{
-		ID:            params.ID,
-		SetType:       params.SetType,
-		Type:          string(params.Type),
-		SetTitle:      params.SetTitle,
-		Title:         params.Title,
-		SetSlug:       params.SetSlug,
-		Slug:          params.Slug,
-		SetSummary:    params.SetSummary,
-		Summary:       optionalString(params.Summary),
-		SetContentMd:  params.SetContentMD,
-		ContentMd:     params.ContentMD,
-		WordCount:     int32(params.WordCount),
-		SetCoverUrl:   params.SetCoverURL,
-		CoverUrl:      optionalString(params.CoverURL),
-		SetVisibility: params.SetVisibility,
-		Visibility:    string(params.Visibility),
-		SetMeta:       params.SetMeta,
-		Meta:          params.Meta.ForStorage().raw(),
-		SetHappenedAt: params.SetHappenedAt,
-		HappenedAt:    optionalTime(params.HappenedAt),
-		SetCategoryID: params.SetCategoryID,
-		CategoryID:    optionalInt64(params.CategoryID),
+		ID:               params.ID,
+		ExpectedRevision: params.ExpectedRevision,
+		SetType:          params.SetType,
+		Type:             string(params.Type),
+		SetTitle:         params.SetTitle,
+		Title:            params.Title,
+		SetSlug:          params.SetSlug,
+		Slug:             params.Slug,
+		SetSummary:       params.SetSummary,
+		Summary:          optionalString(params.Summary),
+		SetContentMd:     params.SetContentMD,
+		ContentMd:        params.ContentMD,
+		WordCount:        int32(params.WordCount),
+		SetCoverUrl:      params.SetCoverURL,
+		CoverUrl:         optionalString(params.CoverURL),
+		SetVisibility:    params.SetVisibility,
+		Visibility:       string(params.Visibility),
+		SetMeta:          params.SetMeta,
+		Meta:             params.Meta.ForStorage().raw(),
+		SetHappenedAt:    params.SetHappenedAt,
+		HappenedAt:       optionalTime(params.HappenedAt),
+		SetCategoryID:    params.SetCategoryID,
+		CategoryID:       optionalInt64(params.CategoryID),
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return Entry{}, fmt.Errorf("%w: id %d", ErrEntryNotFound, params.ID)
+			return Entry{}, r.mutationMiss(ctx, params.ID)
 		}
 		return Entry{}, translateWriteError("update entry", err, params.Slug)
 	}
 
 	return entryFromRow(rowFields{
-		ID: row.ID, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
+		ID: row.ID, Revision: row.Revision, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
 		Type: row.Type, Title: row.Title,
 		Slug: row.Slug, Summary: row.Summary, ContentMD: row.ContentMd,
 		CoverURL: row.CoverUrl, Status: row.Status, Visibility: row.Visibility,
 		Meta: row.Meta, WordCount: row.WordCount, HappenedAt: row.HappenedAt,
 		PublishedAt: row.PublishedAt, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}), nil
+}
+
+// mutationMiss distinguishes a row that vanished from one whose revision moved
+// after the editor read it. The mutation query cannot tell those cases apart
+// because both are zero returned rows.
+func (r *Repository) mutationMiss(ctx context.Context, id int64) error {
+	if _, err := r.GetByID(ctx, id); err != nil {
+		if errors.Is(err, ErrEntryNotFound) {
+			return fmt.Errorf("%w: id %d", ErrEntryNotFound, id)
+		}
+		return err
+	}
+	return fmt.Errorf("%w: id %d", ErrVersionConflict, id)
 }
 
 // SoftDelete marks an entry deleted, reporting whether it found a live one.
@@ -351,20 +366,21 @@ func (r *Repository) SoftDelete(ctx context.Context, id int64, at time.Time) (bo
 // refuses a published row with a NULL publication time, so the two changes cannot
 // be separated, and COALESCE in the SQL is what keeps a first publication date
 // from moving on a second publish.
-func (r *Repository) Publish(ctx context.Context, id int64, publishedAt time.Time) (Entry, error) {
+func (r *Repository) Publish(ctx context.Context, id, expectedRevision int64, publishedAt time.Time) (Entry, error) {
 	row, err := r.q.PublishEntry(ctx, sqlcgen.PublishEntryParams{
-		ID:          id,
-		PublishedAt: &publishedAt,
+		ID:               id,
+		ExpectedRevision: expectedRevision,
+		PublishedAt:      &publishedAt,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return Entry{}, fmt.Errorf("%w: id %d", ErrEntryNotFound, id)
+			return Entry{}, r.mutationMiss(ctx, id)
 		}
 		return Entry{}, fmt.Errorf("entry: publish entry %d: %w", id, err)
 	}
 
 	return entryFromRow(rowFields{
-		ID: row.ID, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
+		ID: row.ID, Revision: row.Revision, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
 		Type: row.Type, Title: row.Title,
 		Slug: row.Slug, Summary: row.Summary, ContentMD: row.ContentMd,
 		CoverURL: row.CoverUrl, Status: row.Status, Visibility: row.Visibility,
@@ -374,17 +390,17 @@ func (r *Repository) Publish(ctx context.Context, id int64, publishedAt time.Tim
 }
 
 // Unpublish returns an entry to draft, leaving published_at where it is.
-func (r *Repository) Unpublish(ctx context.Context, id int64) (Entry, error) {
-	row, err := r.q.UnpublishEntry(ctx, id)
+func (r *Repository) Unpublish(ctx context.Context, id, expectedRevision int64) (Entry, error) {
+	row, err := r.q.UnpublishEntry(ctx, sqlcgen.UnpublishEntryParams{ID: id, ExpectedRevision: expectedRevision})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return Entry{}, fmt.Errorf("%w: id %d", ErrEntryNotFound, id)
+			return Entry{}, r.mutationMiss(ctx, id)
 		}
 		return Entry{}, fmt.Errorf("entry: unpublish entry %d: %w", id, err)
 	}
 
 	return entryFromRow(rowFields{
-		ID: row.ID, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
+		ID: row.ID, Revision: row.Revision, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
 		Type: row.Type, Title: row.Title,
 		Slug: row.Slug, Summary: row.Summary, ContentMD: row.ContentMd,
 		CoverURL: row.CoverUrl, Status: row.Status, Visibility: row.Visibility,
@@ -394,17 +410,17 @@ func (r *Repository) Unpublish(ctx context.Context, id int64) (Entry, error) {
 }
 
 // Archive sets an entry to archived, leaving published_at where it is.
-func (r *Repository) Archive(ctx context.Context, id int64) (Entry, error) {
-	row, err := r.q.ArchiveEntry(ctx, id)
+func (r *Repository) Archive(ctx context.Context, id, expectedRevision int64) (Entry, error) {
+	row, err := r.q.ArchiveEntry(ctx, sqlcgen.ArchiveEntryParams{ID: id, ExpectedRevision: expectedRevision})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return Entry{}, fmt.Errorf("%w: id %d", ErrEntryNotFound, id)
+			return Entry{}, r.mutationMiss(ctx, id)
 		}
 		return Entry{}, fmt.Errorf("entry: archive entry %d: %w", id, err)
 	}
 
 	return entryFromRow(rowFields{
-		ID: row.ID, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
+		ID: row.ID, Revision: row.Revision, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
 		Type: row.Type, Title: row.Title,
 		Slug: row.Slug, Summary: row.Summary, ContentMD: row.ContentMd,
 		CoverURL: row.CoverUrl, Status: row.Status, Visibility: row.Visibility,
@@ -428,7 +444,7 @@ func (r *Repository) GetByID(ctx context.Context, id int64) (Entry, error) {
 	}
 
 	return entryFromRow(rowFields{
-		ID: row.ID, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
+		ID: row.ID, Revision: row.Revision, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
 		CategoryName: row.CategoryName, CategorySlug: row.CategorySlug,
 		Type: row.Type, Title: row.Title,
 		Slug: row.Slug, Summary: row.Summary, ContentMD: row.ContentMd,
@@ -495,6 +511,7 @@ func (r *Repository) ListAdmin(ctx context.Context, status *Status, limit, offse
 // Entry; it is not one this struct can carry.
 type rowFields struct {
 	ID           int64
+	Revision     int64
 	AuthorID     int64
 	CategoryID   *int64
 	CategoryName *string
@@ -519,6 +536,7 @@ type rowFields struct {
 func entryFromRow(row rowFields) Entry {
 	return Entry{
 		ID:           row.ID,
+		Revision:     row.Revision,
 		AuthorID:     row.AuthorID,
 		CategoryID:   derefInt64(row.CategoryID),
 		CategoryName: derefString(row.CategoryName),
@@ -568,6 +586,12 @@ func translateWriteError(op string, err error, slug string) error {
 		switch pgErr.ConstraintName {
 		case "entries_slug_format_check":
 			return fmt.Errorf("%w: %s", ErrInvalidSlug, slug)
+		case "entries_published_title_check":
+			return ErrInvalidTitle
+		case "entries_published_slug_check":
+			return ErrInvalidSlug
+		case "entries_published_content_check":
+			return ErrEmptyContent
 		case "entries_type_check":
 			return ErrInvalidType
 		case "entries_status_check", "entries_published_at_check":

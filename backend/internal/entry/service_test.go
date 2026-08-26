@@ -70,7 +70,76 @@ func TestCreateDefaults(t *testing.T) {
 	}
 }
 
-func TestCreatePublishedStampsPublishedAt(t *testing.T) {
+func TestCreateIncompleteDraft(t *testing.T) {
+	service, store := newTestService(t)
+
+	created, err := service.Create(context.Background(), entry.CreateInput{AuthorID: 1})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if created.Status != entry.StatusDraft {
+		t.Errorf("status = %q, want draft", created.Status)
+	}
+	if created.Title != "" || created.Slug != "" {
+		t.Errorf("created = %+v, want an incomplete draft", created)
+	}
+	if store.SlugExistsCalls != 0 {
+		t.Errorf("empty draft checked its slug %d times", store.SlugExistsCalls)
+	}
+}
+
+func TestUpdateAcceptsIncompleteDraftFields(t *testing.T) {
+	service, store := newTestService(t)
+	store.Seed(entry.Entry{ID: 7, Revision: 1, Status: entry.StatusDraft})
+
+	updated, err := service.Update(context.Background(), 7, entry.UpdateInput{
+		ExpectedRevision: 1,
+		Title:            ptr(""),
+		Slug:             ptr(""),
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if updated.Title != "" || updated.Slug != "" {
+		t.Errorf("updated = %+v, want empty draft fields", updated)
+	}
+	if store.SlugExistsExcludingCalls != 0 {
+		t.Errorf("empty draft slug checked %d times", store.SlugExistsExcludingCalls)
+	}
+}
+
+func TestPublishIncomplete(t *testing.T) {
+	service, store := newTestService(t)
+	store.Seed(entry.Entry{ID: 7, Revision: 1, Status: entry.StatusDraft, Visibility: entry.VisibilityPublic})
+
+	_, err := service.Publish(context.Background(), 7, 1)
+	if !errors.Is(err, entry.ErrInvalidTitle) {
+		t.Fatalf("Publish = %v, want ErrInvalidTitle", err)
+	}
+	got, getErr := store.GetByID(context.Background(), 7)
+	if getErr != nil {
+		t.Fatalf("GetByID: %v", getErr)
+	}
+	if got.Status != entry.StatusDraft {
+		t.Errorf("status = %q, want publish validation to leave it draft", got.Status)
+	}
+}
+
+func TestUpdateVersionConflict(t *testing.T) {
+	service, store := newTestService(t)
+	store.Seed(entry.Entry{ID: 7, Revision: 1, Status: entry.StatusDraft})
+	store.FailUpdate = entry.ErrVersionConflict
+
+	_, err := service.Update(context.Background(), 7, entry.UpdateInput{
+		ExpectedRevision: 1,
+		Summary:          ptr("save this"),
+	})
+	if !errors.Is(err, entry.ErrVersionConflict) {
+		t.Fatalf("Update = %v, want ErrVersionConflict", err)
+	}
+}
+
+func TestCreateAlwaysStoresADraft(t *testing.T) {
 	service, store := newTestService(t)
 
 	in := validInput()
@@ -81,11 +150,11 @@ func TestCreatePublishedStampsPublishedAt(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	if !created.PublishedAt.Equal(fixedTime) {
-		t.Errorf("published_at = %v, want %v", created.PublishedAt, fixedTime)
+	if created.Status != entry.StatusDraft {
+		t.Errorf("status = %q, want draft", created.Status)
 	}
-	if !store.LastCreate.PublishedAt.Equal(fixedTime) {
-		t.Errorf("stored published_at = %v, want %v", store.LastCreate.PublishedAt, fixedTime)
+	if !created.PublishedAt.IsZero() || !store.LastCreate.PublishedAt.IsZero() {
+		t.Errorf("published_at = %v, want zero on a newly created draft", created.PublishedAt)
 	}
 }
 
@@ -95,18 +164,15 @@ func TestCreateRejectsInvalidInput(t *testing.T) {
 		mutate  func(*entry.CreateInput)
 		wantErr error
 	}{
-		{"empty title", func(in *entry.CreateInput) { in.Title = "" }, entry.ErrInvalidTitle},
 		{"over-long title", func(in *entry.CreateInput) {
 			in.Title = strings.Repeat("a", entry.MaxTitleLength+1)
 		}, entry.ErrInvalidTitle},
 
-		{"empty slug", func(in *entry.CreateInput) { in.Slug = "" }, entry.ErrInvalidSlug},
 		{"uppercase slug", func(in *entry.CreateInput) { in.Slug = "Kyoto" }, entry.ErrInvalidSlug},
 		{"chinese slug", func(in *entry.CreateInput) { in.Slug = "京都" }, entry.ErrInvalidSlug},
 		{"slug with space", func(in *entry.CreateInput) { in.Slug = "kyoto spring" }, entry.ErrInvalidSlug},
 
 		{"unknown type", func(in *entry.CreateInput) { in.Type = "joural" }, entry.ErrInvalidType},
-		{"unknown status", func(in *entry.CreateInput) { in.Status = "live" }, entry.ErrInvalidStatus},
 		{"unknown visibility", func(in *entry.CreateInput) { in.Visibility = "hidden" }, entry.ErrInvalidVisibility},
 
 		{"meta is an array", func(in *entry.CreateInput) { in.Meta = entry.Meta(`[1]`) }, entry.ErrInvalidMeta},
@@ -468,7 +534,8 @@ func TestUpdateSubmitsOnlyNamedFields(t *testing.T) {
 	})
 
 	if _, err := service.Update(context.Background(), 7, entry.UpdateInput{
-		Title: ptr("After"),
+		ExpectedRevision: 1,
+		Title:            ptr("After"),
 	}); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -505,7 +572,8 @@ func TestUpdateDistinguishesClearingFromLeavingAlone(t *testing.T) {
 
 	t.Run("submitting an empty value clears", func(t *testing.T) {
 		updated, err := service.Update(context.Background(), 7, entry.UpdateInput{
-			Summary: ptr(""),
+			ExpectedRevision: 1,
+			Summary:          ptr(""),
 		})
 		if err != nil {
 			t.Fatalf("Update: %v", err)
@@ -522,7 +590,8 @@ func TestUpdateDistinguishesClearingFromLeavingAlone(t *testing.T) {
 		store.Seed(entry.Entry{ID: 8, Slug: "other", Title: "Other", Summary: "keep me"})
 
 		updated, err := service.Update(context.Background(), 8, entry.UpdateInput{
-			Title: ptr("Renamed"),
+			ExpectedRevision: 1,
+			Title:            ptr("Renamed"),
 		})
 		if err != nil {
 			t.Fatalf("Update: %v", err)
@@ -540,7 +609,8 @@ func TestUpdateRecomputesWordCountWithTheBody(t *testing.T) {
 	store.Seed(entry.Entry{ID: 7, Slug: "before", Title: "Before", ContentMD: "one", WordCount: 1})
 
 	updated, err := service.Update(context.Background(), 7, entry.UpdateInput{
-		ContentMD: ptr("one two three"),
+		ExpectedRevision: 1,
+		ContentMD:        ptr("one two three"),
 	})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
@@ -555,7 +625,8 @@ func TestUpdateRecomputesWordCountWithTheBody(t *testing.T) {
 
 	t.Run("and not without it", func(t *testing.T) {
 		if _, err := service.Update(context.Background(), 7, entry.UpdateInput{
-			Title: ptr("Renamed"),
+			ExpectedRevision: 2,
+			Title:            ptr("Renamed"),
 		}); err != nil {
 			t.Fatalf("Update: %v", err)
 		}
@@ -592,7 +663,8 @@ func TestUpdateValidatesOnlyWhatWasSubmitted(t *testing.T) {
 
 	t.Run("an unrelated update succeeds", func(t *testing.T) {
 		if _, err := service.Update(context.Background(), 7, entry.UpdateInput{
-			Summary: ptr("fine"),
+			ExpectedRevision: 1,
+			Summary:          ptr("fine"),
 		}); err != nil {
 			t.Fatalf("Update = %v, want the stored title left unchecked", err)
 		}
@@ -603,12 +675,11 @@ func TestUpdateValidatesOnlyWhatWasSubmitted(t *testing.T) {
 		in   entry.UpdateInput
 		want error
 	}{
-		{"bad type", entry.UpdateInput{Type: ptr(entry.Type("recipe"))}, entry.ErrInvalidType},
-		{"bad visibility", entry.UpdateInput{Visibility: ptr(entry.Visibility("secret"))}, entry.ErrInvalidVisibility},
-		{"empty title", entry.UpdateInput{Title: ptr("")}, entry.ErrInvalidTitle},
-		{"long title", entry.UpdateInput{Title: ptr(strings.Repeat("x", 256))}, entry.ErrInvalidTitle},
-		{"bad slug", entry.UpdateInput{Slug: ptr("Not A Slug")}, entry.ErrInvalidSlug},
-		{"bad meta", entry.UpdateInput{Meta: ptr(entry.Meta(`["a"]`))}, entry.ErrInvalidMeta},
+		{"bad type", entry.UpdateInput{ExpectedRevision: 1, Type: ptr(entry.Type("recipe"))}, entry.ErrInvalidType},
+		{"bad visibility", entry.UpdateInput{ExpectedRevision: 1, Visibility: ptr(entry.Visibility("secret"))}, entry.ErrInvalidVisibility},
+		{"long title", entry.UpdateInput{ExpectedRevision: 1, Title: ptr(strings.Repeat("x", 256))}, entry.ErrInvalidTitle},
+		{"bad slug", entry.UpdateInput{ExpectedRevision: 1, Slug: ptr("Not A Slug")}, entry.ErrInvalidSlug},
+		{"bad meta", entry.UpdateInput{ExpectedRevision: 1, Meta: ptr(entry.Meta(`["a"]`))}, entry.ErrInvalidMeta},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			before := store.UpdateCalls
@@ -632,7 +703,8 @@ func TestUpdateSlugConflictExcludesItself(t *testing.T) {
 
 	t.Run("its own slug is free", func(t *testing.T) {
 		if _, err := service.Update(context.Background(), 7, entry.UpdateInput{
-			Slug: ptr("mine"), Title: ptr("Renamed"),
+			ExpectedRevision: 1,
+			Slug:             ptr("mine"), Title: ptr("Renamed"),
 		}); err != nil {
 			t.Fatalf("Update = %v, want its own slug accepted", err)
 		}
@@ -640,7 +712,8 @@ func TestUpdateSlugConflictExcludesItself(t *testing.T) {
 
 	t.Run("another entry's slug is taken", func(t *testing.T) {
 		if _, err := service.Update(context.Background(), 7, entry.UpdateInput{
-			Slug: ptr("theirs"),
+			ExpectedRevision: 2,
+			Slug:             ptr("theirs"),
 		}); !errors.Is(err, entry.ErrSlugTaken) {
 			t.Fatalf("Update = %v, want ErrSlugTaken", err)
 		}
@@ -649,7 +722,8 @@ func TestUpdateSlugConflictExcludesItself(t *testing.T) {
 	t.Run("no check when the slug is not submitted", func(t *testing.T) {
 		before := store.SlugExistsExcludingCalls
 		if _, err := service.Update(context.Background(), 7, entry.UpdateInput{
-			Title: ptr("Again"),
+			ExpectedRevision: 2,
+			Title:            ptr("Again"),
 		}); err != nil {
 			t.Fatalf("Update: %v", err)
 		}
@@ -707,9 +781,12 @@ func TestSoftDeleteHidesTheEntryAndFreesTheSlug(t *testing.T) {
 // first went out, so a withdrawal and a second publication must not move it.
 func TestPublishStampsOnce(t *testing.T) {
 	service, store := newTestService(t)
-	store.Seed(entry.Entry{ID: 7, Slug: "p", Title: "P", Status: entry.StatusDraft})
+	store.Seed(entry.Entry{
+		ID: 7, Slug: "p", Title: "P", ContentMD: "body",
+		Status: entry.StatusDraft, Visibility: entry.VisibilityPublic,
+	})
 
-	published, err := service.Publish(context.Background(), 7)
+	published, err := service.Publish(context.Background(), 7, 1)
 	if err != nil {
 		t.Fatalf("Publish: %v", err)
 	}
@@ -721,7 +798,7 @@ func TestPublishStampsOnce(t *testing.T) {
 	}
 
 	t.Run("republishing keeps the first date", func(t *testing.T) {
-		if _, err := service.Unpublish(context.Background(), 7); err != nil {
+		if _, err := service.Unpublish(context.Background(), 7, 2); err != nil {
 			t.Fatalf("Unpublish: %v", err)
 		}
 
@@ -731,7 +808,7 @@ func TestPublishStampsOnce(t *testing.T) {
 			return fixedTime.Add(48 * time.Hour)
 		}))
 
-		again, err := later.Publish(context.Background(), 7)
+		again, err := later.Publish(context.Background(), 7, 3)
 		if err != nil {
 			t.Fatalf("Publish: %v", err)
 		}
@@ -752,10 +829,10 @@ func TestUnpublishAndArchiveKeepPublishedAt(t *testing.T) {
 		want entry.Status
 	}{
 		{"unpublish", func(s *entry.Service, ctx context.Context) (entry.Entry, error) {
-			return s.Unpublish(ctx, 7)
+			return s.Unpublish(ctx, 7, 1)
 		}, entry.StatusDraft},
 		{"archive", func(s *entry.Service, ctx context.Context) (entry.Entry, error) {
-			return s.Archive(ctx, 7)
+			return s.Archive(ctx, 7, 1)
 		}, entry.StatusArchived},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -910,20 +987,20 @@ func TestIDBoundsAreRefusedWithoutAQuery(t *testing.T) {
 				call func() error
 			}{
 				{"Update", func() error {
-					_, err := service.Update(context.Background(), id, entry.UpdateInput{Title: ptr("x")})
+					_, err := service.Update(context.Background(), id, entry.UpdateInput{ExpectedRevision: 1, Title: ptr("x")})
 					return err
 				}},
 				{"SoftDelete", func() error { return service.SoftDelete(context.Background(), id) }},
 				{"Publish", func() error {
-					_, err := service.Publish(context.Background(), id)
+					_, err := service.Publish(context.Background(), id, 1)
 					return err
 				}},
 				{"Unpublish", func() error {
-					_, err := service.Unpublish(context.Background(), id)
+					_, err := service.Unpublish(context.Background(), id, 1)
 					return err
 				}},
 				{"Archive", func() error {
-					_, err := service.Archive(context.Background(), id)
+					_, err := service.Archive(context.Background(), id, 1)
 					return err
 				}},
 				{"GetByID", func() error {

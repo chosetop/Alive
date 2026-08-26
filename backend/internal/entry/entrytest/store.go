@@ -101,6 +101,7 @@ func (s *Store) Create(ctx context.Context, params entry.CreateParams) (entry.En
 
 	stored := entry.Entry{
 		ID:       id,
+		Revision: 1,
 		AuthorID: params.AuthorID,
 		// No CategoryName or CategorySlug: a write cannot join, and the real store
 		// leaves them empty here too.
@@ -289,6 +290,9 @@ func (s *Store) Update(ctx context.Context, params entry.UpdateParams) (entry.En
 	if !ok {
 		return entry.Entry{}, fmt.Errorf("%w: id %d", entry.ErrEntryNotFound, params.ID)
 	}
+	if stored.Revision != params.ExpectedRevision {
+		return entry.Entry{}, fmt.Errorf("%w: id %d", entry.ErrVersionConflict, params.ID)
+	}
 
 	// The unique index applies to an update too, and this fake stands in for it.
 	if params.SetSlug {
@@ -336,6 +340,7 @@ func (s *Store) Update(ctx context.Context, params entry.UpdateParams) (entry.En
 		}
 	}
 
+	stored.Revision++
 	s.entries[params.ID] = stored
 	return stored, nil
 }
@@ -367,7 +372,7 @@ func (s *Store) SoftDelete(ctx context.Context, id int64, at time.Time) (bool, e
 //
 // The COALESCE from the SQL, in Go. Without the zero check here a test could not
 // catch a publish that moved a first publication date.
-func (s *Store) Publish(ctx context.Context, id int64, publishedAt time.Time) (entry.Entry, error) {
+func (s *Store) Publish(ctx context.Context, id, expectedRevision int64, publishedAt time.Time) (entry.Entry, error) {
 	if s.FailPublish != nil {
 		return entry.Entry{}, s.FailPublish
 	}
@@ -376,18 +381,22 @@ func (s *Store) Publish(ctx context.Context, id int64, publishedAt time.Time) (e
 	if !ok {
 		return entry.Entry{}, fmt.Errorf("%w: id %d", entry.ErrEntryNotFound, id)
 	}
+	if stored.Revision != expectedRevision {
+		return entry.Entry{}, fmt.Errorf("%w: id %d", entry.ErrVersionConflict, id)
+	}
 
 	stored.Status = entry.StatusPublished
 	if stored.PublishedAt.IsZero() {
 		stored.PublishedAt = publishedAt
 	}
 
+	stored.Revision++
 	s.entries[id] = stored
 	return stored, nil
 }
 
 // Unpublish returns an entry to draft, leaving PublishedAt untouched.
-func (s *Store) Unpublish(ctx context.Context, id int64) (entry.Entry, error) {
+func (s *Store) Unpublish(ctx context.Context, id, expectedRevision int64) (entry.Entry, error) {
 	if s.FailUnpublish != nil {
 		return entry.Entry{}, s.FailUnpublish
 	}
@@ -396,15 +405,19 @@ func (s *Store) Unpublish(ctx context.Context, id int64) (entry.Entry, error) {
 	if !ok {
 		return entry.Entry{}, fmt.Errorf("%w: id %d", entry.ErrEntryNotFound, id)
 	}
+	if stored.Revision != expectedRevision {
+		return entry.Entry{}, fmt.Errorf("%w: id %d", entry.ErrVersionConflict, id)
+	}
 
 	stored.Status = entry.StatusDraft
 
+	stored.Revision++
 	s.entries[id] = stored
 	return stored, nil
 }
 
 // Archive sets an entry to archived, leaving PublishedAt untouched.
-func (s *Store) Archive(ctx context.Context, id int64) (entry.Entry, error) {
+func (s *Store) Archive(ctx context.Context, id, expectedRevision int64) (entry.Entry, error) {
 	if s.FailArchive != nil {
 		return entry.Entry{}, s.FailArchive
 	}
@@ -413,9 +426,13 @@ func (s *Store) Archive(ctx context.Context, id int64) (entry.Entry, error) {
 	if !ok {
 		return entry.Entry{}, fmt.Errorf("%w: id %d", entry.ErrEntryNotFound, id)
 	}
+	if stored.Revision != expectedRevision {
+		return entry.Entry{}, fmt.Errorf("%w: id %d", entry.ErrVersionConflict, id)
+	}
 
 	stored.Status = entry.StatusArchived
 
+	stored.Revision++
 	s.entries[id] = stored
 	return stored, nil
 }
@@ -480,6 +497,9 @@ func (s *Store) ListAdmin(ctx context.Context, status *entry.Status, limit, offs
 // Seed inserts an entry directly, bypassing the service, so a test can arrange
 // rows it did not create through Create.
 func (s *Store) Seed(e entry.Entry) entry.Entry {
+	if e.Revision == 0 {
+		e.Revision = 1
+	}
 	if e.ID == 0 {
 		e.ID = s.nextID
 		s.nextID++
