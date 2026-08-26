@@ -683,7 +683,21 @@ frontend 与 admin 共用一份 Markdown 渲染配置，抽成独立的共享包
 
 > **两侧都只使用 CommonMark + GFM 范围内的语法。任何一侧新增语法扩展，必须同时在另一侧实现，否则不许合并。**
 
-代码里的说明在 `frontend/utils/markdown.ts` 顶部。
+代码里的说明在 `packages/markdown/src/index.ts` 顶部。
+
+渲染实现已于 2026-08-26 从 `frontend/utils/markdown.ts` 移入本地包 `@alive/markdown`，前台与后台预览各自 re-export 它，不再各自配置一份 `markdown-it`。这消掉的是「预览」这个词的水分：两份配置时，任何一处选项或渲染规则不一致都会让作者看到的文档和读者看到的不是同一份，而且不会有任何东西报错。
+
+包**直接导出 `.ts` 源码**，没有构建步骤。代价是一条必须记住的安装顺序：
+
+```bash
+cd packages/markdown && npm install   # 必须先做，且只做一次
+cd ../admin && npm install
+cd ../frontend && npm install
+```
+
+`npm install` 不会为 `file:` 依赖安装目标包自己的依赖。也就是说 `markdown-it` 必须能从 `packages/markdown/` 往上找到——它不在两个应用的 `node_modules` 里，也不在两个应用的 lockfile 里。漏掉第一步，`admin` 与 `frontend` 的 typecheck 和 build 都会失败在 `Cannot find module 'markdown-it'`，而且这个失败只在全新 clone 上出现，本机因为目录已存在而看不到。
+
+`packages/markdown/src/resolution.test.ts` 守着这条约束，所以它是测试失败而不是某次陌生 clone 的构建失败。
 
 ### 5.4 认证方案
 

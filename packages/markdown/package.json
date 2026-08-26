@@ -7,13 +7,16 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "vitest --run"
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "markdown-it": "14.1.0"
   },
   "devDependencies": {
     "@types/markdown-it": "14.1.2",
+    "@types/node": "24.13.3",
+    "typescript": "5.9.3",
     "vitest": "4.1.0"
   }
 }

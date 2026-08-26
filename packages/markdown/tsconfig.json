@@ -1,0 +1,28 @@
+{
+  /*
+   * The package type-checks itself.
+   *
+   * It exports raw `.ts`, so every consumer compiles this source with their own
+   * compiler settings. Checking it here under strict settings catches a break at
+   * its source rather than as a confusing error inside whichever app happened to
+   * build first.
+   *
+   * "bundler" resolution matches how both consumers resolve: Vite for the admin,
+   * Nitro for the frontend. Neither emits from this config -- `noEmit` is on, and
+   * the package ships source.
+   */
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["es2022", "dom"],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"]
+}
