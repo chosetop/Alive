@@ -1,6 +1,10 @@
+import { readFileSync, readdirSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { mount } from '@vue/test-utils'
 import { defineComponent, nextTick } from 'vue'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import UiButton from './UiButton.vue'
 import UiDialog from './UiDialog.vue'
@@ -295,9 +299,10 @@ describe('UiMenu', () => {
 })
 
 describe('UiPopover', () => {
-  it('opens from its trigger', async () => {
+  it('opens from its trigger and names itself', async () => {
     const wrapper = mount(UiPopover, {
       attachTo: document.body,
+      props: { label: '编辑链接' },
       slots: { trigger: '<button data-test="trigger">打开</button>', default: '<p>内容</p>' },
     })
 
@@ -305,12 +310,48 @@ describe('UiPopover', () => {
     await settle()
 
     expect(document.body.textContent).toContain('内容')
+    // Reka renders this content as role="dialog", so an unnamed popover is an
+    // unnamed dialog -- the failure UiDialog's required title exists to prevent.
+    const content = document.querySelector('.ui-popover__content')
+    expect(content?.getAttribute('role')).toBe('dialog')
+    expect(content?.getAttribute('aria-label')).toBe('编辑链接')
     wrapper.unmount()
+  })
+
+  it('closes when a pointer lands outside it', async () => {
+    // Required by the plan, and the reason the link editor is a popover rather
+    // than a dialog: clicking back into the prose must dismiss it without Esc.
+    const outside = document.createElement('div')
+    outside.dataset.test = 'outside'
+    document.body.appendChild(outside)
+
+    const wrapper = mount(UiPopover, {
+      attachTo: document.body,
+      props: { label: '编辑链接' },
+      slots: { trigger: '<button data-test="trigger">打开</button>', default: '<p>内容</p>' },
+    })
+
+    try {
+      await wrapper.get('[data-test="trigger"]').trigger('click')
+      await settle()
+      expect(document.body.textContent).toContain('内容')
+
+      // pointerdown, not click: Reka dismisses on the pointer-down phase, so a
+      // click-only test would pass against a component that never dismissed.
+      outside.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }))
+      await settle()
+
+      expect(document.body.textContent).not.toContain('内容')
+    } finally {
+      wrapper.unmount()
+      outside.remove()
+    }
   })
 
   it('closes on Escape and returns focus to the trigger', async () => {
     const wrapper = mount(UiPopover, {
       attachTo: document.body,
+      props: { label: '编辑链接' },
       slots: {
         trigger: '<button data-test="trigger">打开</button>',
         // A focusable child, deliberately. Without one, focus never enters the
@@ -341,6 +382,7 @@ describe('UiPopover', () => {
   it('reports expanded state on the trigger', async () => {
     const wrapper = mount(UiPopover, {
       attachTo: document.body,
+      props: { label: '编辑链接' },
       slots: { trigger: '<button data-test="trigger">打开</button>', default: '<p>内容</p>' },
     })
     const trigger = wrapper.get('[data-test="trigger"]')
@@ -368,22 +410,106 @@ describe('UiToastRegion', () => {
     wrapper.unmount()
   })
 
-  it('renders nothing before anything is published', () => {
+  it('keeps the live region mounted while empty', () => {
     const wrapper = mount(UiToastRegion, { attachTo: document.body })
 
-    expect(document.body.textContent).not.toContain('已发布')
+    // The component's central design claim. A live region inserted at the same
+    // moment as its first text is frequently never announced, so wrapping this
+    // element in v-if="toasts.length" would break announcements while leaving any
+    // text-absence assertion green.
+    const region = document.querySelector('[data-testid="toast-region"]')
+    expect(region).not.toBeNull()
+    expect(region?.getAttribute('aria-live')).toBe('polite')
+    expect(region?.textContent?.trim()).toBe('')
     wrapper.unmount()
+  })
+
+  it('dismisses a toast when its duration elapses', async () => {
+    vi.useFakeTimers()
+    try {
+      const wrapper = mount(UiToastRegion, {
+        attachTo: document.body,
+        props: { duration: 1000 },
+      })
+
+      ;(wrapper.vm as unknown as { publish: (m: string) => void }).publish('已发布')
+      await nextTick()
+      expect(document.body.textContent).toContain('已发布')
+
+      vi.advanceTimersByTime(999)
+      await nextTick()
+      expect(document.body.textContent).toContain('已发布')
+
+      // A publish that never expired would otherwise pass every other assertion
+      // in this file.
+      vi.advanceTimersByTime(1)
+      await nextTick()
+      expect(document.body.textContent).not.toContain('已发布')
+      wrapper.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('cancels the pending timer when dismissed early', async () => {
+    vi.useFakeTimers()
+    try {
+      const wrapper = mount(UiToastRegion, {
+        attachTo: document.body,
+        props: { duration: 1000 },
+      })
+      const vm = wrapper.vm as unknown as {
+        publish: (m: string) => string
+        dismiss: (id: string) => void
+      }
+
+      const first = vm.publish('第一条')
+      await nextTick()
+      vm.dismiss(first)
+      await nextTick()
+      expect(document.body.textContent).not.toContain('第一条')
+
+      // The dismissed toast's timer must not still be armed. Republishing reuses
+      // no id, so a stale timer firing would remove the wrong toast.
+      vm.publish('第二条')
+      await nextTick()
+      vi.advanceTimersByTime(1000)
+      await nextTick()
+      expect(document.body.textContent).not.toContain('第二条')
+      wrapper.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
 describe('the primitive boundary', () => {
-  it('keeps Reka types out of the public prop surface', () => {
-    // The constraint from the plan: business components import Alive wrappers, not
-    // reka-ui. A wrapper that forwarded a Reka type in its props would make that
-    // impossible to hold.
-    const wrapper = mount(UiButton, { props: { variant: 'primary' }, slots: { default: 'x' } })
+  it('is the only place that imports reka-ui', () => {
+    // The plan's constraint: business components import Alive wrappers, never
+    // reka-ui. Asserted as a source-level fact rather than through a mounted
+    // component, because that is the form the constraint actually takes -- a
+    // runtime assertion about rendered output cannot observe an import, and the
+    // type-level half is unobservable at runtime entirely.
+    const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+    const offenders: string[] = []
 
-    expect(wrapper.html()).toContain('button')
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) {
+          walk(full)
+        } else if (/\.(ts|vue)$/.test(entry.name)) {
+          if (/from ['"]reka-ui['"]/.test(readFileSync(full, 'utf8'))) offenders.push(full)
+        }
+      }
+    }
+    walk(sourceRoot)
+
+    const uiDir = join(sourceRoot, 'components', 'ui')
+    const outside = offenders.filter((file) => !file.startsWith(uiDir))
+    expect(outside).toEqual([])
+    // And the wrappers really do use it, so this is not passing by finding nothing.
+    expect(offenders.length).toBeGreaterThan(0)
   })
 
   it('mounts a dialog inside a menu without either stealing the other’s focus return', async () => {

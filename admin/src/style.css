@@ -29,6 +29,21 @@
   --c-danger: #a5342c;
   --c-danger-surface: #fdf2f0;
 
+  /*
+   * Text on a filled accent surface. A token rather than a literal white, because
+   * this is the one colour whose correct value is decided by the accent behind it:
+   * a theme with a pale accent needs dark text here, and a hard-coded #fff would
+   * make the primary button the one element that ignores the theme.
+   */
+  --c-on-accent: #ffffff;
+
+  /*
+   * The modal scrim. --c-ink at 32%, expressed as a token so a dark theme can
+   * darken rather than lighten it -- an inlined light scrim over a dark surface
+   * reads as a rendering fault.
+   */
+  --c-overlay: rgb(27 26 24 / 32%);
+
   --radius-sm: 4px;
   --radius-md: 6px;
 

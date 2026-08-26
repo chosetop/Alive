@@ -10,22 +10,23 @@ import { computed } from 'vue'
  * to remain visible. Reka handles outside-click dismissal, Escape, and focus
  * return; positioning comes from Floating UI underneath.
  *
- * No `title` prop, unlike UiDialog: a popover is not announced as a named region,
- * and requiring a heading would push call sites into rendering one they do not
- * want. Call sites that need a name pass `label`.
+ * `label` is required rather than optional. Reka renders this content with
+ * `role="dialog"` — verified in the DOM — so an unlabelled popover is an unnamed
+ * dialog, which is the exact failure `UiDialog`'s required `title` exists to
+ * prevent. It is a prop instead of a rendered heading because a popover has no
+ * visible title bar: the link editor needs a name without growing a header.
  */
 export interface UiPopoverProps {
+  /** The accessible name. Required — see above. */
+  label: string
   /** Controlled open state. Omit to let the trigger own it. */
   open?: boolean
-  /** Accessible name for the content region, when it needs one. */
-  label?: string
   side?: 'top' | 'right' | 'bottom' | 'left'
   align?: 'start' | 'center' | 'end'
 }
 
 const props = withDefaults(defineProps<UiPopoverProps>(), {
   open: undefined,
-  label: undefined,
   side: 'bottom',
   align: 'start',
 })

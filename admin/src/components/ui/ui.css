@@ -46,7 +46,7 @@
 .ui-button[data-variant='primary'] {
   border-color: var(--c-accent);
   background: var(--c-accent);
-  color: #ffffff;
+  color: var(--c-on-accent);
 }
 
 .ui-button[data-variant='primary']:hover:not(:disabled) {
@@ -159,7 +159,7 @@
 .ui-dialog__overlay {
   position: fixed;
   inset: 0;
-  background: rgb(27 26 24 / 32%);
+  background: var(--c-overlay);
 }
 
 .ui-dialog__content {
@@ -226,7 +226,15 @@
 }
 
 /* Reka sets data-highlighted on the item the keyboard is on, which is what makes
-   arrow-key navigation visible without a separate hover style. */
+   arrow-key navigation visible without a separate hover style.
+
+   `outline: none` here is the one deliberate exception to rule 1 above, and it is
+   deliberate: this selector has the same specificity as the :focus-visible rule
+   and wins on source order, so an arrow-keyed item shows the highlight fill
+   instead of a ring. No information is lost -- the fill *is* the position
+   indicator, and it is present in greyscale -- and a ring stacked on the fill
+   reads as two competing selections. Removing this line does not add an
+   affordance; it doubles one. */
 .ui-menu__item[data-highlighted] {
   background: var(--c-surface-sunken);
   outline: none;
@@ -280,6 +288,10 @@
   background: var(--c-surface);
   color: var(--c-ink);
   font-size: 0.875rem;
+  /* Restored from the region's `none`. Nothing inside a toast is clickable today,
+     so this changes nothing now -- it is here so the first dismiss button added
+     is not mysteriously dead. */
+  pointer-events: auto;
 }
 
 .ui-toast[data-tone='danger'] {

@@ -2,7 +2,16 @@
   "extends": "@vue/tsconfig/tsconfig.dom.json",
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
-    "types": ["vite/client"],
+    /*
+     * "node" alongside "vite/client" so test files may reach the filesystem.
+     *
+     * One test asserts a source-level fact -- that nothing outside components/ui
+     * imports reka-ui -- which is only checkable by reading files. Adding the
+     * types here rather than excluding tests from this config keeps them
+     * type-checked; the browser bundle is unaffected, since nothing under src
+     * imports a node builtin and Vite would fail loudly if it did.
+     */
+    "types": ["vite/client", "node"],
     "allowArbitraryExtensions": true,
 
     /* Linting */

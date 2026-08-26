@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   DialogContent,
+  DialogDescription,
   DialogOverlay,
   DialogPortal,
   DialogRoot,
@@ -31,11 +32,19 @@ export interface UiDialogProps {
   open?: boolean
   /** Hide the visible heading while keeping the accessible name. */
   hideTitle?: boolean
+  /**
+   * An optional description, announced after the name.
+   *
+   * Worth passing for a destructive confirmation, where what the action will do
+   * belongs in the accessible description rather than only in body prose.
+   */
+  description?: string
 }
 
 const props = withDefaults(defineProps<UiDialogProps>(), {
   open: undefined,
   hideTitle: false,
+  description: undefined,
 })
 
 const emit = defineEmits<{ 'update:open': [boolean] }>()
@@ -59,10 +68,24 @@ const openModel = computed({
 
     <DialogPortal>
       <DialogOverlay class="ui-dialog__overlay" />
-      <DialogContent class="ui-dialog__content">
+      <!--
+        aria-describedby="undefined" when no description is given. Reka sets the
+        attribute unconditionally to a generated id, so without this every dialog
+        ships an aria-describedby pointing at an element that does not exist --
+        verified in the DOM, not inferred. "undefined" is Reka's own sanctioned
+        opt-out, not a stringified mistake.
+      -->
+      <DialogContent
+        class="ui-dialog__content"
+        :aria-describedby="description ? undefined : 'undefined'"
+      >
         <DialogTitle :class="hideTitle ? 'ui-visually-hidden' : 'ui-dialog__title'">
           {{ title }}
         </DialogTitle>
+
+        <DialogDescription v-if="description" class="ui-dialog__description">
+          {{ description }}
+        </DialogDescription>
 
         <div class="ui-dialog__body">
           <slot />

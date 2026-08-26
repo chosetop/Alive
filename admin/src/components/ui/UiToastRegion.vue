@@ -39,31 +39,53 @@ const props = withDefaults(defineProps<{ duration?: number }>(), {
 })
 
 const toasts = ref<UiToast[]>([])
-const timers = new Set<ReturnType<typeof setTimeout>>()
+
+/**
+ * Keyed by toast id, not a bare Set. `dismiss` has to be able to cancel the
+ * timer belonging to the toast it removes: with a Set, an early dismissal left a
+ * live timer running for the rest of the duration, and the set accumulated
+ * entries for toasts that no longer existed.
+ */
+const timers = new Map<string, ReturnType<typeof setTimeout>>()
+
 let sequence = 0
+
+/**
+ * Set on unmount. A caller holding a captured reference — the save coordinator
+ * across a route change is the realistic case — could otherwise call `publish`
+ * on a disposed instance, which writes to a dead ref and arms a timer nothing
+ * will ever clear. It fails silently rather than throwing, which is why it needs
+ * an explicit guard rather than being left to surface on its own.
+ */
+let disposed = false
 
 /** Announces a message. Returns its id so a caller can dismiss it early. */
 function publish(message: string, tone: UiToast['tone'] = 'neutral'): string {
   const id = `toast-${++sequence}`
+  if (disposed) return id
+
   toasts.value = [...toasts.value, { id, message, tone }]
 
-  const timer = setTimeout(() => {
-    dismiss(id)
-    timers.delete(timer)
-  }, props.duration)
-  timers.add(timer)
+  timers.set(
+    id,
+    setTimeout(() => dismiss(id), props.duration),
+  )
 
   return id
 }
 
 function dismiss(id: string): void {
+  const timer = timers.get(id)
+  if (timer !== undefined) {
+    clearTimeout(timer)
+    timers.delete(id)
+  }
   toasts.value = toasts.value.filter((toast) => toast.id !== id)
 }
 
-// Timers outlive the component otherwise, and a pending one would write to a
-// disposed ref after a route change away from the workspace.
 onBeforeUnmount(() => {
-  for (const timer of timers) clearTimeout(timer)
+  disposed = true
+  for (const timer of timers.values()) clearTimeout(timer)
   timers.clear()
 })
 
