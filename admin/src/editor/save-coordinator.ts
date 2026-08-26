@@ -37,6 +37,7 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
   }
   let timer: ReturnType<typeof setTimeout> | null = null
   let inFlight: Promise<EntryDetail | null> | null = null
+  let conflictPersistence: Promise<void> = Promise.resolve()
   let disposed = false
 
   const publish = (next: SaveSnapshot): void => {
@@ -179,6 +180,20 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
       const pendingFields = { ...(snapshot.pendingFields ?? {}), ...fields }
       if (snapshot.status === 'conflict') {
         publish({ ...snapshot, pendingFields })
+        const record = {
+          entryId: options.entryId,
+          revision: snapshot.revision,
+          fields: pendingFields,
+          savedLocallyAt: new Date().toISOString(),
+          syncState: 'conflict' as const,
+        }
+        conflictPersistence = conflictPersistence
+          .then(() => options.recoveryStore.put(record))
+          .catch((error) => {
+            if (!disposed && snapshot.status === 'conflict') {
+              publish({ ...snapshot, error: toApiClientError(error) })
+            }
+          })
         return
       }
 
@@ -188,6 +203,9 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
 
     flush() {
       if (disposed) return Promise.resolve(null)
+      if (snapshot.status === 'conflict') {
+        return conflictPersistence.then(() => null)
+      }
       return startSave()
     },
 
@@ -212,6 +230,8 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
         await inFlight
       } else if (snapshot.status === 'pending') {
         await startSave()
+      } else if (snapshot.status === 'conflict') {
+        await conflictPersistence
       }
       listeners.clear()
     },

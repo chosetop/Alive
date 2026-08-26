@@ -100,7 +100,7 @@ describe('EntryEditor autosave integration', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-26T12:00:00.000Z'))
-    vi.clearAllMocks()
+    vi.resetAllMocks()
     recovery.records.clear()
     navigation.leaveGuard = null
     navigation.updateGuard = null
@@ -300,6 +300,47 @@ describe('EntryEditor autosave integration', () => {
     await flushPromises()
   })
 
+  it('flushes pending edits before deleting and bypasses the leave flush after deletion', async () => {
+    const events: string[] = []
+    const server = installMutableServer(() => events.push('save'))
+    api.deleteEntry.mockImplementation(async () => {
+      events.push('delete')
+    })
+    navigation.replace.mockImplementationOnce(async () => {
+      const guardResult = await navigation.leaveGuard?.()
+      if (guardResult === false) throw new Error('navigation blocked after deletion')
+      events.push('navigate')
+    })
+    const wrapper = await mountEditor(server.current)
+    await wrapper.get('#e-summary').setValue('删除前保存')
+
+    await wrapper.findAll('button').find((button) => button.text() === '删除')!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text() === '确认删除')!.trigger('click')
+    await flushPromises()
+
+    expect(events).toEqual(['save', 'delete', 'navigate'])
+    expect(api.updateEntry).toHaveBeenCalledOnce()
+    expect(api.deleteEntry).toHaveBeenCalledWith(server.current.id)
+  })
+
+  it('does not delete when the required pre-delete flush fails', async () => {
+    const current = entry({ id: 48 })
+    api.getEntry.mockResolvedValue(current)
+    api.updateEntry.mockRejectedValue(
+      new ApiClientError({ code: NETWORK_ERROR, status: 0, message: 'offline' }),
+    )
+    const wrapper = await mountEditor(current)
+    await wrapper.get('#e-title').setValue('尚未保存')
+
+    await wrapper.findAll('button').find((button) => button.text() === '删除')!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text() === '确认删除')!.trigger('click')
+    await flushPromises()
+
+    expect(api.deleteEntry).not.toHaveBeenCalled()
+    expect(navigation.replace).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-save-status]').text()).toContain('离线')
+  })
+
   it('uses the same flush gate before leaving or switching entries', async () => {
     const server = installMutableServer()
     const wrapper = await mountEditor(server.current)
@@ -311,6 +352,46 @@ describe('EntryEditor autosave integration', () => {
     await wrapper.get('#e-summary').setValue('切换前保存')
     await expect(navigation.updateGuard?.()).resolves.toBeUndefined()
     expect(api.updateEntry).toHaveBeenCalledTimes(2)
+  })
+
+  it('ignores an older entry load that resolves after a faster route switch', async () => {
+    const firstLoad = deferred<EntryDetail>()
+    const newerEntry = entry({ id: 51, title: '新路由文章', revision: 7 })
+    api.getEntry.mockImplementation((id: number) =>
+      id === 50 ? firstLoad.promise : Promise.resolve(newerEntry),
+    )
+    api.updateEntry.mockResolvedValue(
+      entry({ ...newerEntry, revision: 8, summary: '仍保存到新文章' }),
+    )
+    const wrapper = await mountEditorWithProps({ id: '50' })
+
+    await wrapper.setProps({ id: '51' })
+    await flushPromises()
+    expect(wrapper.get('#e-title').element).toHaveProperty('value', '新路由文章')
+
+    firstLoad.resolve(entry({ id: 50, title: '过期慢响应' }))
+    await flushPromises()
+
+    expect(wrapper.get('#e-title').element).toHaveProperty('value', '新路由文章')
+    await wrapper.get('#e-summary').setValue('仍保存到新文章')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(api.updateEntry).toHaveBeenLastCalledWith(51, {
+      revision: 7,
+      summary: '仍保存到新文章',
+    })
+  })
+
+  it('does not navigate or bind autosave when draft creation resolves after unmount', async () => {
+    const creation = deferred<EntryDetail>()
+    api.createEntry.mockReturnValue(creation.promise)
+    const wrapper = await mountEditorWithProps({})
+
+    wrapper.unmount()
+    creation.resolve(entry({ id: 88, revision: 1, title: '', slug: '' }))
+    await flushPromises()
+
+    expect(navigation.replace).not.toHaveBeenCalled()
+    expect(api.updateEntry).not.toHaveBeenCalled()
   })
 
   it('keeps local markdown on a 409 and can create a recovery draft from IndexedDB', async () => {
@@ -340,7 +421,18 @@ describe('EntryEditor autosave integration', () => {
       '本地冲突正文',
     )
     const actionLabels = wrapper.findAll('[data-conflict-action]').map((button) => button.text())
-    expect(actionLabels).toEqual(['载入服务端', '另存为恢复草稿'])
+    expect(actionLabels).toEqual(['载入服务端', '覆盖服务端', '另存为恢复草稿'])
+
+    await editor.setValue('409 后继续写的正文')
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 's', metaKey: true, bubbles: true, cancelable: true }),
+    )
+    await flushPromises()
+    expect(api.updateEntry).toHaveBeenCalledOnce()
+    expect(recovery.records.get(46)).toMatchObject({
+      fields: { content_md: '409 后继续写的正文' },
+      syncState: 'conflict',
+    })
 
     navigation.replace.mockImplementationOnce(async () => {
       const guardResult = await navigation.updateGuard?.()
@@ -356,13 +448,153 @@ describe('EntryEditor autosave integration', () => {
     expect(api.createEntry).toHaveBeenCalledWith({})
     expect(api.updateEntry).toHaveBeenLastCalledWith(99, {
       revision: 1,
-      content_md: '本地冲突正文',
+      content_md: '409 后继续写的正文',
     })
     expect(navigation.replace).toHaveBeenLastCalledWith({
       name: 'entry-edit',
       params: { id: '99' },
     })
     expect(wrapper.get('[data-save-status]').text()).toContain('已保存')
+  })
+
+  it('overwrites with recovered local fields at the current server revision', async () => {
+    const current = entry({ id: 53, content_md: '旧服务端正文' })
+    const conflict = new ApiClientError({
+      code: 'CONFLICT',
+      status: 409,
+      message: 'revision conflict',
+    })
+    const latestServer = entry({ id: 53, revision: 8, content_md: '别人提交的正文' })
+    const overwritten = entry({ id: 53, revision: 9, content_md: 'API 返回的正文' })
+    api.updateEntry.mockRejectedValueOnce(conflict).mockResolvedValueOnce(overwritten)
+    const wrapper = await mountEditor(current)
+    const editor = wrapper.get('textarea[aria-label="正文编辑器"]')
+
+    await editor.setValue('要覆盖的本地正文')
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 's', metaKey: true, bubbles: true, cancelable: true }),
+    )
+    await flushPromises()
+    api.getEntry.mockResolvedValue(latestServer)
+
+    await wrapper
+      .findAll('[data-conflict-action]')
+      .find((button) => button.text() === '覆盖服务端')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(api.getEntry).toHaveBeenLastCalledWith(53)
+    expect(api.updateEntry).toHaveBeenLastCalledWith(53, {
+      revision: 8,
+      content_md: '要覆盖的本地正文',
+    })
+    expect(recovery.records.has(53)).toBe(false)
+    expect(wrapper.get('[data-save-status]').text()).toContain('已保存')
+    expect(wrapper.get('textarea[aria-label="正文编辑器"]').element).toBe(editor.element)
+    expect(wrapper.get('textarea[aria-label="正文编辑器"]').element).toHaveProperty(
+      'value',
+      '要覆盖的本地正文',
+    )
+  })
+
+  it('keeps local content and recovery state when overwrite fails', async () => {
+    const current = entry({ id: 54, content_md: '旧服务端正文' })
+    const conflict = new ApiClientError({
+      code: 'CONFLICT',
+      status: 409,
+      message: 'revision conflict',
+    })
+    const overwriteFailure = new ApiClientError({
+      code: NETWORK_ERROR,
+      status: 0,
+      message: 'connection lost',
+    })
+    api.updateEntry.mockRejectedValueOnce(conflict).mockRejectedValueOnce(overwriteFailure)
+    const wrapper = await mountEditor(current)
+    const editor = wrapper.get('textarea[aria-label="正文编辑器"]')
+
+    await editor.setValue('失败也要保留的正文')
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true }),
+    )
+    await flushPromises()
+    api.getEntry.mockResolvedValue(entry({ id: 54, revision: 6, content_md: '最新服务端正文' }))
+
+    await wrapper
+      .findAll('[data-conflict-action]')
+      .find((button) => button.text() === '覆盖服务端')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(api.updateEntry).toHaveBeenLastCalledWith(54, {
+      revision: 6,
+      content_md: '失败也要保留的正文',
+    })
+    expect(recovery.records.get(54)).toMatchObject({
+      fields: { content_md: '失败也要保留的正文' },
+      syncState: 'conflict',
+    })
+    expect(wrapper.get('[data-save-status]').text()).toContain('保存冲突')
+    expect(wrapper.get('textarea[aria-label="正文编辑器"]').element).toBe(editor.element)
+    expect(wrapper.get('textarea[aria-label="正文编辑器"]').element).toHaveProperty(
+      'value',
+      '失败也要保留的正文',
+    )
+  })
+
+  it('reuses the same recovery draft when its first patch attempt fails', async () => {
+    const current = entry({ id: 52, content_md: '服务端正文' })
+    const conflict = new ApiClientError({
+      code: 'CONFLICT',
+      status: 409,
+      message: 'revision conflict',
+    })
+    const patchFailure = new ApiClientError({
+      code: NETWORK_ERROR,
+      status: 0,
+      message: 'connection lost',
+    })
+    const created = entry({ id: 120, revision: 4, title: '', slug: '', content_md: '' })
+    const recovered = entry({ id: 120, revision: 5, content_md: '待恢复正文' })
+    api.getEntry.mockResolvedValue(current)
+    api.createEntry.mockResolvedValue(created)
+    api.updateEntry
+      .mockRejectedValueOnce(conflict)
+      .mockRejectedValueOnce(patchFailure)
+      .mockResolvedValueOnce(recovered)
+    const wrapper = await mountEditor(current)
+
+    await wrapper.get('textarea[aria-label="正文编辑器"]').setValue('待恢复正文')
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 's', metaKey: true, bubbles: true, cancelable: true }),
+    )
+    await flushPromises()
+    const recoverButton = () =>
+      wrapper
+        .findAll('[data-conflict-action]')
+        .find((button) => button.text() === '另存为恢复草稿')!
+
+    await recoverButton().trigger('click')
+    await flushPromises()
+    expect(api.createEntry).toHaveBeenCalledOnce()
+    expect(api.updateEntry).toHaveBeenNthCalledWith(2, 120, {
+      revision: 4,
+      content_md: '待恢复正文',
+    })
+    expect(navigation.replace).not.toHaveBeenCalled()
+
+    await recoverButton().trigger('click')
+    await flushPromises()
+
+    expect(api.createEntry).toHaveBeenCalledOnce()
+    expect(api.updateEntry).toHaveBeenNthCalledWith(3, 120, {
+      revision: 4,
+      content_md: '待恢复正文',
+    })
+    expect(navigation.replace).toHaveBeenCalledWith({
+      name: 'entry-edit',
+      params: { id: '120' },
+    })
   })
 
   it('creates an empty draft before binding autosave on the new-entry route', async () => {
@@ -408,8 +640,12 @@ describe('EntryEditor autosave integration', () => {
 
 async function mountEditor(current: EntryDetail | undefined): Promise<VueWrapper> {
   if (current !== undefined) api.getEntry.mockResolvedValue(current)
+  return mountEditorWithProps(current === undefined ? {} : { id: String(current.id) })
+}
+
+async function mountEditorWithProps(props: { id?: string }): Promise<VueWrapper> {
   const wrapper = mount(EntryEditor, {
-    props: current === undefined ? {} : { id: String(current.id) },
+    props,
     global: {
       stubs: {
         RouterLink: { template: '<a><slot /></a>' },

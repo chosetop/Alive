@@ -417,6 +417,39 @@ describe('createSaveCoordinator', () => {
       error: conflict,
     })
   })
+
+  it('persists edits made after a conflict without retrying the network save', async () => {
+    const recoveryStore = createRecoveryStore()
+    const conflict = new ApiClientError({
+      code: 'CONFLICT',
+      status: 409,
+      message: 'revision conflict',
+    })
+    const save = vi.fn().mockRejectedValue(conflict)
+    const coordinator = createSaveCoordinator({
+      entryId: 42,
+      initialRevision: 1,
+      waitMs: 1000,
+      recoveryStore,
+      save,
+    })
+
+    coordinator.update({ title: '冲突标题', content_md: '冲突时正文' })
+    await vi.advanceTimersByTimeAsync(1000)
+    coordinator.update({ content_md: '409 后继续写的正文' })
+    await coordinator.flush()
+    await vi.advanceTimersByTimeAsync(10_000)
+
+    expect(save).toHaveBeenCalledOnce()
+    expect(recoveryStore.put).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        entryId: 42,
+        revision: 1,
+        fields: { title: '冲突标题', content_md: '409 后继续写的正文' },
+        syncState: 'conflict',
+      }),
+    )
+  })
 })
 
 interface RecoveryStoreDouble {

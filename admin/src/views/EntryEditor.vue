@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRouter } from 'vue-router'
 import {
   categoriesApi,
@@ -59,6 +59,9 @@ const isDeleting = ref(false)
 const confirmingDelete = ref(false)
 const isRecovering = ref(false)
 let bypassRouteFlush = false
+let isActive = false
+let loadGeneration = 0
+let recoveryDraft: { sourceEntryId: number; entryId: number; revision: number } | null = null
 
 const recoveryStore = new EntryRecoveryStore()
 const coordinatorBridge = createCoordinatorBridge()
@@ -126,40 +129,50 @@ const saveStatusText = computed(() => {
 })
 
 async function load(targetId: number | null = entryId.value): Promise<void> {
+  const generation = ++loadGeneration
   isLoading.value = true
   loadError.value = null
   try {
-    const categoriesRequest = categoriesApi.listCategoriesAdmin()
-    let entry: EntryDetail
+    const [cats, entry] = await Promise.all([
+      categoriesApi.listCategoriesAdmin(),
+      targetId === null ? entriesApi.createEntry({}) : entriesApi.getEntry(targetId),
+    ])
+    if (!isCurrentLoad(generation)) return
+    recoveryDraft = null
 
     if (targetId === null) {
-      entry = await entriesApi.createEntry({})
       original.value = entry
       applyEntryToForm(entry)
       await router.replace({ name: 'entry-edit', params: { id: String(entry.id) } })
+      if (!isCurrentLoad(generation)) return
     } else {
-      entry = await entriesApi.getEntry(targetId)
       original.value = entry
       applyEntryToForm(entry)
     }
 
-    const cats = await categoriesRequest
     categories.value = cats
     editorSession.value += 1
     await bindCoordinator(entry)
   } catch (error) {
-    loadError.value = toUserMessage(error)
+    if (isCurrentLoad(generation)) loadError.value = toUserMessage(error)
   } finally {
-    isLoading.value = false
+    if (isCurrentLoad(generation)) isLoading.value = false
   }
 }
 
+function isCurrentLoad(generation: number): boolean {
+  return isActive && generation === loadGeneration
+}
+
 onMounted(() => {
+  isActive = true
   window.addEventListener('keydown', handleSaveShortcut)
   void load()
 })
 
-onUnmounted(() => {
+onBeforeUnmount(() => {
+  isActive = false
+  loadGeneration += 1
   window.removeEventListener('keydown', handleSaveShortcut)
 })
 
@@ -260,7 +273,33 @@ async function reloadServerVersion(): Promise<void> {
     original.value = entry
     applyEntryToForm(entry)
     editorSession.value += 1
+    recoveryDraft = null
     await bindCoordinator(entry)
+  } catch (error) {
+    applyError(error)
+  } finally {
+    isRecovering.value = false
+  }
+}
+
+async function overwriteServerWithLocal(): Promise<void> {
+  if (original.value === null || isRecovering.value) return
+  isRecovering.value = true
+  saveError.value = null
+  const conflictedId = original.value.id
+  try {
+    const serverEntry = await entriesApi.getEntry(conflictedId)
+    const recovery = await recoveryStore.get(conflictedId)
+    if (recovery === null) throw new Error('Recovery record is unavailable')
+
+    const overwritten = await entriesApi.updateEntry(conflictedId, {
+      revision: serverEntry.revision,
+      ...recovery.fields,
+    })
+    await recoveryStore.remove(conflictedId)
+    recoveryDraft = null
+    original.value = overwritten
+    await bindCoordinator(overwritten)
   } catch (error) {
     applyError(error)
   } finally {
@@ -277,9 +316,16 @@ async function recoverAsDraft(): Promise<void> {
     const recovery = await recoveryStore.get(conflictedId)
     if (recovery === null) throw new Error('Recovery record is unavailable')
 
-    const created = await entriesApi.createEntry({})
-    const recovered = await entriesApi.updateEntry(created.id, {
-      revision: created.revision,
+    if (recoveryDraft === null || recoveryDraft.sourceEntryId !== conflictedId) {
+      const created = await entriesApi.createEntry({})
+      recoveryDraft = {
+        sourceEntryId: conflictedId,
+        entryId: created.id,
+        revision: created.revision,
+      }
+    }
+    const recovered = await entriesApi.updateEntry(recoveryDraft.entryId, {
+      revision: recoveryDraft.revision,
       ...recovery.fields,
     })
     bypassRouteFlush = true
@@ -289,6 +335,7 @@ async function recoverAsDraft(): Promise<void> {
       bypassRouteFlush = false
     }
     await recoveryStore.remove(conflictedId)
+    recoveryDraft = null
     original.value = recovered
     applyEntryToForm(recovered)
     editorSession.value += 1
@@ -333,10 +380,19 @@ async function handleDelete(): Promise<void> {
   if (original.value === null || isDeleting.value) return
   isDeleting.value = true
   try {
-    await entriesApi.deleteEntry(original.value.id)
-    await router.replace({ name: 'entries' })
+    if (!(await flushBeforeAction())) return
+    const id = original.value.id
+    await entriesApi.deleteEntry(id)
+    await coordinatorBridge.dispose()
+    bypassRouteFlush = true
+    try {
+      await router.replace({ name: 'entries' })
+    } finally {
+      bypassRouteFlush = false
+    }
   } catch (error) {
     applyError(error)
+  } finally {
     isDeleting.value = false
   }
 }
@@ -349,6 +405,8 @@ function createCoordinatorBridge(): CoordinatorBridge {
   let current: SaveCoordinator | null = null
   let listener: ((snapshot: SaveSnapshot) => void) | null = null
   let unsubscribe: (() => void) | null = null
+  let disposed = false
+  let replacement: Promise<void> = Promise.resolve()
 
   return {
     update(fields) {
@@ -357,6 +415,7 @@ function createCoordinatorBridge(): CoordinatorBridge {
     flush: () => current?.flush() ?? Promise.resolve(null),
     retry: () => current?.retry() ?? Promise.resolve(null),
     subscribe(nextListener) {
+      if (disposed) return () => undefined
       listener = nextListener
       unsubscribe = current?.subscribe(nextListener) ?? null
       return () => {
@@ -365,17 +424,33 @@ function createCoordinatorBridge(): CoordinatorBridge {
         listener = null
       }
     },
-    async replace(coordinator) {
-      unsubscribe?.()
-      unsubscribe = null
-      await current?.dispose()
-      current = coordinator
-      if (listener !== null) unsubscribe = current.subscribe(listener)
+    replace(coordinator) {
+      replacement = replacement.then(async () => {
+        if (disposed) {
+          await coordinator.dispose()
+          return
+        }
+        unsubscribe?.()
+        unsubscribe = null
+        const previous = current
+        current = null
+        await previous?.dispose()
+        if (disposed) {
+          await coordinator.dispose()
+          return
+        }
+        current = coordinator
+        if (listener !== null) unsubscribe = current.subscribe(listener)
+      })
+      return replacement
     },
     async dispose() {
+      if (disposed) return
+      disposed = true
       unsubscribe?.()
       unsubscribe = null
       listener = null
+      await replacement
       await current?.dispose()
       current = null
     },
@@ -573,6 +648,15 @@ function createCoordinatorBridge(): CoordinatorBridge {
               @click="reloadServerVersion"
             >
               载入服务端
+            </button>
+            <button
+              class="status-action"
+              type="button"
+              data-conflict-action
+              :disabled="isRecovering"
+              @click="overwriteServerWithLocal"
+            >
+              覆盖服务端
             </button>
             <button
               class="status-action"
@@ -928,8 +1012,18 @@ function createCoordinatorBridge(): CoordinatorBridge {
   }
 
   .save-status {
+    width: 100%;
     max-width: 100%;
+    height: 3.5rem;
+    flex-wrap: wrap;
+    align-content: center;
     gap: var(--space-1);
+    white-space: normal;
+  }
+
+  .save-status > span,
+  .status-action {
+    white-space: nowrap;
   }
 
   .status-action {
