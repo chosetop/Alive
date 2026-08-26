@@ -157,13 +157,16 @@ async function save(): Promise<void> {
         type: form.value.type,
         visibility: form.value.visibility,
       })
+      // Bind the editing session before the fallible PATCH. If that request
+      // fails, the unchanged form can retry against this draft and revision
+      // instead of creating another empty draft.
+      original.value = created
+      await router.replace({ name: 'entry-edit', params: { id: String(created.id) } })
+
       const initialPatch = buildEntryPatch(created, form.value)
-      const saved = isEmptyPatch(initialPatch)
-        ? created
-        : await entriesApi.updateEntry(created.id, initialPatch)
-      // Redirect to the edit route so later saves patch this revisioned draft.
-      await router.replace({ name: 'entry-edit', params: { id: String(saved.id) } })
-      original.value = saved
+      if (!isEmptyPatch(initialPatch)) {
+        original.value = await entriesApi.updateEntry(created.id, initialPatch)
+      }
       savedAt.value = new Date()
       return
     }
