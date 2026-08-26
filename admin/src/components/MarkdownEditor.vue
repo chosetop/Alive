@@ -37,6 +37,8 @@ import '@milkdown/theme-nord/style.css'
 const props = defineProps<{
   /** Read once at construction. Later changes to this prop are not applied. */
   initialValue: string
+  /** Makes the mounted editor inert during revision-changing transitions. */
+  disabled?: boolean
 }>()
 
 const emit = defineEmits<{ update: [markdown: string] }>()
@@ -66,7 +68,7 @@ useEditor((root) =>
 </script>
 
 <template>
-  <div class="editor-shell">
+  <div class="editor-shell" :inert="disabled" :aria-disabled="disabled || undefined">
     <Milkdown />
   </div>
 </template>
@@ -80,6 +82,11 @@ useEditor((root) =>
 
 .editor-shell:focus-within {
   border-color: var(--c-accent);
+}
+
+.editor-shell[aria-disabled='true'] {
+  background: var(--c-surface-sunken);
+  color: var(--c-ink-faint);
 }
 
 /* Milkdown renders into a child it owns, so these reach past scoped styles with

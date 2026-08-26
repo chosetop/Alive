@@ -39,6 +39,7 @@ type Entry struct {
 	UpdatedAt   time.Time
 	DeletedAt   *time.Time
 	CategoryID  *int64
+	Revision    int64
 }
 
 type Session struct {

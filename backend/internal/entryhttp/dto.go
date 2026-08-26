@@ -9,21 +9,20 @@ import (
 
 // createEntryRequest is the create body.
 //
-// Only title, slug and content_md are required. type, status and visibility are
-// absent-able because the service owns their defaults: repeating the defaults
-// here as binding tags would mean two places to change when one of them moves.
+// All fields are optional because creation starts an incomplete draft. type and
+// visibility are absent-able because the service owns their defaults: repeating
+// the defaults here would mean two places to change when one of them moves.
 //
-// No `binding:"oneof=..."` on type, status or visibility. Those sets live in the
+// No `binding:"oneof=..."` on type or visibility. Those sets live in the
 // domain and are checked there, and a binding tag would answer with gin's own
 // message instead of this API's error envelope.
 type createEntryRequest struct {
 	Type       string `json:"type"`
-	Title      string `json:"title" binding:"required"`
-	Slug       string `json:"slug" binding:"required"`
+	Title      string `json:"title"`
+	Slug       string `json:"slug"`
 	Summary    string `json:"summary"`
-	ContentMD  string `json:"content_md" binding:"required"`
+	ContentMD  string `json:"content_md"`
 	CoverURL   string `json:"cover_url"`
-	Status     string `json:"status"`
 	Visibility string `json:"visibility"`
 
 	// CategoryID is absent or 0 for an uncategorised entry, which is a normal state.
@@ -62,7 +61,6 @@ func (r createEntryRequest) toInput(authorID int64) entry.CreateInput {
 		Summary:    r.Summary,
 		ContentMD:  r.ContentMD,
 		CoverURL:   r.CoverURL,
-		Status:     entry.Status(r.Status),
 		Visibility: entry.Visibility(r.Visibility),
 		Meta:       entry.Meta(r.Meta),
 	}
@@ -89,9 +87,11 @@ func (r createEntryRequest) toInput(authorID int64) entry.CreateInput {
 // place where this convention is visible, since "" is a natural empty string but a
 // zero timestamp is not a natural empty date.
 //
-// No binding:"required" anywhere: a PATCH naming one field is the point of a
-// PATCH. The service refuses a body that names none.
+// Revision is the one required field. The editable fields stay pointers because
+// a PATCH naming one field is the point of a PATCH. The service refuses a body
+// that names no editable field.
 type updateEntryRequest struct {
+	Revision   int64   `json:"revision" binding:"required,min=1"`
 	Type       *string `json:"type"`
 	Title      *string `json:"title"`
 	Slug       *string `json:"slug"`
@@ -123,13 +123,14 @@ type updateEntryRequest struct {
 // toInput converts the body into what the service takes.
 func (r updateEntryRequest) toInput() entry.UpdateInput {
 	in := entry.UpdateInput{
-		Title:      r.Title,
-		Summary:    r.Summary,
-		ContentMD:  r.ContentMD,
-		CoverURL:   r.CoverURL,
-		Slug:       r.Slug,
-		HappenedAt: r.HappenedAt,
-		CategoryID: r.CategoryID,
+		ExpectedRevision: r.Revision,
+		Title:            r.Title,
+		Summary:          r.Summary,
+		ContentMD:        r.ContentMD,
+		CoverURL:         r.CoverURL,
+		Slug:             r.Slug,
+		HappenedAt:       r.HappenedAt,
+		CategoryID:       r.CategoryID,
 	}
 
 	// The three domain-typed fields need a conversion, and a new variable each:
@@ -150,6 +151,12 @@ func (r updateEntryRequest) toInput() entry.UpdateInput {
 	}
 
 	return in
+}
+
+// transitionEntryRequest is shared by publish, unpublish and archive. Each
+// transition is a write and therefore carries the revision it was based on.
+type transitionEntryRequest struct {
+	Revision int64 `json:"revision" binding:"required,min=1"`
 }
 
 // entrySummary is one entry as the public list reports it.
@@ -237,13 +244,12 @@ type publicEntryDetail struct {
 
 // ownerEntryDetail is an entry as its author sees it, in the create response.
 //
-// Carries id, status and visibility, which the public shapes leave out. The
-// author needs all three: the id addresses the entry in later admin calls, and
-// status matters because an entry is created as a draft unless the request asked
-// otherwise. Reporting it back is what makes that default visible rather than
-// something to be inferred.
+// Carries id, revision, status and visibility, which the public shapes leave
+// out. The author needs all four: id addresses later admin calls, revision guards
+// later writes, and status and visibility describe whether readers can see it.
 type ownerEntryDetail struct {
-	ID int64 `json:"id"`
+	ID       int64 `json:"id"`
+	Revision int64 `json:"revision"`
 
 	Type       string          `json:"type"`
 	Title      string          `json:"title"`
@@ -349,6 +355,7 @@ func newPublicEntryDetail(e entry.Entry) publicEntryDetail {
 func newOwnerEntryDetail(e entry.Entry) ownerEntryDetail {
 	return ownerEntryDetail{
 		ID:          e.ID,
+		Revision:    e.Revision,
 		Type:        string(e.Type),
 		Title:       e.Title,
 		Slug:        e.Slug,

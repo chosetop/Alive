@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -46,6 +47,13 @@ var (
 
 	// ErrInvalidTitle reports an empty or over-long title.
 	ErrInvalidTitle = errors.New("entry: invalid title")
+
+	// ErrEmptyContent reports a publication attempt with no body.
+	ErrEmptyContent = errors.New("entry: empty content")
+
+	// ErrVersionConflict reports a write based on an entry revision that is no
+	// longer current.
+	ErrVersionConflict = errors.New("entry: version conflict")
 
 	// ErrInvalidMeta reports a meta payload that is not a JSON object.
 	ErrInvalidMeta = errors.New("entry: invalid meta")
@@ -197,6 +205,38 @@ func ValidateTitle(title string) error {
 	return nil
 }
 
+// ValidateForPublish checks the fields that must be complete before an entry is
+// visible outside the editor. Drafts deliberately do not use this validator.
+func ValidateForPublish(e Entry) error {
+	if err := ValidateTitle(e.Title); err != nil {
+		return err
+	}
+	if err := ValidateSlug(e.Slug); err != nil {
+		return err
+	}
+	if strings.TrimSpace(e.ContentMD) == "" {
+		return ErrEmptyContent
+	}
+	if !e.Visibility.Valid() {
+		return ErrInvalidVisibility
+	}
+	return nil
+}
+
+func validateDraftTitle(title string) error {
+	if utf8.RuneCountInString(title) > MaxTitleLength {
+		return ErrInvalidTitle
+	}
+	return nil
+}
+
+func validateDraftSlug(slug string) error {
+	if slug == "" {
+		return nil
+	}
+	return ValidateSlug(slug)
+}
+
 // Meta holds the attributes that belong to one Type and not to the others: a
 // rating and an author for a book, a place for a trip.
 //
@@ -253,6 +293,7 @@ func (m Meta) ForStorage() Meta {
 // in front of every read of a field that is usually present.
 type Entry struct {
 	ID       int64
+	Revision int64
 	AuthorID int64
 
 	// CategoryID is the category this entry belongs to, zero when uncategorised.

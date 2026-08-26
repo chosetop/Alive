@@ -39,13 +39,13 @@ type Store interface {
 
 	// Publish sets status to published, stamping publishedAt only if the entry has
 	// never been published.
-	Publish(ctx context.Context, id int64, publishedAt time.Time) (Entry, error)
+	Publish(ctx context.Context, id, expectedRevision int64, publishedAt time.Time) (Entry, error)
 
 	// Unpublish returns an entry to draft, leaving its first publication time.
-	Unpublish(ctx context.Context, id int64) (Entry, error)
+	Unpublish(ctx context.Context, id, expectedRevision int64) (Entry, error)
 
 	// Archive retires an entry: off the site, still listed in admin, not deleted.
-	Archive(ctx context.Context, id int64) (Entry, error)
+	Archive(ctx context.Context, id, expectedRevision int64) (Entry, error)
 
 	// GetByID reads one live entry whatever its status. The admin read.
 	GetByID(ctx context.Context, id int64) (Entry, error)
@@ -157,21 +157,14 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Entry, error) {
 	// error. This is not the guarantee: two concurrent creates can both read
 	// false, and the partial unique index settles it. The repository translates
 	// that violation to the same ErrSlugTaken, so both paths agree.
-	taken, err := s.store.SlugExists(ctx, in.Slug)
-	if err != nil {
-		return Entry{}, err
-	}
-	if taken {
-		return Entry{}, fmt.Errorf("%w: %s", ErrSlugTaken, in.Slug)
-	}
-
-	// First publication time. Set only when the entry is born published; a draft
-	// gets nothing, and the endpoint that publishes it later fills it in then.
-	// Re-editing a published entry must never move this, which is why it is
-	// derived from status here rather than stamped on every write.
-	var publishedAt time.Time
-	if in.Status == StatusPublished {
-		publishedAt = s.now()
+	if in.Slug != "" {
+		taken, err := s.store.SlugExists(ctx, in.Slug)
+		if err != nil {
+			return Entry{}, err
+		}
+		if taken {
+			return Entry{}, fmt.Errorf("%w: %s", ErrSlugTaken, in.Slug)
+		}
 	}
 
 	created, err := s.store.Create(ctx, CreateParams{
@@ -183,14 +176,14 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Entry, error) {
 		Summary:    in.Summary,
 		ContentMD:  in.ContentMD,
 		CoverURL:   in.CoverURL,
-		Status:     in.Status,
+		Status:     StatusDraft,
 		Visibility: in.Visibility,
 		Meta:       in.Meta.ForStorage(),
 		// Computed here, not in SQL: what counts as a word is a domain rule, and
 		// it is computed once on write so no list query has to read the body.
 		WordCount:   CountWords(in.ContentMD),
 		HappenedAt:  in.HappenedAt,
-		PublishedAt: publishedAt,
+		PublishedAt: time.Time{},
 	})
 	if err != nil {
 		// The pre-check said the slug was free and the index disagreed, so two
@@ -225,6 +218,8 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Entry, error) {
 // two places. The handler refuses a status field rather than ignoring it, so a
 // client trying to publish this way is told instead of silently failing.
 type UpdateInput struct {
+	ExpectedRevision int64
+
 	Type       *Type
 	Title      *string
 	Slug       *string
@@ -270,12 +265,15 @@ func (s *Service) Update(ctx context.Context, id int64, in UpdateInput) (Entry, 
 		// while the edit silently failed to save.
 		return Entry{}, ErrNoUpdateFields
 	}
+	if in.ExpectedRevision < 1 {
+		return Entry{}, ErrVersionConflict
+	}
 
 	if err := s.validateUpdate(in); err != nil {
 		return Entry{}, err
 	}
 
-	params := UpdateParams{ID: id}
+	params := UpdateParams{ID: id, ExpectedRevision: in.ExpectedRevision}
 
 	if in.Type != nil {
 		params.SetType, params.Type = true, *in.Type
@@ -288,12 +286,14 @@ func (s *Service) Update(ctx context.Context, id int64, in UpdateInput) (Entry, 
 		// entry's own slug back is a no-op, not a conflict with itself. As in Create
 		// this is not the guarantee, only the clear error; the partial unique index
 		// settles a race and the repository reports it as the same ErrSlugTaken.
-		taken, err := s.store.SlugExistsExcluding(ctx, *in.Slug, id)
-		if err != nil {
-			return Entry{}, err
-		}
-		if taken {
-			return Entry{}, fmt.Errorf("%w: %s", ErrSlugTaken, *in.Slug)
+		if *in.Slug != "" {
+			taken, err := s.store.SlugExistsExcluding(ctx, *in.Slug, id)
+			if err != nil {
+				return Entry{}, err
+			}
+			if taken {
+				return Entry{}, fmt.Errorf("%w: %s", ErrSlugTaken, *in.Slug)
+			}
 		}
 		params.SetSlug, params.Slug = true, *in.Slug
 	}
@@ -350,12 +350,12 @@ func (s *Service) validateUpdate(in UpdateInput) error {
 		return fmt.Errorf("%w: %s", ErrInvalidVisibility, *in.Visibility)
 	}
 	if in.Title != nil {
-		if err := ValidateTitle(*in.Title); err != nil {
+		if err := validateDraftTitle(*in.Title); err != nil {
 			return err
 		}
 	}
 	if in.Slug != nil {
-		if err := ValidateSlug(*in.Slug); err != nil {
+		if err := validateDraftSlug(*in.Slug); err != nil {
 			return fmt.Errorf("%w: %s", err, *in.Slug)
 		}
 	}
@@ -404,12 +404,26 @@ func (s *Service) SoftDelete(ctx context.Context, id int64) error {
 //
 // Publishing an already published entry is not an error: the end state is the one
 // asked for, and the timestamp does not move.
-func (s *Service) Publish(ctx context.Context, id int64) (Entry, error) {
+func (s *Service) Publish(ctx context.Context, id, expectedRevision int64) (Entry, error) {
 	if id <= 0 {
 		return Entry{}, fmt.Errorf("%w: id %d", ErrEntryNotFound, id)
 	}
+	if expectedRevision < 1 {
+		return Entry{}, ErrVersionConflict
+	}
 
-	published, err := s.store.Publish(ctx, id, s.now())
+	current, err := s.store.GetByID(ctx, id)
+	if err != nil {
+		return Entry{}, err
+	}
+	if current.Revision != expectedRevision {
+		return Entry{}, ErrVersionConflict
+	}
+	if err := ValidateForPublish(current); err != nil {
+		return Entry{}, err
+	}
+
+	published, err := s.store.Publish(ctx, id, expectedRevision, s.now())
 	if err != nil {
 		return Entry{}, err
 	}
@@ -427,12 +441,15 @@ func (s *Service) Publish(ctx context.Context, id int64) (Entry, error) {
 // published_at is left alone. It records that the entry was once public, which
 // withdrawing does not undo, and clearing it would make a later re-publication
 // look like a first one.
-func (s *Service) Unpublish(ctx context.Context, id int64) (Entry, error) {
+func (s *Service) Unpublish(ctx context.Context, id, expectedRevision int64) (Entry, error) {
 	if id <= 0 {
 		return Entry{}, fmt.Errorf("%w: id %d", ErrEntryNotFound, id)
 	}
+	if expectedRevision < 1 {
+		return Entry{}, ErrVersionConflict
+	}
 
-	drafted, err := s.store.Unpublish(ctx, id)
+	drafted, err := s.store.Unpublish(ctx, id, expectedRevision)
 	if err != nil {
 		return Entry{}, err
 	}
@@ -453,12 +470,15 @@ func (s *Service) Unpublish(ctx context.Context, id int64) (Entry, error) {
 // list including the admin one.
 //
 // published_at survives, as it does for Unpublish, and for the same reason.
-func (s *Service) Archive(ctx context.Context, id int64) (Entry, error) {
+func (s *Service) Archive(ctx context.Context, id, expectedRevision int64) (Entry, error) {
 	if id <= 0 {
 		return Entry{}, fmt.Errorf("%w: id %d", ErrEntryNotFound, id)
 	}
+	if expectedRevision < 1 {
+		return Entry{}, ErrVersionConflict
+	}
 
-	archived, err := s.store.Archive(ctx, id)
+	archived, err := s.store.Archive(ctx, id, expectedRevision)
 	if err != nil {
 		return Entry{}, err
 	}
@@ -526,16 +546,6 @@ func (s *Service) validateCreate(in *CreateInput) error {
 		return fmt.Errorf("%w: %s", ErrInvalidType, in.Type)
 	}
 
-	if in.Status == "" {
-		// Draft by default. Creating something published by accident is worse than
-		// having to ask for it: an unwanted draft is invisible, an unwanted
-		// publication is already in the feed and the RSS reader.
-		in.Status = StatusDraft
-	}
-	if !in.Status.Valid() {
-		return fmt.Errorf("%w: %s", ErrInvalidStatus, in.Status)
-	}
-
 	if in.Visibility == "" {
 		in.Visibility = VisibilityPublic
 	}
@@ -543,13 +553,13 @@ func (s *Service) validateCreate(in *CreateInput) error {
 		return fmt.Errorf("%w: %s", ErrInvalidVisibility, in.Visibility)
 	}
 
-	if err := ValidateTitle(in.Title); err != nil {
+	if err := validateDraftTitle(in.Title); err != nil {
 		return err
 	}
 	// Supplied by the client, never derived from the title. Deriving a slug from
 	// Chinese text yields either a percent-encoded URL or a pinyin dependency in
 	// the backend, and both make a presentation problem into a storage one.
-	if err := ValidateSlug(in.Slug); err != nil {
+	if err := validateDraftSlug(in.Slug); err != nil {
 		return fmt.Errorf("%w: %s", err, in.Slug)
 	}
 	if err := in.Meta.Validate(); err != nil {

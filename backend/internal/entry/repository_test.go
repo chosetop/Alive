@@ -397,9 +397,10 @@ func TestRepositoryUpdateWritesOnlyFlaggedFields(t *testing.T) {
 
 	// One field flagged, everything else left off.
 	updated, err := repo.Update(ctx, entry.UpdateParams{
-		ID:       created.ID,
-		SetTitle: true,
-		Title:    "只改标题",
+		ID:               created.ID,
+		ExpectedRevision: created.Revision,
+		SetTitle:         true,
+		Title:            "只改标题",
 	})
 	if err != nil {
 		t.Fatalf("update: %v", err)
@@ -457,13 +458,14 @@ func TestRepositoryUpdateClearsNullableFields(t *testing.T) {
 	// Flagged, with the domain's absent value: the repository turns "" and a zero
 	// time into SQL NULL.
 	updated, err := repo.Update(ctx, entry.UpdateParams{
-		ID:            created.ID,
-		SetSummary:    true,
-		Summary:       "",
-		SetCoverURL:   true,
-		CoverURL:      "",
-		SetHappenedAt: true,
-		HappenedAt:    time.Time{},
+		ID:               created.ID,
+		ExpectedRevision: created.Revision,
+		SetSummary:       true,
+		Summary:          "",
+		SetCoverURL:      true,
+		CoverURL:         "",
+		SetHappenedAt:    true,
+		HappenedAt:       time.Time{},
 	})
 	if err != nil {
 		t.Fatalf("update: %v", err)
@@ -497,7 +499,7 @@ func TestRepositoryUpdateReportsAnAbsentEntry(t *testing.T) {
 	}
 
 	t.Run("an id that never existed", func(t *testing.T) {
-		_, err := repo.Update(ctx, entry.UpdateParams{ID: 999999999, SetTitle: true, Title: "x"})
+		_, err := repo.Update(ctx, entry.UpdateParams{ID: 999999999, ExpectedRevision: 1, SetTitle: true, Title: "x"})
 		if !errors.Is(err, entry.ErrEntryNotFound) {
 			t.Errorf("update = %v, want ErrEntryNotFound", err)
 		}
@@ -508,11 +510,39 @@ func TestRepositoryUpdateReportsAnAbsentEntry(t *testing.T) {
 			t.Fatalf("soft delete: %v", err)
 		}
 
-		_, err := repo.Update(ctx, entry.UpdateParams{ID: created.ID, SetTitle: true, Title: "x"})
+		_, err := repo.Update(ctx, entry.UpdateParams{ID: created.ID, ExpectedRevision: created.Revision, SetTitle: true, Title: "x"})
 		if !errors.Is(err, entry.ErrEntryNotFound) {
 			t.Errorf("update = %v, want ErrEntryNotFound", err)
 		}
 	})
+}
+
+func TestRepositoryUpdateReportsVersionConflict(t *testing.T) {
+	repo, _, authorID := newTestRepository(t)
+	ctx := context.Background()
+
+	created, err := repo.Create(ctx, validCreate(authorID, dbtest.Slug(t, "stale-update")))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := repo.Update(ctx, entry.UpdateParams{
+		ID:               created.ID,
+		ExpectedRevision: created.Revision,
+		SetTitle:         true,
+		Title:            "first save",
+	}); err != nil {
+		t.Fatalf("first update: %v", err)
+	}
+
+	_, err = repo.Update(ctx, entry.UpdateParams{
+		ID:               created.ID,
+		ExpectedRevision: created.Revision,
+		SetTitle:         true,
+		Title:            "stale save",
+	})
+	if !errors.Is(err, entry.ErrVersionConflict) {
+		t.Fatalf("stale update = %v, want ErrVersionConflict", err)
+	}
 }
 
 // TestRepositoryUpdateTranslatesASlugConflict covers the same translation the
@@ -532,7 +562,7 @@ func TestRepositoryUpdateTranslatesASlugConflict(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	_, err = repo.Update(ctx, entry.UpdateParams{ID: mine.ID, SetSlug: true, Slug: takenSlug})
+	_, err = repo.Update(ctx, entry.UpdateParams{ID: mine.ID, ExpectedRevision: mine.Revision, SetSlug: true, Slug: takenSlug})
 	if !errors.Is(err, entry.ErrSlugTaken) {
 		t.Fatalf("update = %v, want ErrSlugTaken", err)
 	}
@@ -646,7 +676,7 @@ func TestRepositoryPublishStampsOnce(t *testing.T) {
 	}
 
 	first := time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)
-	published, err := repo.Publish(ctx, created.ID, first)
+	published, err := repo.Publish(ctx, created.ID, created.Revision, first)
 	if err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -656,19 +686,21 @@ func TestRepositoryPublishStampsOnce(t *testing.T) {
 	if !published.PublishedAt.Equal(first) {
 		t.Errorf("published_at = %v, want %v", published.PublishedAt, first)
 	}
+	current := published
 
 	t.Run("publishing again does not move the date", func(t *testing.T) {
-		again, err := repo.Publish(ctx, created.ID, first.Add(72*time.Hour))
+		again, err := repo.Publish(ctx, created.ID, current.Revision, first.Add(72*time.Hour))
 		if err != nil {
 			t.Fatalf("publish: %v", err)
 		}
 		if !again.PublishedAt.Equal(first) {
 			t.Errorf("published_at = %v, want the original %v", again.PublishedAt, first)
 		}
+		current = again
 	})
 
 	t.Run("unpublish and archive keep it", func(t *testing.T) {
-		drafted, err := repo.Unpublish(ctx, created.ID)
+		drafted, err := repo.Unpublish(ctx, created.ID, current.Revision)
 		if err != nil {
 			t.Fatalf("unpublish: %v", err)
 		}
@@ -679,7 +711,7 @@ func TestRepositoryPublishStampsOnce(t *testing.T) {
 			t.Errorf("published_at = %v, want the original %v", drafted.PublishedAt, first)
 		}
 
-		archived, err := repo.Archive(ctx, created.ID)
+		archived, err := repo.Archive(ctx, created.ID, drafted.Revision)
 		if err != nil {
 			t.Fatalf("archive: %v", err)
 		}
@@ -689,10 +721,11 @@ func TestRepositoryPublishStampsOnce(t *testing.T) {
 		if !archived.PublishedAt.Equal(first) {
 			t.Errorf("published_at = %v, want the original %v", archived.PublishedAt, first)
 		}
+		current = archived
 	})
 
 	t.Run("republishing after a withdrawal keeps the first date", func(t *testing.T) {
-		again, err := repo.Publish(ctx, created.ID, first.Add(240*time.Hour))
+		again, err := repo.Publish(ctx, created.ID, current.Revision, first.Add(240*time.Hour))
 		if err != nil {
 			t.Fatalf("publish: %v", err)
 		}
@@ -720,9 +753,9 @@ func TestRepositoryStateTransitionsReportAnAbsentEntry(t *testing.T) {
 		name string
 		call func(int64) error
 	}{
-		{"publish", func(id int64) error { _, err := repo.Publish(ctx, id, time.Now()); return err }},
-		{"unpublish", func(id int64) error { _, err := repo.Unpublish(ctx, id); return err }},
-		{"archive", func(id int64) error { _, err := repo.Archive(ctx, id); return err }},
+		{"publish", func(id int64) error { _, err := repo.Publish(ctx, id, 1, time.Now()); return err }},
+		{"unpublish", func(id int64) error { _, err := repo.Unpublish(ctx, id, 1); return err }},
+		{"archive", func(id int64) error { _, err := repo.Archive(ctx, id, 1); return err }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := tc.call(created.ID); !errors.Is(err, entry.ErrEntryNotFound) {

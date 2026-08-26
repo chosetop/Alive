@@ -463,6 +463,29 @@ const validCreateBody = `{
 	"content_md": "在鸭川边坐了一整个下午。"
 }`
 
+// TestCreateEmptyDraft protects the draft-first contract: creation must not
+// require publication-stage fields, and the returned owner shape must expose
+// the revision needed by the first save.
+func TestCreateEmptyDraft(t *testing.T) {
+	handler, _ := newTestServer(t, testAuthorID)
+
+	rec := do(t, handler, http.MethodPost, "/api/v1/entries", `{}`)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201\nbody: %s", rec.Code, rec.Body.String())
+	}
+
+	data := dataObject(t, rec)
+	for _, field := range []string{"title", "slug", "content_md"} {
+		if got := stringField(t, data, field); got != "" {
+			t.Errorf("%s = %q, want empty", field, got)
+		}
+	}
+	if got := string(data["revision"]); got != "1" {
+		t.Errorf("revision = %s, want 1", got)
+	}
+}
+
 func TestCreate(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 
@@ -543,34 +566,6 @@ func TestCreateIgnoresClientSuppliedOwnership(t *testing.T) {
 	}
 }
 
-// TestCreatePublishedStampsPublishedAt covers the timestamp whose semantics are
-// fixed: first publication, and it does not move afterwards.
-func TestCreatePublishedStampsPublishedAt(t *testing.T) {
-	handler, store := newTestServer(t, testAuthorID)
-
-	rec := do(t, handler, http.MethodPost, "/api/v1/entries", `{
-		"title": "published at birth",
-		"slug": "born-published",
-		"content_md": "body",
-		"status": "published"
-	}`)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("status = %d, want 201\nbody: %s", rec.Code, rec.Body.String())
-	}
-
-	if !store.LastCreate.PublishedAt.Equal(fixedTime) {
-		t.Errorf("stored published_at = %v, want %v", store.LastCreate.PublishedAt, fixedTime)
-	}
-
-	var publishedAt time.Time
-	if err := json.Unmarshal(dataObject(t, rec)["published_at"], &publishedAt); err != nil {
-		t.Fatalf("published_at is not a timestamp: %v", err)
-	}
-	if !publishedAt.Equal(fixedTime) {
-		t.Errorf("published_at = %v, want %v", publishedAt, fixedTime)
-	}
-}
-
 // TestCreateAcceptsHappenedAtAndMeta covers the two fields that are neither
 // required nor plain strings.
 func TestCreateAcceptsHappenedAtAndMeta(t *testing.T) {
@@ -632,19 +627,14 @@ func TestCreateSlugConflict(t *testing.T) {
 	}
 }
 
-// TestCreateRejectsInvalidInput covers each domain error the handler maps, and
-// asserts the response names the field at fault. "invalid input" alone leaves an
-// editor to guess which of eleven fields to fix.
+// TestCreateRejectsInvalidInput covers each domain error creation can still
+// produce for a partially filled draft and asserts the field at fault.
 func TestCreateRejectsInvalidInput(t *testing.T) {
 	cases := []struct {
 		name      string
 		body      string
 		wantField string
 	}{
-		// Caught by the binding tags, before the service.
-		{"no title", `{"slug":"s","content_md":"b"}`, ""},
-		{"no slug", `{"title":"t","content_md":"b"}`, ""},
-		{"no content", `{"title":"t","slug":"s"}`, ""},
 		{"malformed JSON", `{"title":`, ""},
 
 		// Caught by the domain, and each names its field.
@@ -652,7 +642,6 @@ func TestCreateRejectsInvalidInput(t *testing.T) {
 		{"slug with a space", `{"title":"t","slug":"kyoto spring","content_md":"b"}`, "slug"},
 		{"chinese slug", `{"title":"t","slug":"京都","content_md":"b"}`, "slug"},
 		{"unknown type", `{"title":"t","slug":"s","content_md":"b","type":"joural"}`, "type"},
-		{"unknown status", `{"title":"t","slug":"s","content_md":"b","status":"live"}`, "status"},
 		{"unknown visibility", `{"title":"t","slug":"s","content_md":"b","visibility":"hidden"}`, "visibility"},
 		{"meta is an array", `{"title":"t","slug":"s","content_md":"b","meta":[1]}`, "meta"},
 	}
@@ -743,7 +732,7 @@ func TestUpdateWritesOnlySubmittedFields(t *testing.T) {
 		Status: entry.StatusPublished, Visibility: entry.VisibilityPublic,
 	})
 
-	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7", `{"title":"Renamed"}`)
+	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7", `{"revision":1,"title":"Renamed"}`)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
@@ -766,6 +755,44 @@ func TestUpdateWritesOnlySubmittedFields(t *testing.T) {
 	}
 }
 
+// TestUpdateRequiresRevision protects the compare-and-swap precondition at the
+// HTTP boundary. A missing revision must be rejected before it can overwrite a
+// newer edit.
+func TestUpdateRequiresRevision(t *testing.T) {
+	handler, store := newTestServer(t, testAuthorID)
+	store.Seed(entry.Entry{ID: 7, Revision: 1, Slug: "original", Title: "Original"})
+
+	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7", `{"title":"Renamed"}`)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400\nbody: %s", rec.Code, rec.Body.String())
+	}
+	if code := errorCode(t, rec); code != "INVALID_INPUT" {
+		t.Errorf("code = %q, want INVALID_INPUT", code)
+	}
+	if store.UpdateCalls != 0 {
+		t.Errorf("an update without a revision reached the store, %d calls", store.UpdateCalls)
+	}
+}
+
+// TestUpdateStaleRevision protects the exact recovery contract consumed by the
+// editor when another save wins first.
+func TestUpdateStaleRevision(t *testing.T) {
+	handler, store := newTestServer(t, testAuthorID)
+	store.Seed(entry.Entry{ID: 7, Revision: 2, Slug: "original", Title: "Newer"})
+
+	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7",
+		`{"revision":1,"title":"Stale"}`)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409\nbody: %s", rec.Code, rec.Body.String())
+	}
+	want := `{"error":{"code":"CONFLICT","message":"entry changed since it was loaded","fields":{"revision":"请重新载入或保留当前内容为恢复草稿"}}}`
+	if got := rec.Body.String(); got != want {
+		t.Errorf("body = %s\nwant = %s", got, want)
+	}
+}
+
 // TestUpdateClearsAFieldWithAnEmptyValue covers the other half of the pointer
 // scheme: an empty string is a submitted value, not an absent one.
 func TestUpdateClearsAFieldWithAnEmptyValue(t *testing.T) {
@@ -775,7 +802,7 @@ func TestUpdateClearsAFieldWithAnEmptyValue(t *testing.T) {
 		Status: entry.StatusDraft, Visibility: entry.VisibilityPublic,
 	})
 
-	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7", `{"summary":""}`)
+	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7", `{"revision":1,"summary":""}`)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
@@ -799,7 +826,7 @@ func TestUpdateRecomputesTheWordCount(t *testing.T) {
 	})
 
 	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7",
-		`{"content_md":"one two three four","word_count":999}`)
+		`{"revision":1,"content_md":"one two three four","word_count":999}`)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
@@ -816,7 +843,7 @@ func TestUpdateRefusesStatus(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 	store.Seed(entry.Entry{ID: 7, Slug: "original", Title: "Original", Status: entry.StatusDraft})
 
-	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7", `{"status":"published"}`)
+	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7", `{"revision":1,"status":"published"}`)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400\nbody: %s", rec.Code, rec.Body.String())
@@ -835,7 +862,7 @@ func TestUpdateRefusesAnEmptyBody(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 	store.Seed(entry.Entry{ID: 7, Slug: "original", Title: "Original"})
 
-	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7", `{}`)
+	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7", `{"revision":1}`)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400\nbody: %s", rec.Code, rec.Body.String())
@@ -852,7 +879,7 @@ func TestUpdateKeepingItsOwnSlugIsNotAConflict(t *testing.T) {
 	store.Seed(entry.Entry{ID: 7, Slug: "keeps-this", Title: "Original"})
 
 	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7",
-		`{"slug":"keeps-this","title":"Renamed"}`)
+		`{"revision":1,"slug":"keeps-this","title":"Renamed"}`)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
@@ -869,7 +896,7 @@ func TestUpdateRefusesASlugAnotherEntryHolds(t *testing.T) {
 	store.Seed(entry.Entry{ID: 7, Slug: "mine", Title: "Mine"})
 	store.Seed(entry.Entry{ID: 8, Slug: "taken", Title: "Theirs"})
 
-	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7", `{"slug":"taken"}`)
+	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7", `{"revision":1,"slug":"taken"}`)
 
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want 409\nbody: %s", rec.Code, rec.Body.String())
@@ -911,11 +938,11 @@ func TestIDRoutesAnswer404ForAnAbsentEntry(t *testing.T) {
 	handler, _ := newTestServer(t, testAuthorID)
 
 	for _, tc := range []struct{ method, target, body string }{
-		{http.MethodPatch, "/api/v1/entries/999", `{"title":"X"}`},
+		{http.MethodPatch, "/api/v1/entries/999", `{"revision":1,"title":"X"}`},
 		{http.MethodDelete, "/api/v1/entries/999", ""},
-		{http.MethodPost, "/api/v1/entries/999/publish", ""},
-		{http.MethodPost, "/api/v1/entries/999/unpublish", ""},
-		{http.MethodPost, "/api/v1/entries/999/archive", ""},
+		{http.MethodPost, "/api/v1/entries/999/publish", `{"revision":1}`},
+		{http.MethodPost, "/api/v1/entries/999/unpublish", `{"revision":1}`},
+		{http.MethodPost, "/api/v1/entries/999/archive", `{"revision":1}`},
 		{http.MethodGet, "/api/v1/admin/entries/999", ""},
 	} {
 		t.Run(tc.method+" "+tc.target, func(t *testing.T) {
@@ -977,11 +1004,11 @@ func TestDeleteRemovesTheEntryFromEveryRead(t *testing.T) {
 func TestPublishStampsPublishedAtOnceOnly(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 	store.Seed(entry.Entry{
-		ID: 7, Slug: "to-publish", Title: "To publish",
+		ID: 7, Slug: "to-publish", Title: "To publish", ContentMD: "body",
 		Status: entry.StatusDraft, Visibility: entry.VisibilityPublic,
 	})
 
-	rec := do(t, handler, http.MethodPost, "/api/v1/entries/7/publish", "")
+	rec := do(t, handler, http.MethodPost, "/api/v1/entries/7/publish", `{"revision":1}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
 	}
@@ -1002,13 +1029,55 @@ func TestPublishStampsPublishedAtOnceOnly(t *testing.T) {
 	})
 
 	t.Run("republishing keeps the first date", func(t *testing.T) {
-		do(t, handler, http.MethodPost, "/api/v1/entries/7/unpublish", "")
-		rec := do(t, handler, http.MethodPost, "/api/v1/entries/7/publish", "")
+		do(t, handler, http.MethodPost, "/api/v1/entries/7/unpublish", `{"revision":2}`)
+		rec := do(t, handler, http.MethodPost, "/api/v1/entries/7/publish", `{"revision":3}`)
 
 		if got := stringField(t, dataObject(t, rec), "published_at"); got != first {
 			t.Errorf("published_at = %q, want the original %q", got, first)
 		}
 	})
+}
+
+// TestPublishIncomplete protects the point at which draft leniency ends. A
+// body-less draft may be saved, but it may not become visible.
+func TestPublishIncomplete(t *testing.T) {
+	handler, store := newTestServer(t, testAuthorID)
+	store.Seed(entry.Entry{
+		ID: 7, Revision: 1, Slug: "incomplete", Title: "Incomplete",
+		Status: entry.StatusDraft, Visibility: entry.VisibilityPublic,
+	})
+
+	rec := do(t, handler, http.MethodPost, "/api/v1/entries/7/publish", `{"revision":1}`)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400\nbody: %s", rec.Code, rec.Body.String())
+	}
+	if code := errorCode(t, rec); code != "INVALID_INPUT" {
+		t.Errorf("code = %q, want INVALID_INPUT", code)
+	}
+	if fields := errorFields(t, rec); fields["content_md"] == "" {
+		t.Errorf("fields = %v, want content_md named", fields)
+	}
+}
+
+// TestPublishStaleRevision protects transitions from publishing a version the
+// editor did not review.
+func TestPublishStaleRevision(t *testing.T) {
+	handler, store := newTestServer(t, testAuthorID)
+	store.Seed(entry.Entry{
+		ID: 7, Revision: 2, Slug: "complete", Title: "Complete", ContentMD: "body",
+		Status: entry.StatusDraft, Visibility: entry.VisibilityPublic,
+	})
+
+	rec := do(t, handler, http.MethodPost, "/api/v1/entries/7/publish", `{"revision":1}`)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409\nbody: %s", rec.Code, rec.Body.String())
+	}
+	want := `{"error":{"code":"CONFLICT","message":"entry changed since it was loaded","fields":{"revision":"请重新载入或保留当前内容为恢复草稿"}}}`
+	if got := rec.Body.String(); got != want {
+		t.Errorf("body = %s\nwant = %s", got, want)
+	}
 }
 
 // TestUnpublishLeavesPublishedAt covers what withdrawing does and does not undo.
@@ -1021,7 +1090,7 @@ func TestUnpublishLeavesPublishedAt(t *testing.T) {
 		PublishedAt: fixedTime.Add(-72 * time.Hour),
 	})
 
-	rec := do(t, handler, http.MethodPost, "/api/v1/entries/7/unpublish", "")
+	rec := do(t, handler, http.MethodPost, "/api/v1/entries/7/unpublish", `{"revision":1}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
 	}
@@ -1052,7 +1121,7 @@ func TestArchiveIsNeitherADraftNorADelete(t *testing.T) {
 		PublishedAt: fixedTime.Add(-72 * time.Hour),
 	})
 
-	rec := do(t, handler, http.MethodPost, "/api/v1/entries/7/archive", "")
+	rec := do(t, handler, http.MethodPost, "/api/v1/entries/7/archive", `{"revision":1}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
 	}

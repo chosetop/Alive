@@ -1,17 +1,31 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRouter } from 'vue-router'
 import {
-  buildEntryPatch,
   categoriesApi,
   entriesApi,
-  isEmptyPatch,
+  fromFormDateTime,
   toFormDateTime,
   toUserMessage,
   type EntryFormState,
 } from '../api'
-import type { Category, EntryDetail, EntryStatus, EntryType, EntryVisibility } from '../types/api'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
+import { EntryRecoveryStore } from '../editor/recovery-store'
+import {
+  createSaveCoordinator,
+  type SaveCoordinator,
+  type SaveSnapshot,
+  type SaveStatus,
+} from '../editor/save-coordinator'
+import { useEntryAutosave } from '../editor/useEntryAutosave'
+import type {
+  Category,
+  EntryDetail,
+  EntryPatchFields,
+  EntryStatus,
+  EntryType,
+  EntryVisibility,
+} from '../types/api'
 
 /**
  * Create and edit one entry.
@@ -28,7 +42,6 @@ const props = defineProps<{
 
 const router = useRouter()
 
-const isCreate = computed(() => props.id === undefined)
 const entryId = computed(() => (props.id === undefined ? null : Number(props.id)))
 
 /** The record as loaded, kept to diff against. Null while creating. */
@@ -37,15 +50,23 @@ const categories = ref<Category[]>([])
 
 const isLoading = ref(true)
 const loadError = ref<string | null>(null)
-const isSaving = ref(false)
+const categoryError = ref<string | null>(null)
 const saveError = ref<string | null>(null)
 const fieldErrors = ref<Record<string, string>>({})
-/** Cleared on the next edit, so it cannot claim a stale save is still current. */
-const savedAt = ref<Date | null>(null)
+const editorSession = ref(0)
 
 const isTransitioning = ref(false)
 const isDeleting = ref(false)
 const confirmingDelete = ref(false)
+const isRecovering = ref(false)
+let bypassRouteFlush = false
+let isActive = false
+let loadGeneration = 0
+let recoveryDraft: { sourceEntryId: number; entryId: number; revision: number } | null = null
+
+const recoveryStore = new EntryRecoveryStore()
+const coordinatorBridge = createCoordinatorBridge()
+const autosave = useEntryAutosave(coordinatorBridge)
 
 const form = ref<EntryFormState>({
   title: '',
@@ -90,49 +111,101 @@ const localError = computed<string | null>(() => {
   if (!SLUG_PATTERN.test(form.value.slug)) {
     return 'slug 只能是小写字母和数字，用单个连字符分隔'
   }
-  // content_md is required on create. On edit an empty body is a real edit —
-  // emptying a draft you are rewriting — so it is only blocked here.
-  if (isCreate.value && form.value.contentMd.trim() === '') return '正文不能为空'
   return null
 })
 
-const canSave = computed(() => !isSaving.value && localError.value === null)
-
 const currentStatus = computed<EntryStatus | null>(() => original.value?.status ?? null)
+const controlsDisabled = computed(
+  () => isLoading.value || isTransitioning.value || isRecovering.value || isDeleting.value,
+)
 
-async function load(): Promise<void> {
+const saveStatusText = computed(() => {
+  const labels: Record<SaveStatus, string> = {
+    saved: '已保存',
+    pending: '待保存',
+    saving: '保存中…',
+    offline: '离线，本地草稿已保留',
+    error: '保存失败',
+    conflict: '保存冲突，本地已保留',
+  }
+  return labels[autosave.status.value]
+})
+
+async function load(targetId: number | null = entryId.value): Promise<void> {
+  const generation = ++loadGeneration
   isLoading.value = true
   loadError.value = null
+  categoryError.value = null
   try {
-    // Categories are needed in both modes, for the picker.
-    const [cats, entry] = await Promise.all([
-      categoriesApi.listCategoriesAdmin(),
-      entryId.value === null ? Promise.resolve(null) : entriesApi.getEntry(entryId.value),
-    ])
-    categories.value = cats
+    const entry =
+      targetId === null ? await entriesApi.createEntry({}) : await entriesApi.getEntry(targetId)
+    if (!isCurrentLoad(generation)) return
+    recoveryDraft = null
 
-    if (entry !== null) {
+    if (targetId === null) {
       original.value = entry
-      form.value = {
-        title: entry.title,
-        slug: entry.slug,
-        summary: entry.summary,
-        contentMd: entry.content_md,
-        coverUrl: entry.cover_url,
-        type: entry.type,
-        visibility: entry.visibility,
-        categoryId: entry.category_id,
-        happenedAt: toFormDateTime(entry.happened_at),
-      }
+      applyEntryToForm(entry)
+      await router.replace({ name: 'entry-edit', params: { id: String(entry.id) } })
+      if (!isCurrentLoad(generation)) return
+    } else {
+      original.value = entry
+      applyEntryToForm(entry)
+    }
+
+    editorSession.value += 1
+    await bindCoordinator(entry)
+    if (!isCurrentLoad(generation)) return
+    isLoading.value = false
+
+    try {
+      const cats = await categoriesApi.listCategoriesAdmin()
+      if (isCurrentLoad(generation)) categories.value = cats
+    } catch (error) {
+      if (isCurrentLoad(generation)) categoryError.value = toUserMessage(error)
     }
   } catch (error) {
-    loadError.value = toUserMessage(error)
+    if (isCurrentLoad(generation)) loadError.value = toUserMessage(error)
   } finally {
-    isLoading.value = false
+    if (isCurrentLoad(generation)) isLoading.value = false
   }
 }
 
-onMounted(load)
+function isCurrentLoad(generation: number): boolean {
+  return isActive && generation === loadGeneration
+}
+
+onMounted(() => {
+  isActive = true
+  window.addEventListener('keydown', handleSaveShortcut)
+  void load()
+})
+
+onBeforeUnmount(() => {
+  isActive = false
+  loadGeneration += 1
+  window.removeEventListener('keydown', handleSaveShortcut)
+})
+
+watch(
+  () => props.id,
+  (nextId) => {
+    const numericId = nextId === undefined ? null : Number(nextId)
+    if (numericId !== null && (numericId !== original.value?.id || loadError.value !== null)) {
+      void load(numericId)
+    }
+  },
+)
+
+watch(
+  autosave.error,
+  (error) => {
+    fieldErrors.value = error?.fields ?? {}
+  },
+  { flush: 'sync' },
+)
+
+onBeforeRouteLeave(async () => ((await flushBeforeRouteChange()) ? undefined : false))
+onBeforeRouteUpdate(async () => ((await flushBeforeRouteChange()) ? undefined : false))
 
 function applyError(error: unknown): void {
   saveError.value = toUserMessage(error)
@@ -142,52 +215,38 @@ function applyError(error: unknown): void {
 /** Markdown arrives from the editor one way; this is the only writer of contentMd. */
 function handleContentUpdate(markdown: string): void {
   form.value.contentMd = markdown
-  savedAt.value = null
+  queueUpdate({ content_md: markdown })
 }
 
-async function save(): Promise<void> {
-  if (!canSave.value) return
-  isSaving.value = true
+function queueUpdate(fields: EntryPatchFields): void {
+  if (controlsDisabled.value) return
   saveError.value = null
   fieldErrors.value = {}
+  coordinatorBridge.update(fields)
+}
 
-  try {
-    if (original.value === null) {
-      const created = await entriesApi.createEntry({
-        title: form.value.title.trim(),
-        slug: form.value.slug,
-        content_md: form.value.contentMd,
-        type: form.value.type,
-        visibility: form.value.visibility,
-        summary: form.value.summary,
-        cover_url: form.value.coverUrl,
-        category_id: form.value.categoryId,
-        ...(form.value.happenedAt === ''
-          ? {}
-          : { happened_at: new Date(form.value.happenedAt).toISOString() }),
-      })
-      // Redirect to the edit route so a second save patches instead of trying to
-      // create the same slug again, which would be a 409.
-      await router.replace({ name: 'entry-edit', params: { id: String(created.id) } })
-      original.value = created
-      savedAt.value = new Date()
-      return
-    }
+function queueHappenedAt(): void {
+  queueUpdate({
+    happened_at:
+      form.value.happenedAt === ''
+        ? '0001-01-01T00:00:00Z'
+        : fromFormDateTime(form.value.happenedAt),
+  })
+}
 
-    const patch = buildEntryPatch(original.value, form.value)
-    if (isEmptyPatch(patch)) {
-      // An empty patch is a 400 by design, and nothing changed, so there is
-      // nothing to report but also nothing wrong.
-      savedAt.value = new Date()
-      return
-    }
-    original.value = await entriesApi.updateEntry(original.value.id, patch)
-    savedAt.value = new Date()
-  } catch (error) {
-    applyError(error)
-  } finally {
-    isSaving.value = false
-  }
+async function flushBeforeAction(): Promise<boolean> {
+  await autosave.flush()
+  return autosave.status.value === 'saved'
+}
+
+async function flushBeforeRouteChange(): Promise<boolean> {
+  return bypassRouteFlush || flushBeforeAction()
+}
+
+async function handleSaveShortcut(event: KeyboardEvent): Promise<void> {
+  if (event.key.toLowerCase() !== 's' || (!event.metaKey && !event.ctrlKey)) return
+  event.preventDefault()
+  await flushBeforeAction()
 }
 
 /**
@@ -199,13 +258,17 @@ async function transition(action: 'publish' | 'unpublish' | 'archive'): Promise<
   isTransitioning.value = true
   saveError.value = null
   try {
+    if (!(await flushBeforeAction())) return
     const id = original.value.id
-    original.value =
+    const revision = autosave.revision.value
+    const transitioned =
       action === 'publish'
-        ? await entriesApi.publishEntry(id)
+        ? await entriesApi.publishEntry(id, revision)
         : action === 'unpublish'
-          ? await entriesApi.unpublishEntry(id)
-          : await entriesApi.archiveEntry(id)
+          ? await entriesApi.unpublishEntry(id, revision)
+          : await entriesApi.archiveEntry(id, revision)
+    original.value = transitioned
+    await bindCoordinator(transitioned)
   } catch (error) {
     applyError(error)
   } finally {
@@ -213,15 +276,197 @@ async function transition(action: 'publish' | 'unpublish' | 'archive'): Promise<
   }
 }
 
+async function reloadServerVersion(): Promise<void> {
+  if (original.value === null || isRecovering.value) return
+  isRecovering.value = true
+  saveError.value = null
+  try {
+    const entry = await entriesApi.getEntry(original.value.id)
+    await recoveryStore.remove(original.value.id)
+    original.value = entry
+    applyEntryToForm(entry)
+    editorSession.value += 1
+    recoveryDraft = null
+    await bindCoordinator(entry)
+  } catch (error) {
+    applyError(error)
+  } finally {
+    isRecovering.value = false
+  }
+}
+
+async function overwriteServerWithLocal(): Promise<void> {
+  if (original.value === null || isRecovering.value) return
+  isRecovering.value = true
+  saveError.value = null
+  const conflictedId = original.value.id
+  try {
+    await autosave.flush()
+    const serverEntry = await entriesApi.getEntry(conflictedId)
+    const recovery = await recoveryStore.get(conflictedId)
+    if (recovery === null) throw new Error('Recovery record is unavailable')
+
+    const overwritten = await entriesApi.updateEntry(conflictedId, {
+      revision: serverEntry.revision,
+      ...recovery.fields,
+    })
+    await recoveryStore.remove(conflictedId)
+    recoveryDraft = null
+    original.value = overwritten
+    await bindCoordinator(overwritten)
+  } catch (error) {
+    applyError(error)
+  } finally {
+    isRecovering.value = false
+  }
+}
+
+async function recoverAsDraft(): Promise<void> {
+  if (original.value === null || isRecovering.value) return
+  isRecovering.value = true
+  saveError.value = null
+  const conflictedId = original.value.id
+  try {
+    await autosave.flush()
+    const recovery = await recoveryStore.get(conflictedId)
+    if (recovery === null) throw new Error('Recovery record is unavailable')
+
+    if (recoveryDraft === null || recoveryDraft.sourceEntryId !== conflictedId) {
+      const created = await entriesApi.createEntry({})
+      recoveryDraft = {
+        sourceEntryId: conflictedId,
+        entryId: created.id,
+        revision: created.revision,
+      }
+    }
+    const recovered = await entriesApi.updateEntry(recoveryDraft.entryId, {
+      revision: recoveryDraft.revision,
+      ...recovery.fields,
+    })
+    bypassRouteFlush = true
+    try {
+      await router.replace({ name: 'entry-edit', params: { id: String(recovered.id) } })
+    } finally {
+      bypassRouteFlush = false
+    }
+    await recoveryStore.remove(conflictedId)
+    recoveryDraft = null
+    original.value = recovered
+    await bindCoordinator(recovered)
+  } catch (error) {
+    applyError(error)
+  } finally {
+    isRecovering.value = false
+  }
+}
+
+function applyEntryToForm(entry: EntryDetail): void {
+  form.value = {
+    title: entry.title,
+    slug: entry.slug,
+    summary: entry.summary,
+    contentMd: entry.content_md,
+    coverUrl: entry.cover_url,
+    type: entry.type,
+    visibility: entry.visibility,
+    categoryId: entry.category_id,
+    happenedAt: toFormDateTime(entry.happened_at),
+  }
+}
+
+async function bindCoordinator(entry: EntryDetail): Promise<void> {
+  const coordinator = createSaveCoordinator({
+    entryId: entry.id,
+    initialRevision: entry.revision,
+    waitMs: 1000,
+    recoveryStore,
+    save: async (id, body) => {
+      const saved = await entriesApi.updateEntry(id, body)
+      if (original.value?.id === id) original.value = saved
+      return saved
+    },
+  })
+  await coordinatorBridge.replace(coordinator)
+}
+
 async function handleDelete(): Promise<void> {
   if (original.value === null || isDeleting.value) return
   isDeleting.value = true
   try {
-    await entriesApi.deleteEntry(original.value.id)
-    await router.replace({ name: 'entries' })
+    if (!(await flushBeforeAction())) return
+    const id = original.value.id
+    await entriesApi.deleteEntry(id)
+    await coordinatorBridge.dispose()
+    bypassRouteFlush = true
+    try {
+      await router.replace({ name: 'entries' })
+    } finally {
+      bypassRouteFlush = false
+    }
   } catch (error) {
     applyError(error)
+  } finally {
     isDeleting.value = false
+  }
+}
+
+interface CoordinatorBridge extends SaveCoordinator {
+  replace(coordinator: SaveCoordinator): Promise<void>
+}
+
+function createCoordinatorBridge(): CoordinatorBridge {
+  let current: SaveCoordinator | null = null
+  let listener: ((snapshot: SaveSnapshot) => void) | null = null
+  let unsubscribe: (() => void) | null = null
+  let disposed = false
+  let replacement: Promise<void> = Promise.resolve()
+
+  return {
+    update(fields) {
+      current?.update(fields)
+    },
+    flush: () => current?.flush() ?? Promise.resolve(null),
+    retry: () => current?.retry() ?? Promise.resolve(null),
+    subscribe(nextListener) {
+      if (disposed) return () => undefined
+      listener = nextListener
+      unsubscribe = current?.subscribe(nextListener) ?? null
+      return () => {
+        unsubscribe?.()
+        unsubscribe = null
+        listener = null
+      }
+    },
+    replace(coordinator) {
+      replacement = replacement.then(async () => {
+        if (disposed) {
+          await coordinator.dispose()
+          return
+        }
+        unsubscribe?.()
+        unsubscribe = null
+        const previous = current
+        current = null
+        await previous?.dispose()
+        if (disposed) {
+          await coordinator.dispose()
+          return
+        }
+        current = coordinator
+        if (listener !== null) unsubscribe = current.subscribe(listener)
+      })
+      return replacement
+    },
+    async dispose() {
+      if (disposed) return
+      disposed = true
+      unsubscribe?.()
+      unsubscribe = null
+      listener = null
+      await replacement
+      await current?.dispose()
+      current = null
+    },
   }
 }
 </script>
@@ -234,7 +479,7 @@ async function handleDelete(): Promise<void> {
     <template v-else>
       <header class="head">
         <div class="head-main">
-          <h1 class="title">{{ isCreate ? '新建内容' : '编辑内容' }}</h1>
+          <h1 class="title">编辑内容</h1>
           <div v-if="currentStatus" class="status-line">
             <span class="badge" :class="`badge--${currentStatus}`">
               {{ STATUS_LABEL[currentStatus] }}
@@ -260,8 +505,8 @@ async function handleDelete(): Promise<void> {
             :class="{ 'input--invalid': fieldErrors.title }"
             type="text"
             maxlength="255"
-            :disabled="isSaving"
-            @input="savedAt = null"
+            :disabled="controlsDisabled"
+            @input="queueUpdate({ title: form.title })"
           />
           <p v-if="fieldErrors.title" class="field-error">{{ fieldErrors.title }}</p>
         </div>
@@ -277,8 +522,8 @@ async function handleDelete(): Promise<void> {
               type="text"
               maxlength="255"
               spellcheck="false"
-              :disabled="isSaving"
-              @input="savedAt = null"
+              :disabled="controlsDisabled"
+              @input="queueUpdate({ slug: form.slug })"
             />
             <p class="hint">URL 里的那一段，自己填。改它不会和自己冲突。</p>
             <p v-if="fieldErrors.slug" class="field-error">{{ fieldErrors.slug }}</p>
@@ -290,8 +535,8 @@ async function handleDelete(): Promise<void> {
               id="e-type"
               v-model="form.type"
               class="input"
-              :disabled="isSaving"
-              @change="savedAt = null"
+              :disabled="controlsDisabled"
+              @change="queueUpdate({ type: form.type })"
             >
               <option v-for="t in TYPES" :key="t.value" :value="t.value">{{ t.label }}</option>
             </select>
@@ -304,8 +549,8 @@ async function handleDelete(): Promise<void> {
               v-model.number="form.categoryId"
               class="input"
               :class="{ 'input--invalid': fieldErrors.category_id }"
-              :disabled="isSaving"
-              @change="savedAt = null"
+              :disabled="controlsDisabled"
+              @change="queueUpdate({ category_id: form.categoryId })"
             >
               <!-- 0 is a real value meaning uncategorised, not a placeholder. -->
               <option :value="0">未分类</option>
@@ -322,8 +567,8 @@ async function handleDelete(): Promise<void> {
             v-model="form.summary"
             class="input textarea"
             rows="2"
-            :disabled="isSaving"
-            @input="savedAt = null"
+            :disabled="controlsDisabled"
+            @input="queueUpdate({ summary: form.summary })"
           ></textarea>
           <p class="hint">列表和 meta description 用。留空即清除。</p>
         </div>
@@ -334,8 +579,9 @@ async function handleDelete(): Promise<void> {
                reads its initial value once, so switching entries must build a
                new editor rather than try to swap the document underneath. -->
           <MarkdownEditor
-            :key="original?.id ?? 'new'"
+            :key="`${original?.id ?? 'new'}:${editorSession}`"
             :initial-value="form.contentMd"
+            :disabled="controlsDisabled"
             @update="handleContentUpdate"
           />
           <p class="hint">所见即所得，存的是 Markdown 源文本。</p>
@@ -349,8 +595,8 @@ async function handleDelete(): Promise<void> {
               v-model="form.coverUrl"
               class="input input--mono"
               type="url"
-              :disabled="isSaving"
-              @input="savedAt = null"
+              :disabled="controlsDisabled"
+              @input="queueUpdate({ cover_url: form.coverUrl })"
             />
           </div>
 
@@ -361,8 +607,8 @@ async function handleDelete(): Promise<void> {
               v-model="form.happenedAt"
               class="input"
               type="datetime-local"
-              :disabled="isSaving"
-              @input="savedAt = null"
+              :disabled="controlsDisabled"
+              @input="queueHappenedAt"
             />
             <p class="hint">事情发生的时间，不是写作时间。留空即清除。</p>
           </div>
@@ -375,8 +621,8 @@ async function handleDelete(): Promise<void> {
               v-model="form.visibility"
               type="radio"
               :value="v.value"
-              :disabled="isSaving"
-              @change="savedAt = null"
+              :disabled="controlsDisabled"
+              @change="queueUpdate({ visibility: form.visibility })"
             />
             <span class="radio-label">{{ v.label }}</span>
             <span class="radio-hint">{{ v.hint }}</span>
@@ -384,16 +630,59 @@ async function handleDelete(): Promise<void> {
         </fieldset>
       </div>
 
+      <p v-if="categoryError" class="alert" role="alert">{{ categoryError }}</p>
       <p v-if="localError && (form.title !== '' || form.slug !== '')" class="alert alert--soft">
         {{ localError }}
       </p>
       <p v-if="saveError" class="alert" role="alert">{{ saveError }}</p>
 
       <div class="actions">
-        <button class="btn btn--primary" type="button" :disabled="!canSave" @click="save">
-          {{ isSaving ? '保存中…' : '保存' }}
-        </button>
-        <span v-if="savedAt" class="saved">已保存 {{ savedAt.toLocaleTimeString('zh-CN') }}</span>
+        <div
+          class="save-status"
+          :class="`save-status--${autosave.status.value}`"
+          data-save-status
+          aria-live="polite"
+        >
+          <span>{{ saveStatusText }}</span>
+          <button
+            v-if="autosave.status.value === 'offline' || autosave.status.value === 'error'"
+            class="status-action"
+            type="button"
+            data-save-retry
+            @click="flushBeforeAction"
+          >
+            重试
+          </button>
+          <template v-else-if="autosave.status.value === 'conflict'">
+            <button
+              class="status-action"
+              type="button"
+              data-conflict-action
+              :disabled="isRecovering"
+              @click="reloadServerVersion"
+            >
+              载入服务端
+            </button>
+            <button
+              class="status-action"
+              type="button"
+              data-conflict-action
+              :disabled="isRecovering"
+              @click="overwriteServerWithLocal"
+            >
+              覆盖服务端
+            </button>
+            <button
+              class="status-action"
+              type="button"
+              data-conflict-action
+              :disabled="isRecovering"
+              @click="recoverAsDraft"
+            >
+              另存为恢复草稿
+            </button>
+          </template>
+        </div>
 
         <!-- Status controls exist only for a record that exists. Publishing
              something never created has no meaning. -->
@@ -404,7 +693,7 @@ async function handleDelete(): Promise<void> {
             v-if="currentStatus !== 'published'"
             class="btn"
             type="button"
-            :disabled="isTransitioning"
+            :disabled="controlsDisabled"
             @click="transition('publish')"
           >
             {{ isTransitioning ? '处理中…' : '发布' }}
@@ -413,7 +702,7 @@ async function handleDelete(): Promise<void> {
             v-if="currentStatus === 'published'"
             class="btn"
             type="button"
-            :disabled="isTransitioning"
+            :disabled="controlsDisabled"
             @click="transition('unpublish')"
           >
             撤回为草稿
@@ -422,7 +711,7 @@ async function handleDelete(): Promise<void> {
             v-if="currentStatus !== 'archived'"
             class="btn"
             type="button"
-            :disabled="isTransitioning"
+            :disabled="controlsDisabled"
             @click="transition('archive')"
           >
             归档
@@ -609,15 +898,46 @@ async function handleDelete(): Promise<void> {
   border-top: 1px solid var(--c-line);
 }
 
-/* Pushes what follows to the right edge, so destructive actions do not sit
-   next to Save where a mis-aimed click lands on the wrong one. */
+/* Pushes transitions away from the quiet save indicator. */
 .spacer {
   margin-left: auto;
 }
 
-.saved {
+.save-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 2rem;
   color: var(--c-ink-faint);
   font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.save-status--pending,
+.save-status--saving {
+  color: var(--c-ink-muted);
+}
+
+.save-status--offline,
+.save-status--error,
+.save-status--conflict {
+  color: var(--c-danger);
+}
+
+.status-action {
+  padding: 0.1875rem 0.5rem;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.status-action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .confirm-text {
@@ -703,6 +1023,25 @@ async function handleDelete(): Promise<void> {
   .row {
     flex-direction: column;
     gap: 0;
+  }
+
+  .save-status {
+    width: 100%;
+    max-width: 100%;
+    height: 3.5rem;
+    flex-wrap: wrap;
+    align-content: center;
+    gap: var(--space-1);
+    white-space: normal;
+  }
+
+  .save-status > span,
+  .status-action {
+    white-space: nowrap;
+  }
+
+  .status-action {
+    padding-inline: 0.375rem;
   }
 }
 </style>

@@ -148,7 +148,7 @@ func (h *Handler) Create(c *gin.Context) {
 
 	var req createEntryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		httpx.Error(c, apperr.InvalidInput("title, slug and content_md are required").WithCause(err))
+		httpx.Error(c, apperr.InvalidInput("this request body is not valid JSON").WithCause(err))
 		return
 	}
 
@@ -322,7 +322,13 @@ func (h *Handler) Publish(c *gin.Context) {
 		return
 	}
 
-	published, err := h.service.Publish(c.Request.Context(), id)
+	var req transitionEntryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Error(c, apperr.InvalidInput("this request body is not valid JSON").WithCause(err))
+		return
+	}
+
+	published, err := h.service.Publish(c.Request.Context(), id, req.Revision)
 	if err != nil {
 		h.writeEntryError(c, "publish entry", err)
 		return
@@ -342,7 +348,13 @@ func (h *Handler) Unpublish(c *gin.Context) {
 		return
 	}
 
-	drafted, err := h.service.Unpublish(c.Request.Context(), id)
+	var req transitionEntryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Error(c, apperr.InvalidInput("this request body is not valid JSON").WithCause(err))
+		return
+	}
+
+	drafted, err := h.service.Unpublish(c.Request.Context(), id, req.Revision)
 	if err != nil {
 		h.writeEntryError(c, "unpublish entry", err)
 		return
@@ -362,7 +374,13 @@ func (h *Handler) Archive(c *gin.Context) {
 		return
 	}
 
-	archived, err := h.service.Archive(c.Request.Context(), id)
+	var req transitionEntryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Error(c, apperr.InvalidInput("this request body is not valid JSON").WithCause(err))
+		return
+	}
+
+	archived, err := h.service.Archive(c.Request.Context(), id, req.Revision)
 	if err != nil {
 		h.writeEntryError(c, "archive entry", err)
 		return
@@ -490,6 +508,11 @@ func (h *Handler) writeEntryError(c *gin.Context, op string, err error) {
 			WithField("slug", "already taken").
 			WithCause(err))
 
+	case errors.Is(err, entry.ErrVersionConflict):
+		httpx.Error(c, apperr.Conflict("entry changed since it was loaded").
+			WithField("revision", "请重新载入或保留当前内容为恢复草稿").
+			WithCause(err))
+
 	case errors.Is(err, entry.ErrInvalidSlug):
 		httpx.Error(c, invalidField("slug",
 			"must be lowercase letters and digits joined by single hyphens", err))
@@ -497,6 +520,10 @@ func (h *Handler) writeEntryError(c *gin.Context, op string, err error) {
 	case errors.Is(err, entry.ErrInvalidTitle):
 		httpx.Error(c, invalidField("title",
 			"must be present and at most 255 characters", err))
+
+	case errors.Is(err, entry.ErrEmptyContent):
+		httpx.Error(c, invalidField("content_md",
+			"must be present before publishing", err))
 
 	case errors.Is(err, entry.ErrInvalidType):
 		httpx.Error(c, invalidField("type",

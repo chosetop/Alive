@@ -81,6 +81,37 @@ func TestValidateTitle(t *testing.T) {
 	}
 }
 
+func TestValidateForPublish(t *testing.T) {
+	valid := entry.Entry{
+		Title:      "Title",
+		Slug:       "title",
+		ContentMD:  "body",
+		Visibility: entry.VisibilityPublic,
+	}
+	if err := entry.ValidateForPublish(valid); err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name   string
+		mutate func(*entry.Entry)
+		want   error
+	}{
+		{"title", func(e *entry.Entry) { e.Title = "" }, entry.ErrInvalidTitle},
+		{"slug", func(e *entry.Entry) { e.Slug = "" }, entry.ErrInvalidSlug},
+		{"body", func(e *entry.Entry) { e.ContentMD = "  " }, entry.ErrEmptyContent},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := valid
+			tc.mutate(&got)
+			if err := entry.ValidateForPublish(got); !errors.Is(err, tc.want) {
+				t.Errorf("ValidateForPublish() = %v, want %v", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestTypeValid(t *testing.T) {
 	valid := []entry.Type{
 		entry.TypeJournal, entry.TypeBook, entry.TypeMovie,
