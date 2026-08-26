@@ -30,7 +30,12 @@ type Querier interface {
 	// unchanged without being refused as a conflict with itself.
 	CategorySlugExistsExcluding(ctx context.Context, arg CategorySlugExistsExcludingParams) (bool, error)
 	// The total for the admin list, under the same filter.
-	CountAdminEntries(ctx context.Context, status *string) (int64, error)
+	//
+	// The search predicate is duplicated from ListAdminEntries rather than shared,
+	// because sqlc generates from literal SQL and has no include mechanism. The two
+	// must stay identical: a total computed under a different filter than the page
+	// would report a pagination control the page cannot honour.
+	CountAdminEntries(ctx context.Context, arg CountAdminEntriesParams) (int64, error)
 	// The total for the pagination block, under the same filter as the list.
 	//
 	// A separate statement rather than a window function on the list query. With

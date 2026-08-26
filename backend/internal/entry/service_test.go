@@ -3,6 +3,7 @@ package entry_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -922,7 +923,7 @@ func TestListAdminIsAWorkQueue(t *testing.T) {
 		})
 	}
 
-	page, err := service.ListAdmin(context.Background(), nil, 0, 0)
+	page, err := service.ListAdmin(context.Background(), nil, "", 0, 0)
 	if err != nil {
 		t.Fatalf("ListAdmin: %v", err)
 	}
@@ -950,7 +951,7 @@ func TestListAdminIsAWorkQueue(t *testing.T) {
 
 	t.Run("filtered by status", func(t *testing.T) {
 		draft := entry.StatusDraft
-		page, err := service.ListAdmin(context.Background(), &draft, 0, 0)
+		page, err := service.ListAdmin(context.Background(), &draft, "", 0, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -964,13 +965,13 @@ func TestListAdminIsAWorkQueue(t *testing.T) {
 
 	t.Run("an unknown status is refused", func(t *testing.T) {
 		unknown := entry.Status("stauts")
-		if _, err := service.ListAdmin(context.Background(), &unknown, 0, 0); !errors.Is(err, entry.ErrInvalidStatus) {
+		if _, err := service.ListAdmin(context.Background(), &unknown, "", 0, 0); !errors.Is(err, entry.ErrInvalidStatus) {
 			t.Errorf("ListAdmin = %v, want ErrInvalidStatus", err)
 		}
 	})
 
 	t.Run("pagination is clamped like the public list", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), nil, -5, 10_000)
+		page, err := service.ListAdmin(context.Background(), nil, "", -5, 10_000)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -983,7 +984,7 @@ func TestListAdminIsAWorkQueue(t *testing.T) {
 	})
 
 	t.Run("past the end is an empty page, not an error", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), nil, 99, 20)
+		page, err := service.ListAdmin(context.Background(), nil, "", 99, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1051,4 +1052,126 @@ func TestIDBoundsAreRefusedWithoutAQuery(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestListAdminSearchesTheDirectory covers the article-directory search: the
+// admin list accepts a free-text query matched against title, slug, and summary.
+//
+// Case-insensitive because the directory is a find-as-you-type field, and an
+// editor does not shift-key their way to their own draft. Matched against three
+// columns rather than the body, so a common word buried in a long article does
+// not drown the article actually named that.
+func TestListAdminSearchesTheDirectory(t *testing.T) {
+	service, store := newTestService(t)
+
+	for i, tc := range []struct {
+		slug    string
+		title   string
+		summary string
+		status  entry.Status
+	}{
+		{"mountain-trip", "山中 Mountain", "walked up", entry.StatusPublished},
+		{"kyoto-spring", "京都的春天", "by the river", entry.StatusDraft},
+		{"sea-notes", "海边", "a mountain seen from the sea", entry.StatusDraft},
+	} {
+		store.Seed(entry.Entry{
+			ID: int64(i + 1), Slug: tc.slug, Title: tc.title, Summary: tc.summary,
+			Status: tc.status, Visibility: entry.VisibilityPublic,
+			UpdatedAt: fixedTime.Add(-time.Duration(i) * time.Hour),
+		})
+	}
+
+	t.Run("matches the title", func(t *testing.T) {
+		page, err := service.ListAdmin(context.Background(), nil, "Mountain", 1, 20)
+		if err != nil {
+			t.Fatalf("ListAdmin: %v", err)
+		}
+		// Two rows carry "mountain": one in a title, one in a summary.
+		if got := slugsOf(page.Entries); !slices.Equal(got, []string{"mountain-trip", "sea-notes"}) {
+			t.Errorf("slugs = %v, want the title and summary matches", got)
+		}
+	})
+
+	t.Run("is case-insensitive", func(t *testing.T) {
+		page, err := service.ListAdmin(context.Background(), nil, "MOUNTAIN", 1, 20)
+		if err != nil {
+			t.Fatalf("ListAdmin: %v", err)
+		}
+		if len(page.Entries) != 2 {
+			t.Errorf("got %d entries, want the same 2 as the lowercase query", len(page.Entries))
+		}
+	})
+
+	t.Run("matches the slug", func(t *testing.T) {
+		page, err := service.ListAdmin(context.Background(), nil, "kyoto", 1, 20)
+		if err != nil {
+			t.Fatalf("ListAdmin: %v", err)
+		}
+		if got := slugsOf(page.Entries); !slices.Equal(got, []string{"kyoto-spring"}) {
+			t.Errorf("slugs = %v, want the slug match", got)
+		}
+	})
+
+	t.Run("intersects with the status filter", func(t *testing.T) {
+		draft := entry.StatusDraft
+		page, err := service.ListAdmin(context.Background(), &draft, "mountain", 1, 20)
+		if err != nil {
+			t.Fatalf("ListAdmin: %v", err)
+		}
+		// mountain-trip matches the text but is published, so the two filters are
+		// ANDed rather than unioned.
+		if got := slugsOf(page.Entries); !slices.Equal(got, []string{"sea-notes"}) {
+			t.Errorf("slugs = %v, want only the draft match", got)
+		}
+	})
+
+	t.Run("the total counts the filtered set", func(t *testing.T) {
+		page, err := service.ListAdmin(context.Background(), nil, "mountain", 1, 20)
+		if err != nil {
+			t.Fatalf("ListAdmin: %v", err)
+		}
+		if page.Total != 2 {
+			t.Errorf("total = %d, want the matched count rather than the collection size", page.Total)
+		}
+	})
+
+	t.Run("a whitespace-only query behaves as absent", func(t *testing.T) {
+		page, err := service.ListAdmin(context.Background(), nil, "   ", 1, 20)
+		if err != nil {
+			t.Fatalf("ListAdmin: %v", err)
+		}
+		if page.Total != 3 {
+			t.Errorf("total = %d, want every entry: a blank query is not a filter", page.Total)
+		}
+	})
+
+	t.Run("surrounding whitespace is trimmed", func(t *testing.T) {
+		page, err := service.ListAdmin(context.Background(), nil, "  kyoto  ", 1, 20)
+		if err != nil {
+			t.Fatalf("ListAdmin: %v", err)
+		}
+		if got := slugsOf(page.Entries); !slices.Equal(got, []string{"kyoto-spring"}) {
+			t.Errorf("slugs = %v, want the trimmed query to match", got)
+		}
+	})
+
+	t.Run("no match is an empty page, not an error", func(t *testing.T) {
+		page, err := service.ListAdmin(context.Background(), nil, "nothing-here", 1, 20)
+		if err != nil {
+			t.Fatalf("ListAdmin: %v", err)
+		}
+		if len(page.Entries) != 0 || page.Total != 0 {
+			t.Errorf("entries = %d, total = %d, want both zero", len(page.Entries), page.Total)
+		}
+	})
+}
+
+// slugsOf reads the slugs out of a page in order, so a test can assert on the
+// whole result rather than indexing into it field by field.
+func slugsOf(entries []entry.Entry) []string {
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.Slug)
+	}
+	return out
 }

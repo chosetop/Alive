@@ -495,15 +495,32 @@ FROM entries e
 LEFT JOIN categories c ON c.id = e.category_id
 WHERE e.deleted_at IS NULL
   AND (sqlc.narg(status)::varchar IS NULL OR e.status = sqlc.narg(status)::varchar)
+  AND (
+    sqlc.narg(search)::text IS NULL
+    OR e.title ILIKE '%' || sqlc.narg(search)::text || '%'
+    OR e.slug ILIKE '%' || sqlc.narg(search)::text || '%'
+    OR COALESCE(e.summary, '') ILIKE '%' || sqlc.narg(search)::text || '%'
+  )
 ORDER BY e.updated_at DESC, e.id DESC
 LIMIT sqlc.arg(limit_) OFFSET sqlc.arg(offset_);
 
 -- name: CountAdminEntries :one
 -- The total for the admin list, under the same filter.
+--
+-- The search predicate is duplicated from ListAdminEntries rather than shared,
+-- because sqlc generates from literal SQL and has no include mechanism. The two
+-- must stay identical: a total computed under a different filter than the page
+-- would report a pagination control the page cannot honour.
 SELECT count(*)
 FROM entries
 WHERE deleted_at IS NULL
-  AND (sqlc.narg(status)::varchar IS NULL OR status = sqlc.narg(status)::varchar);
+  AND (sqlc.narg(status)::varchar IS NULL OR status = sqlc.narg(status)::varchar)
+  AND (
+    sqlc.narg(search)::text IS NULL
+    OR title ILIKE '%' || sqlc.narg(search)::text || '%'
+    OR slug ILIKE '%' || sqlc.narg(search)::text || '%'
+    OR COALESCE(summary, '') ILIKE '%' || sqlc.narg(search)::text || '%'
+  );
 
 -- name: GetAdminEntryByID :one
 -- The admin detail read, addressed by id rather than slug.

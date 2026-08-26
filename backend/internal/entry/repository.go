@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -457,19 +458,36 @@ func (r *Repository) GetByID(ctx context.Context, id int64) (Entry, error) {
 // ListAdmin returns one page of live entries of any status, newest edit first,
 // with the total under the same filter.
 //
-// status nil means every status. Two queries rather than a window function, for
-// the reason given on ListPublic.
+// status nil means every status. search nil means no text filter; the service
+// has already reduced a blank query to nil, so an empty string never reaches
+// here to be matched as a wildcard against everything. Two queries rather than a
+// window function, for the reason given on ListPublic.
 //
-// No ContentMD: the query does not select it.
-func (r *Repository) ListAdmin(ctx context.Context, status *Status, limit, offset int) ([]Entry, int64, error) {
+// The search text is escaped here rather than in the service, because escaping is
+// a property of the LIKE pattern this layer builds, not a rule about what a
+// search means. The service owns the domain rule (a blank query is not a filter);
+// this owns the SQL. Keeping it here also keeps the in-memory fake honest: it
+// compares plain substrings, which is what an escaped pattern means, so it would
+// have to learn to strip backslashes if the service escaped instead.
+//
+// No ContentMD: the query does not select it, and the search deliberately does
+// not read it either.
+func (r *Repository) ListAdmin(ctx context.Context, status *Status, search *string, limit, offset int) ([]Entry, int64, error) {
 	var filter *string
 	if status != nil {
 		s := string(*status)
 		filter = &s
 	}
 
+	var pattern *string
+	if search != nil {
+		escaped := escapeLikePattern(*search)
+		pattern = &escaped
+	}
+
 	rows, err := r.q.ListAdminEntries(ctx, sqlcgen.ListAdminEntriesParams{
 		Status: filter,
+		Search: pattern,
 		Limit:  int32(limit),
 		Offset: int32(offset),
 	})
@@ -477,7 +495,10 @@ func (r *Repository) ListAdmin(ctx context.Context, status *Status, limit, offse
 		return nil, 0, fmt.Errorf("entry: list admin entries: %w", err)
 	}
 
-	total, err := r.q.CountAdminEntries(ctx, filter)
+	total, err := r.q.CountAdminEntries(ctx, sqlcgen.CountAdminEntriesParams{
+		Status: filter,
+		Search: pattern,
+	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("entry: count admin entries: %w", err)
 	}
@@ -496,6 +517,29 @@ func (r *Repository) ListAdmin(ctx context.Context, status *Status, limit, offse
 	}
 
 	return entries, total, nil
+}
+
+// escapeLikePattern makes text safe to interpolate into a LIKE or ILIKE pattern,
+// so a query means the characters the editor typed.
+//
+// This is not about injection: the value is a bound parameter and cannot escape
+// its string literal. It is about meaning. Inside the bound value, `%` and `_`
+// are still pattern syntax, so an unescaped `_` matches any single character and
+// an unescaped `%` matches any run of them. The practical failures: typing one
+// `_` returns the entire directory, and a title like "读完了 80% 的书" cannot be
+// searched for by name.
+//
+// The backslash is replaced first, and must be: doing it after would also escape
+// the backslashes the other two replacements just introduced, turning `%` into a
+// literal backslash followed by a wildcard. Postgres reads `\` as the default
+// LIKE escape character without an explicit ESCAPE clause, so doubling it is what
+// makes a typed backslash mean itself.
+func escapeLikePattern(text string) string {
+	return strings.NewReplacer(
+		`\`, `\\`,
+		`%`, `\%`,
+		`_`, `\_`,
+	).Replace(text)
 }
 
 // rowFields is the shape every entry-returning query produces.

@@ -414,7 +414,11 @@ func (h *Handler) ListAdmin(c *gin.Context) {
 		status = &s
 	}
 
-	result, err := h.service.ListAdmin(c.Request.Context(), status, page, pageSize)
+	// The directory search. Absent, blank, and whitespace-only all mean "no text
+	// filter"; the service trims and drops it, so the zero value needs no special
+	// case here. Not validated: unlike status, a query that matches nothing is a
+	// real answer rather than a malformed request.
+	result, err := h.service.ListAdmin(c.Request.Context(), status, c.Query("q"), page, pageSize)
 	if err != nil {
 		if errors.Is(err, entry.ErrInvalidStatus) {
 			httpx.Error(c, invalidField("status",

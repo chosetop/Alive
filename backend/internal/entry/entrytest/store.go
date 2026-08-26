@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/p30huiwei/alive/backend/internal/entry"
@@ -458,15 +459,38 @@ func (s *Store) GetByID(ctx context.Context, id int64) (entry.Entry, error) {
 // ListAdmin returns entries of any status ordered as the SQL orders them:
 // updated_at descending, id descending to break ties.
 //
-// A nil status means every status.
-func (s *Store) ListAdmin(ctx context.Context, status *entry.Status, limit, offset int) ([]entry.Entry, int64, error) {
+// A nil status means every status; a nil search means no text filter. The search
+// mirrors the SQL predicate: a case-insensitive substring of title, slug, or
+// summary, and deliberately not of the body.
+//
+// Plain substring matching is the correct mirror, not an approximation of one.
+// The repository escapes LIKE metacharacters before building its pattern, so an
+// ILIKE there means "contains this literal text" — exactly what strings.Contains
+// means here. Were the escaping to move up into the service, this fake would
+// start receiving backslash-escaped needles and would have to strip them to stay
+// truthful.
+//
+// The one real divergence: ILIKE's case folding is Postgres' and locale-aware,
+// while strings.ToLower is Unicode's. They agree across ASCII and leave CJK
+// untouched, which covers what these tests assert. A test that turned on
+// case-insensitivity for, say, Turkish dotless i would need the real database.
+func (s *Store) ListAdmin(ctx context.Context, status *entry.Status, search *string, limit, offset int) ([]entry.Entry, int64, error) {
 	if s.FailListAdmin != nil {
 		return nil, 0, s.FailListAdmin
+	}
+
+	// Folded once rather than per candidate.
+	var needle string
+	if search != nil {
+		needle = strings.ToLower(*search)
 	}
 
 	matching := make([]entry.Entry, 0, len(s.entries))
 	for _, candidate := range s.entries {
 		if status != nil && candidate.Status != *status {
+			continue
+		}
+		if search != nil && !containsFold(candidate, needle) {
 			continue
 		}
 		matching = append(matching, candidate)
@@ -494,6 +518,17 @@ func (s *Store) ListAdmin(ctx context.Context, status *entry.Status, limit, offs
 	copy(page, matching[offset:end])
 
 	return page, total, nil
+}
+
+// containsFold reports whether one entry satisfies the directory search, reading
+// the same three columns as the SQL. needle must already be lowercased.
+func containsFold(candidate entry.Entry, needle string) bool {
+	for _, haystack := range []string{candidate.Title, candidate.Slug, candidate.Summary} {
+		if strings.Contains(strings.ToLower(haystack), needle) {
+			return true
+		}
+	}
+	return false
 }
 
 // Seed inserts an entry directly, bypassing the service, so a test can arrange

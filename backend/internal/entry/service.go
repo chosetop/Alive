@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 )
 
@@ -50,9 +51,10 @@ type Store interface {
 	// GetByID reads one live entry whatever its status. The admin read.
 	GetByID(ctx context.Context, id int64) (Entry, error)
 
-	// ListAdmin returns one page of live entries, any status, newest edit first.
+	// ListAdmin returns one page of live entries, any status, newest edit first,
+	// optionally narrowed to a text search. A nil search is no text filter.
 	// A nil status means every status.
-	ListAdmin(ctx context.Context, status *Status, limit, offset int) ([]Entry, int64, error)
+	ListAdmin(ctx context.Context, status *Status, search *string, limit, offset int) ([]Entry, int64, error)
 
 	// SlugExistsExcluding reports whether a live entry other than excludedID holds
 	// the slug. Separate from SlugExists because an entry keeping its own slug
@@ -502,18 +504,32 @@ func (s *Service) GetByID(ctx context.Context, id int64) (Entry, error) {
 	return s.store.GetByID(ctx, id)
 }
 
-// ListAdmin returns one page of entries of any status, newest edit first.
+// ListAdmin returns one page of entries of any status, newest edit first,
+// optionally narrowed by a free-text query.
 //
 // status filters when given and is validated: an unknown status would otherwise
 // match nothing and look like an empty site rather than a typo.
-func (s *Service) ListAdmin(ctx context.Context, status *Status, page, pageSize int) (Page, error) {
+//
+// query is trimmed, and a query that is empty once trimmed is dropped rather
+// than passed down. The directory search field sends its value on every
+// keystroke, so it also sends whitespace and the empty string as the editor
+// clears it; treating those as a search for "nothing" would blank the directory
+// at exactly the moment the editor expects it back. Unlike status, an unmatched
+// query is not an error: no match is a legitimate answer about the collection,
+// where an unknown status is a malformed request.
+func (s *Service) ListAdmin(ctx context.Context, status *Status, query string, page, pageSize int) (Page, error) {
 	if status != nil && !status.Valid() {
 		return Page{}, fmt.Errorf("%w: %s", ErrInvalidStatus, *status)
 	}
 
+	var search *string
+	if trimmed := strings.TrimSpace(query); trimmed != "" {
+		search = &trimmed
+	}
+
 	page, pageSize = normalisePagination(page, pageSize)
 
-	entries, total, err := s.store.ListAdmin(ctx, status, pageSize, (page-1)*pageSize)
+	entries, total, err := s.store.ListAdmin(ctx, status, search, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return Page{}, err
 	}

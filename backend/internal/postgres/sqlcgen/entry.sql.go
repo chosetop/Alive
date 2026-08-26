@@ -105,11 +105,27 @@ SELECT count(*)
 FROM entries
 WHERE deleted_at IS NULL
   AND ($1::varchar IS NULL OR status = $1::varchar)
+  AND (
+    $2::text IS NULL
+    OR title ILIKE '%' || $2::text || '%'
+    OR slug ILIKE '%' || $2::text || '%'
+    OR COALESCE(summary, '') ILIKE '%' || $2::text || '%'
+  )
 `
 
+type CountAdminEntriesParams struct {
+	Status *string
+	Search *string
+}
+
 // The total for the admin list, under the same filter.
-func (q *Queries) CountAdminEntries(ctx context.Context, status *string) (int64, error) {
-	row := q.db.QueryRow(ctx, countAdminEntries, status)
+//
+// The search predicate is duplicated from ListAdminEntries rather than shared,
+// because sqlc generates from literal SQL and has no include mechanism. The two
+// must stay identical: a total computed under a different filter than the page
+// would report a pagination control the page cannot honour.
+func (q *Queries) CountAdminEntries(ctx context.Context, arg CountAdminEntriesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAdminEntries, arg.Status, arg.Search)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -628,12 +644,19 @@ FROM entries e
 LEFT JOIN categories c ON c.id = e.category_id
 WHERE e.deleted_at IS NULL
   AND ($1::varchar IS NULL OR e.status = $1::varchar)
+  AND (
+    $2::text IS NULL
+    OR e.title ILIKE '%' || $2::text || '%'
+    OR e.slug ILIKE '%' || $2::text || '%'
+    OR COALESCE(e.summary, '') ILIKE '%' || $2::text || '%'
+  )
 ORDER BY e.updated_at DESC, e.id DESC
-LIMIT $3 OFFSET $2
+LIMIT $4 OFFSET $3
 `
 
 type ListAdminEntriesParams struct {
 	Status *string
+	Search *string
 	Offset int32
 	Limit  int32
 }
@@ -682,7 +705,12 @@ type ListAdminEntriesRow struct {
 //
 // No content_md, for the same reason the public list omits it.
 func (q *Queries) ListAdminEntries(ctx context.Context, arg ListAdminEntriesParams) ([]ListAdminEntriesRow, error) {
-	rows, err := q.db.Query(ctx, listAdminEntries, arg.Status, arg.Offset, arg.Limit)
+	rows, err := q.db.Query(ctx, listAdminEntries,
+		arg.Status,
+		arg.Search,
+		arg.Offset,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}

@@ -215,6 +215,16 @@ export interface EntryListQuery {
    * empty list would read as "no drafts" when it means "you typed it wrong".
    */
   status?: EntryStatus
+  /**
+   * Free-text search across title, slug, and summary. Not the body: a common
+   * word inside a long article would otherwise bury the article named that.
+   *
+   * Unlike `status`, an unmatched query is not an error — no match is a real
+   * answer about the collection. Blank and whitespace-only are treated as absent
+   * by the backend, so the directory search field can send its value on every
+   * keystroke including the one that clears it.
+   */
+  q?: string
 }
 
 // ---------------------------------------------------------------------------

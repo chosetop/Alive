@@ -830,7 +830,7 @@ func TestRepositoryAdminReadsSeeEveryStatus(t *testing.T) {
 	t.Run("the list reaches all of them", func(t *testing.T) {
 		// Filtered to this process's rows by prefix, since another package may be
 		// running against the same database.
-		listed, total, err := repo.ListAdmin(ctx, nil, entry.MaxPageSize, 0)
+		listed, total, err := repo.ListAdmin(ctx, nil, nil, entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -856,7 +856,7 @@ func TestRepositoryAdminReadsSeeEveryStatus(t *testing.T) {
 
 	t.Run("filtered by status", func(t *testing.T) {
 		draft := entry.StatusDraft
-		listed, _, err := repo.ListAdmin(ctx, &draft, entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, &draft, nil, entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -877,7 +877,7 @@ func TestRepositoryAdminReadsSeeEveryStatus(t *testing.T) {
 			t.Fatalf("update: %v", err)
 		}
 
-		listed, _, err := repo.ListAdmin(ctx, nil, entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, nil, nil, entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -900,7 +900,7 @@ func TestRepositoryAdminReadsSeeEveryStatus(t *testing.T) {
 			t.Errorf("GetByID = %v, want ErrEntryNotFound", err)
 		}
 
-		listed, _, err := repo.ListAdmin(ctx, nil, entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, nil, nil, entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -910,4 +910,232 @@ func TestRepositoryAdminReadsSeeEveryStatus(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestRepositoryAdminListSearches covers the search predicate in real SQL rather
+// than against the in-memory fake: ILIKE's case handling, the three searched
+// columns, the NULL-means-unfiltered branch, and that the total is computed under
+// the same predicate as the page.
+//
+// Every assertion is scoped to a token unique to this test, because another
+// package may be writing to the same database. Counting "every row matching
+// 'mountain'" would be counting other processes' rows too.
+func TestRepositoryAdminListSearches(t *testing.T) {
+	repo, _, authorID := newTestRepository(t)
+	ctx := context.Background()
+
+	// A token no other row can contain, so a count is exact rather than "at least".
+	token := dbtest.Slug(t, "needle")
+
+	for _, tc := range []struct {
+		label   string
+		title   string
+		summary string
+		status  entry.Status
+	}{
+		// The token reaches each searched column in turn, so dropping any one of the
+		// three ORed conditions fails a named case.
+		{"in-title", "山中 " + token, "walked up", entry.StatusPublished},
+		{"in-summary", "海边", "a trip past " + token, entry.StatusDraft},
+		{"in-slug-only", "京都的春天", "by the river", entry.StatusDraft},
+		{"no-match", "无关", "nothing relevant", entry.StatusDraft},
+	} {
+		params := validCreate(authorID, dbtest.Slug(t, tc.label))
+		params.Title = tc.title
+		params.Summary = tc.summary
+		params.Status = tc.status
+		if tc.label == "in-slug-only" {
+			params.Slug = token + "-in-slug"
+		}
+		if tc.status == entry.StatusPublished {
+			// entries_published_at_check refuses a published row without one.
+			params.PublishedAt = time.Now()
+		}
+		if _, err := repo.Create(ctx, params); err != nil {
+			t.Fatalf("create %s: %v", tc.label, err)
+		}
+	}
+
+	t.Run("matches title, summary, and slug", func(t *testing.T) {
+		listed, total, err := repo.ListAdmin(ctx, nil, &token, entry.MaxPageSize, 0)
+		if err != nil {
+			t.Fatalf("ListAdmin: %v", err)
+		}
+		if len(listed) != 3 {
+			t.Fatalf("got %d entries, want the three rows carrying the token", len(listed))
+		}
+		// The total is what a pagination control reads, so it must be computed under
+		// the search predicate rather than over the collection.
+		if total != 3 {
+			t.Errorf("total = %d, want 3: the count query filters differently than the list", total)
+		}
+	})
+
+	t.Run("ILIKE is case-insensitive", func(t *testing.T) {
+		listed, _, err := repo.ListAdmin(ctx, nil, ptr(strings.ToUpper(token)), entry.MaxPageSize, 0)
+		if err != nil {
+			t.Fatalf("ListAdmin: %v", err)
+		}
+		if len(listed) != 3 {
+			t.Errorf("got %d entries for the uppercased query, want the same 3", len(listed))
+		}
+	})
+
+	t.Run("intersects with the status filter", func(t *testing.T) {
+		draft := entry.StatusDraft
+		listed, total, err := repo.ListAdmin(ctx, &draft, &token, entry.MaxPageSize, 0)
+		if err != nil {
+			t.Fatalf("ListAdmin: %v", err)
+		}
+		// Two of the three token rows are drafts; the third is published.
+		if len(listed) != 2 || total != 2 {
+			t.Fatalf("entries = %d, total = %d, want 2 and 2", len(listed), total)
+		}
+		for _, e := range listed {
+			if e.Status != entry.StatusDraft {
+				t.Errorf("%s is a %s, want the filters ANDed", e.Slug, e.Status)
+			}
+		}
+	})
+
+	t.Run("a nil search is not a filter", func(t *testing.T) {
+		_, total, err := repo.ListAdmin(ctx, nil, nil, entry.MaxPageSize, 0)
+		if err != nil {
+			t.Fatalf("ListAdmin: %v", err)
+		}
+		// At least this test's four rows; other packages may hold more.
+		if total < 4 {
+			t.Errorf("total = %d, want every row when no query is given", total)
+		}
+	})
+
+	t.Run("no match is an empty page, not an error", func(t *testing.T) {
+		listed, total, err := repo.ListAdmin(ctx, nil, ptr(token+"-absent"), entry.MaxPageSize, 0)
+		if err != nil {
+			t.Fatalf("ListAdmin: %v", err)
+		}
+		if len(listed) != 0 || total != 0 {
+			t.Errorf("entries = %d, total = %d, want both zero", len(listed), total)
+		}
+	})
+}
+
+// TestRepositoryAdminListSearchTreatsQueryAsLiteralText covers the LIKE
+// metacharacters, which are the one way a search field can silently answer a
+// different question than the one typed.
+//
+// The query is interpolated into an ILIKE pattern, so `%`, `_`, and `\` arrive as
+// pattern syntax rather than as text unless something escapes them. Untreated,
+// `_` matches any single character and turns a one-character query into "every
+// article", and a title like "读完了 80% 的书" cannot be searched for at all. None
+// of this is an injection risk — the value is a bound parameter — but a directory
+// that over-matches is a directory that lies.
+func TestRepositoryAdminListSearchTreatsQueryAsLiteralText(t *testing.T) {
+	repo, _, authorID := newTestRepository(t)
+	ctx := context.Background()
+
+	token := dbtest.Slug(t, "literal")
+
+	// Titles chosen so a metacharacter interpreted as a wildcard would match the
+	// wrong row: "80%" and "read_me" each contain a metacharacter, and "80 percent"
+	// and "readXme" are what a wildcard would wrongly reach.
+	for _, tc := range []struct {
+		label string
+		title string
+	}{
+		{"percent-literal", token + " 读完了 80% 的书"},
+		{"percent-decoy", token + " 读完了 80 的书"},
+		{"underscore-literal", token + " read_me"},
+		{"underscore-decoy", token + " readXme"},
+	} {
+		params := validCreate(authorID, dbtest.Slug(t, tc.label))
+		params.Title = tc.title
+		if _, err := repo.Create(ctx, params); err != nil {
+			t.Fatalf("create %s: %v", tc.label, err)
+		}
+	}
+
+	t.Run("underscore is a literal underscore, not any character", func(t *testing.T) {
+		listed, _, err := repo.ListAdmin(ctx, nil, ptr("read_me"), entry.MaxPageSize, 0)
+		if err != nil {
+			t.Fatalf("ListAdmin: %v", err)
+		}
+		if len(listed) != 1 {
+			t.Fatalf("got %d entries, want only the row containing a real underscore", len(listed))
+		}
+		if !strings.Contains(listed[0].Title, "read_me") {
+			t.Errorf("matched %q, want the underscore row", listed[0].Title)
+		}
+	})
+
+	t.Run("a bare underscore does not match everything", func(t *testing.T) {
+		// The worst case: one keystroke returning the whole directory unfiltered.
+		listed, _, err := repo.ListAdmin(ctx, nil, ptr("_"), entry.MaxPageSize, 0)
+		if err != nil {
+			t.Fatalf("ListAdmin: %v", err)
+		}
+		for _, e := range listed {
+			if !strings.Contains(e.Title, "_") && !strings.Contains(e.Slug, "_") &&
+				!strings.Contains(e.Summary, "_") {
+				t.Errorf("%q matched a bare underscore without containing one", e.Title)
+			}
+		}
+	})
+
+	t.Run("percent is a literal percent sign", func(t *testing.T) {
+		listed, _, err := repo.ListAdmin(ctx, nil, ptr("80%"), entry.MaxPageSize, 0)
+		if err != nil {
+			t.Fatalf("ListAdmin: %v", err)
+		}
+		if len(listed) != 1 {
+			t.Fatalf("got %d entries, want only the row containing a real percent sign", len(listed))
+		}
+		if !strings.Contains(listed[0].Title, "80%") {
+			t.Errorf("matched %q, want the percent row", listed[0].Title)
+		}
+	})
+
+	t.Run("a lone backslash matches nothing rather than erroring", func(t *testing.T) {
+		// An escape character with nothing to escape is a malformed pattern in some
+		// engines. It must be ordinary text here.
+		listed, _, err := repo.ListAdmin(ctx, nil, ptr(`\`), entry.MaxPageSize, 0)
+		if err != nil {
+			t.Fatalf("ListAdmin: %v", err)
+		}
+		for _, e := range listed {
+			if !strings.Contains(e.Title+e.Slug+e.Summary, `\`) {
+				t.Errorf("%q matched a backslash without containing one", e.Title)
+			}
+		}
+	})
+}
+
+// TestRepositoryAdminListSearchIgnoresTheBody pins the decision that the search
+// reads three columns and not the Markdown body.
+//
+// Without this, adding `content_md ILIKE ...` to the predicate would break
+// nothing and no test would object. The reason it is excluded: a common word
+// inside a long article would rank alongside the article actually named that, and
+// the directory's job is to find a known article rather than to search prose.
+func TestRepositoryAdminListSearchIgnoresTheBody(t *testing.T) {
+	repo, _, authorID := newTestRepository(t)
+	ctx := context.Background()
+
+	// A token that exists only in the body, in none of the searched columns.
+	bodyOnly := dbtest.Slug(t, "bodyonly")
+
+	params := validCreate(authorID, dbtest.Slug(t, "body-search"))
+	params.ContentMD = "这段正文里出现了 " + bodyOnly + " 这个词。"
+	if _, err := repo.Create(ctx, params); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	listed, total, err := repo.ListAdmin(ctx, nil, &bodyOnly, entry.MaxPageSize, 0)
+	if err != nil {
+		t.Fatalf("ListAdmin: %v", err)
+	}
+	if len(listed) != 0 || total != 0 {
+		t.Errorf("entries = %d, total = %d, want none: the search reached into content_md",
+			len(listed), total)
+	}
 }

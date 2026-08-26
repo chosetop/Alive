@@ -1276,3 +1276,68 @@ func TestStoreFailureIsNotReportedAsNotFound(t *testing.T) {
 		t.Errorf("the response carries the driver error: %s", rec.Body.String())
 	}
 }
+
+// TestAdminListSearchesByQuery covers the directory search parameter: `q` is
+// free text matched against title, slug, and summary, and it intersects with the
+// status filter rather than replacing it.
+func TestAdminListSearchesByQuery(t *testing.T) {
+	handler, store := newTestServer(t, testAuthorID)
+
+	for i, tc := range []struct {
+		slug    string
+		title   string
+		summary string
+		status  entry.Status
+	}{
+		{"mountain-trip", "山中 Mountain", "walked up", entry.StatusPublished},
+		{"kyoto-spring", "京都的春天", "by the river", entry.StatusDraft},
+		{"sea-notes", "海边", "a mountain seen from the sea", entry.StatusDraft},
+	} {
+		store.Seed(entry.Entry{
+			ID: int64(i + 1), Slug: tc.slug, Title: tc.title, Summary: tc.summary,
+			Status: tc.status, Visibility: entry.VisibilityPublic,
+			UpdatedAt: fixedTime.Add(-time.Duration(i) * time.Minute),
+		})
+	}
+
+	t.Run("matches title, slug, and summary", func(t *testing.T) {
+		rec := do(t, handler, http.MethodGet, "/api/v1/admin/entries?q=mountain", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
+		}
+		if items := dataArray(t, rec); len(items) != 2 {
+			t.Fatalf("q=mountain reports %d entries, want 2", len(items))
+		}
+	})
+
+	t.Run("intersects with status", func(t *testing.T) {
+		rec := do(t, handler, http.MethodGet, "/api/v1/admin/entries?q=mountain&status=draft", "")
+		items := dataArray(t, rec)
+		if len(items) != 1 {
+			t.Fatalf("reports %d entries, want the single draft match", len(items))
+		}
+		if got := stringField(t, items[0], "slug"); got != "sea-notes" {
+			t.Errorf("slug = %q, want sea-notes", got)
+		}
+	})
+
+	t.Run("a blank q is not a filter", func(t *testing.T) {
+		// A find-as-you-type field sends q= on every keystroke, including after the
+		// editor clears it. Treating that as a search for the empty string would
+		// report an empty directory.
+		rec := do(t, handler, http.MethodGet, "/api/v1/admin/entries?q=%20%20", "")
+		if items := dataArray(t, rec); len(items) != 3 {
+			t.Errorf("reports %d entries, want all 3", len(items))
+		}
+	})
+
+	t.Run("no match is an empty list, not an error", func(t *testing.T) {
+		rec := do(t, handler, http.MethodGet, "/api/v1/admin/entries?q=nothing-here", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
+		}
+		if items := dataArray(t, rec); len(items) != 0 {
+			t.Errorf("reports %d entries, want none", len(items))
+		}
+	})
+}

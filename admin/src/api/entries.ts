@@ -40,6 +40,9 @@ export function listEntriesAdmin(
       // Left undefined when absent; the client drops undefined values rather
       // than sending `status=undefined`, which would be a 400.
       status: query.status,
+      // Same treatment for the same reason: `q=undefined` would be a literal
+      // search for the string "undefined" and answer with an empty directory.
+      q: query.q,
     },
   })
 }
