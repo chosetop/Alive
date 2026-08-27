@@ -1,6 +1,6 @@
 # Alive 施工进度
 
-最后更新：2026-08-26（Draft Autosave Foundation 浏览器验收 preflight 已记录，见第 14 节）
+最后更新：2026-08-27（后台 iOS 风格视觉重构设计规格已完成，待审阅）
 
 本文档记录已完成的内容、当前状态和待办项。设计依据见 `architecture.md`，认证方案见 `stage-auth-plan.md`。
 
@@ -1453,3 +1453,10 @@ harness 需要 `VITE_API_BASE_URL`（客户端没有它会抛错），临时写�
 - 当前未提交修改集中在：前台上下篇边界提示与分页读取、前台正文标题间距、共享主题展示名称及进度记录；验证已通过主题包 3 tests、admin 184 tests、frontend typecheck、lint、SSR build 和真实浏览器检查。
 - 下一步：提交并合并这批收尾修改。Plan 4「媒体上传」仍未开始，除此之外没有已知的 Plan 2 或 Plan 3 功能缺口。
 - 工作树中有工具生成的未跟踪 `node_modules/`，保留现状，不纳入提交。
+
+## 32. 后台 iOS 风格视觉重构设计（2026-08-27）
+
+- 已根据用户确认的方向完成设计规格：`docs/superpowers/specs/2026-08-27-admin-ios-visual-redesign-design.md`。
+- 设计主题为「Alive Writing Desk」，以 iOS 风格的纸张底、玻璃控制层、墨色文字和 Alive 光标作为统一视觉语言。
+- 本阶段只完成设计文档与进度记录，没有修改 `admin/` 代码、API、路由或数据模型。
+- 规格审阅通过后，新增实施计划将插入现有 Plan 3「共享站点主题系统」之后，原 Plan 4「媒体上传」顺延为 Plan 5。
