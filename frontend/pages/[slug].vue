@@ -113,6 +113,8 @@ useHead({
 
 <template>
   <article v-if="entry" class="entry">
+    <NuxtLink to="/" class="back">← 全部文章</NuxtLink>
+
     <header class="head">
       <h1 class="title">{{ entry.title }}</h1>
 
@@ -153,8 +155,6 @@ useHead({
           <span class="neighbor__direction">上一篇</span>
           <span class="neighbor__title">{{ neighbors.previous.title }}</span>
         </NuxtLink>
-        <span v-else class="neighbor neighbor--empty" aria-hidden="true" />
-
         <NuxtLink
           v-if="neighbors.next"
           class="neighbor neighbor--next"
@@ -164,9 +164,7 @@ useHead({
           <span class="neighbor__direction">下一篇</span>
           <span class="neighbor__title">{{ neighbors.next.title }}</span>
         </NuxtLink>
-        <span v-else class="neighbor neighbor--empty" aria-hidden="true" />
       </nav>
-      <NuxtLink to="/" class="back">← 回到全部</NuxtLink>
     </footer>
   </article>
 </template>
@@ -189,6 +187,22 @@ useHead({
 
 .head {
   margin-bottom: var(--space-7);
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: var(--space-6);
+  color: var(--c-ink-faint);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  text-decoration: none;
+  transition: color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+
+.back:hover {
+  color: var(--c-accent);
+  transform: translateX(-0.125rem);
 }
 
 /*
@@ -247,6 +261,15 @@ useHead({
   margin-bottom: var(--space-6);
 }
 
+.neighbors > :only-child {
+  grid-column: 1 / -1;
+}
+
+.neighbors > .neighbor--next:only-child {
+  align-items: flex-start;
+  text-align: left;
+}
+
 .neighbor {
   display: flex;
   min-width: 0;
@@ -279,17 +302,6 @@ useHead({
   color: var(--c-accent);
 }
 
-.back {
-  color: var(--c-ink-muted);
-  font-family: var(--font-ui);
-  font-size: var(--text-sm);
-  text-decoration: none;
-}
-
-.back:hover {
-  color: var(--c-accent);
-}
-
 @media (max-width: 34rem) {
   .title {
     font-size: var(--text-xl);
@@ -297,6 +309,10 @@ useHead({
 
   .neighbors {
     gap: var(--space-3);
+  }
+
+  .back {
+    margin-bottom: var(--space-5);
   }
 }
 </style>

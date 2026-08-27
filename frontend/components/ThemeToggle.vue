@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { THEMES, type ThemeName } from '@alive/theme'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useTheme } from '~/composables/useTheme'
 
 /**
@@ -9,16 +10,40 @@ import { useTheme } from '~/composables/useTheme'
 
 const { data: siteSettings } = useSiteSettings()
 const { theme, visitorTheme, setVisitorTheme } = useTheme(computed(() => siteSettings.value.default_theme))
+const toggle = ref<HTMLDetailsElement | null>(null)
 
 const labels: Record<ThemeName, string> = Object.fromEntries(THEMES.map((item) => [item.name, item.label])) as Record<ThemeName, string>
 
 function selectTheme(value: string): void {
   setVisitorTheme(value === 'site' ? null : (value as ThemeName))
 }
+
+function closeOnOutsidePointerDown(event: PointerEvent): void {
+  const target = event.target
+  if (toggle.value?.open && target instanceof Node && !toggle.value.contains(target)) {
+    toggle.value.open = false
+  }
+}
+
+function closeOnEscape(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && toggle.value?.open) {
+    toggle.value.open = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('pointerdown', closeOnOutsidePointerDown)
+  document.addEventListener('keydown', closeOnEscape)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', closeOnOutsidePointerDown)
+  document.removeEventListener('keydown', closeOnEscape)
+})
 </script>
 
 <template>
-  <details class="toggle">
+  <details ref="toggle" class="toggle">
     <summary :aria-label="`当前主题：${labels[theme]}`">{{ labels[theme] }}</summary>
     <div class="menu" role="menu" aria-label="选择主题">
       <button type="button" role="menuitem" :aria-checked="visitorTheme === null" @click="selectTheme('site')">
@@ -44,13 +69,57 @@ function selectTheme(value: string): void {
 }
 
 summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--c-line);
+  border: 1px solid var(--c-line-strong);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c-surface) 88%, var(--c-accent));
   color: var(--c-ink-muted);
   font-family: var(--font-ui);
   font-size: var(--text-xs);
   cursor: pointer;
   list-style: none;
+  transition: border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out);
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+summary::before {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--c-accent);
+  box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--c-accent) 16%, transparent);
+  content: '';
+}
+
+summary::after {
+  width: 0.35rem;
+  height: 0.35rem;
+  margin-left: var(--space-1);
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  content: '';
+  transform: rotate(45deg) translateY(-0.1rem);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+summary:hover,
+summary:focus-visible,
+details[open] summary {
+  border-color: var(--c-accent);
+  color: var(--c-accent);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+details[open] summary::after {
+  transform: rotate(225deg) translate(-0.05rem, -0.05rem);
 }
 
 .menu {
@@ -64,6 +133,18 @@ summary {
   border: 1px solid var(--c-line);
   background: var(--c-surface);
   box-shadow: 0 8px 20px var(--c-overlay);
+  animation: theme-menu-in var(--duration-fast) var(--ease-out);
+}
+
+@keyframes theme-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.25rem) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .menu button {
@@ -81,5 +162,14 @@ summary {
 .menu button[aria-checked='true'] {
   background: var(--c-surface-sunken);
   color: var(--c-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  summary,
+  summary::after,
+  .menu {
+    animation: none;
+    transition: none;
+  }
 }
 </style>
