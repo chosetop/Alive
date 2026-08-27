@@ -1,63 +1,85 @@
 <script setup lang="ts">
-import { THEMES, useTheme, type ThemeName } from '~/composables/useTheme'
+import { THEMES, type ThemeName } from '@alive/theme'
+import { useTheme } from '~/composables/useTheme'
 
 /**
- * Theme switch, cycling through the available themes.
- *
- * A cycling button rather than a dropdown: with two themes a menu is heavier
- * than the choice it offers. When the admin gains theme configuration and the
- * list grows past three, this should become a real menu.
+ * Accessible theme menu. The first option clears the visitor cookie so the
+ * reader follows the site's current default.
  */
 
-const { theme, setTheme } = useTheme()
+const { data: siteSettings } = useSiteSettings()
+const { theme, visitorTheme, setVisitorTheme } = useTheme(computed(() => siteSettings.value.default_theme))
 
-const LABELS: Record<ThemeName, string> = {
-  ink: '墨',
-  lamp: '灯',
+const labels: Record<ThemeName, string> = Object.fromEntries(THEMES.map((item) => [item.name, item.label])) as Record<ThemeName, string>
+
+function selectTheme(value: string): void {
+  setVisitorTheme(value === 'site' ? null : (value as ThemeName))
 }
-
-const nextTheme = computed<ThemeName>(() => {
-  const index = THEMES.indexOf(theme.value)
-  return THEMES[(index + 1) % THEMES.length] ?? 'ink'
-})
 </script>
 
 <template>
-  <button
-    class="toggle"
-    type="button"
-    :aria-label="`切换到${LABELS[nextTheme]}主题`"
-    @click="setTheme(nextTheme)"
-  >
-    <!--
-      The label shows the *current* theme, while the action switches to the next.
-      aria-label above states the action, since the visible glyph states the
-      state.
-    -->
-    <span aria-hidden="true">{{ LABELS[theme] }}</span>
-  </button>
+  <details class="toggle">
+    <summary :aria-label="`当前主题：${labels[theme]}`">{{ labels[theme] }}</summary>
+    <div class="menu" role="menu" aria-label="选择主题">
+      <button type="button" role="menuitem" :aria-checked="visitorTheme === null" @click="selectTheme('site')">
+        跟随站点
+      </button>
+      <button
+        v-for="item in THEMES"
+        :key="item.name"
+        type="button"
+        role="menuitemradio"
+        :aria-checked="theme === item.name"
+        @click="selectTheme(item.name)"
+      >
+        {{ item.label }}
+      </button>
+    </div>
+  </details>
 </template>
 
 <style scoped>
 .toggle {
-  width: 1.75rem;
-  height: 1.75rem;
-  padding: 0;
-  border: 1px solid var(--c-line);
-  border-radius: 50%;
-  background: transparent;
-  color: var(--c-ink-muted);
-  font-family: var(--font-body);
-  font-size: var(--text-xs);
-  line-height: 1;
-  cursor: pointer;
-  transition:
-    color var(--duration-fast) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out);
+  position: relative;
 }
 
-.toggle:hover {
-  border-color: var(--c-accent);
+summary {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--c-line);
+  color: var(--c-ink-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  list-style: none;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: 2;
+  display: grid;
+  min-width: 9rem;
+  padding: var(--space-2);
+  border: 1px solid var(--c-line);
+  background: var(--c-surface);
+  box-shadow: 0 8px 20px var(--c-overlay);
+}
+
+.menu button {
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--c-ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu button:hover,
+.menu button[aria-checked='true'] {
+  background: var(--c-surface-sunken);
   color: var(--c-accent);
 }
 </style>

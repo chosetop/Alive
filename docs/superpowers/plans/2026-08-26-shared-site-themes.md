@@ -349,11 +349,11 @@ git commit -m "feat: preview and save admin themes"
 - Consumes: `GET /api/v1/site`, `@alive/theme`
 - Produces: visitor cookie absent means site default; explicit visitor choice overrides it
 
-- [ ] **Step 1: Write failing precedence tests**
+- [x] **Step 1: Write failing precedence tests**
 
 Cover SSR no-cookie plus site `codex-lavender`, visitor `lamp` plus site `ink`, invalid cookie, “跟随站点” clearing the cookie, and API failure falling back to `ink`.
 
-- [ ] **Step 2: Fetch settings once per SSR render**
+- [x] **Step 2: Fetch settings once per SSR render**
 
 ```ts
 export function useSiteSettings() {
@@ -364,15 +364,15 @@ export function useSiteSettings() {
 }
 ```
 
-- [ ] **Step 3: Rewrite useTheme around the shared resolver**
+- [x] **Step 3: Rewrite useTheme around the shared resolver**
 
 `useTheme(siteDefault)` returns `theme`, `visitorTheme`, `setVisitorTheme`, and `applyTheme`. `setVisitorTheme(null)` deletes the cookie. `applyTheme` always writes the resolved valid theme into SSR `htmlAttrs`.
 
-- [ ] **Step 4: Replace the cycling button with an accessible menu**
+- [x] **Step 4: Replace the cycling button with an accessible menu**
 
 The menu has four choices: 跟随站点, 纸墨, 灯下, Codex Lavender. Mark the resolved current theme and separately indicate when the choice follows the site.
 
-- [ ] **Step 5: Import shared CSS and remove duplicated palettes**
+- [x] **Step 5: Import shared CSS and remove duplicated palettes**
 
 Add `@alive/theme/themes.css` before main/prose styles in `nuxt.config.ts`. Keep layout scale and component rules in frontend CSS, but remove theme color definitions now owned by the package.
 
@@ -380,7 +380,7 @@ Change prose and editor body rules to read `--c-prose`; headings continue to
 read `--c-ink`. This is what lets Codex Lavender use the approved B prose purple
 without making every UI label the same color.
 
-- [ ] **Step 6: Run frontend tests, typecheck, and SSR build**
+- [x] **Step 6: Run frontend tests, typecheck, and SSR build**
 
 Run:
 
@@ -393,7 +393,7 @@ npm run build
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add frontend packages/theme

@@ -8,7 +8,7 @@ export default defineNuxtConfig({
   // prose.css is global rather than scoped to the page that renders Markdown:
   // scoped styles cannot reach v-html content, since that HTML carries none of
   // the component's generated attributes.
-  css: ['~/assets/css/main.css', '~/assets/css/prose.css'],
+  css: ['@alive/theme/themes.css', '~/assets/css/main.css', '~/assets/css/prose.css'],
 
   nitro: {
     routeRules: {

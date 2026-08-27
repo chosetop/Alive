@@ -9,7 +9,8 @@ import { useTheme } from '~/composables/useTheme'
  * means one request per render, shared across navigations.
  */
 
-const { applyTheme } = useTheme()
+const { data: siteSettings } = useSiteSettings()
+const { applyTheme } = useTheme(computed(() => siteSettings.value.default_theme))
 applyTheme()
 
 /**

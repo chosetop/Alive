@@ -10,23 +10,18 @@
  * colours on every single load. A cookie is sent with the document request, so
  * the first byte of HTML already carries the right theme.
  *
- * ## No stored default
- *
- * The cookie is unset until the reader chooses. While unset, no `data-theme`
- * attribute is written and the palette in tokens.css follows the operating
- * system through `light-dark()`. Writing a default on first visit would override
- * a reader who had already told their OS they prefer dark.
+ * The cookie is unset until the reader chooses. While unset, the resolved
+ * theme is the site's server-backed default.
  */
 
-export const THEMES = ['ink', 'lamp'] as const
+import { isThemeName, resolveTheme, type ThemeName } from '@alive/theme'
+import type { Ref } from 'vue'
 
-export type ThemeName = (typeof THEMES)[number]
-
-function isThemeName(value: unknown): value is ThemeName {
-  return typeof value === 'string' && (THEMES as readonly string[]).includes(value)
+export function resolveVisitorTheme(visitor: unknown, siteDefault: unknown): ThemeName {
+  return resolveTheme({ visitor, siteDefault })
 }
 
-export function useTheme() {
+export function useTheme(siteDefault: Ref<string>) {
   const cookie = useCookie<string | null>('theme', {
     // A year: this is a preference, not a session.
     maxAge: 60 * 60 * 24 * 365,
@@ -34,14 +29,13 @@ export function useTheme() {
     sameSite: 'lax',
   })
 
-  /**
-   * Falls back to `ink` for display purposes only. The distinction matters:
-   * `theme.value` answers "which label to show", while the attribute below is
-   * absent when unset so the OS preference still wins.
-   */
-  const theme = computed<ThemeName>(() => (isThemeName(cookie.value) ? cookie.value : 'ink'))
+  /** The resolved theme is always valid, including while settings are loading. */
+  const visitorTheme = computed<ThemeName | null>(() =>
+    isThemeName(cookie.value) ? cookie.value : null,
+  )
+  const theme = computed<ThemeName>(() => resolveVisitorTheme(visitorTheme.value, siteDefault.value))
 
-  function setTheme(next: ThemeName): void {
+  function setVisitorTheme(next: ThemeName | null): void {
     cookie.value = next
   }
 
@@ -54,11 +48,10 @@ export function useTheme() {
   function applyTheme(): void {
     useHead({
       htmlAttrs: {
-        // Undefined omits the attribute, which is what lets the OS decide.
-        'data-theme': computed(() => (isThemeName(cookie.value) ? cookie.value : undefined)),
+        'data-theme': computed(() => theme.value),
       },
     })
   }
 
-  return { theme, setTheme, applyTheme }
+  return { theme, visitorTheme, setVisitorTheme, applyTheme }
 }

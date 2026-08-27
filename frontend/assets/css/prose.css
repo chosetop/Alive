@@ -87,7 +87,7 @@
  */
 .prose strong {
   font-weight: 400;
-  color: light-dark(oklch(14% 0.015 60), oklch(97% 0.008 75));
+  color: var(--c-ink);
   background: linear-gradient(transparent 62%, var(--c-paper-sunken) 62%);
 }
 

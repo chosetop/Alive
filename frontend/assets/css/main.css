@@ -67,7 +67,7 @@ html {
 body {
   background: var(--c-paper);
   color: var(--c-ink);
-  font-family: var(--font-body);
+  font-family: var(--font-prose);
   font-size: var(--text-base);
   line-height: var(--leading-body);
 
