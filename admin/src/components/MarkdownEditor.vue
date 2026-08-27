@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { commandsCtx, defaultValueCtx, Editor, rootCtx } from '@milkdown/kit/core'
-import { configureLinkTooltip, linkTooltipPlugin, toggleLinkCommand } from '@milkdown/kit/component/link-tooltip'
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener'
 import { commonmark } from '@milkdown/kit/preset/commonmark'
 import { gfm } from '@milkdown/kit/preset/gfm'
@@ -16,7 +15,6 @@ import { nord } from '@milkdown/theme-nord'
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { SELECTION_TOOLBAR_ACTIONS } from '../editor/selection-toolbar'
-import { isLinkShortcut } from '../editor/link-shortcut'
 import { syncHeadingSections, toggleHeadingSection } from '../editor/heading-collapse'
 
 // Both stylesheets are required, not optional polish. ProseMirror's own CSS
@@ -60,7 +58,20 @@ const emit = defineEmits<{
 
 const toolbarVisible = ref(false)
 const editorRoot = ref<HTMLDivElement | null>(null)
-let headingObserver: MutationObserver | null = null
+
+function syncHeadingsWhenReady(attempt = 0): void {
+  const root = editorRoot.value
+  if (root === null) {
+    if (attempt < 120) window.requestAnimationFrame(() => syncHeadingsWhenReady(attempt + 1))
+    return
+  }
+  const headings = root.querySelectorAll('h1, h2, h3, h4, h5, h6')
+  if (headings.length > 0 || attempt >= 120) {
+    syncHeadingSections(root)
+    return
+  }
+  window.requestAnimationFrame(() => syncHeadingsWhenReady(attempt + 1))
+}
 
 function hasSelectionInsideEditor(): boolean {
   const selection = window.getSelection()
@@ -78,7 +89,6 @@ function runToolbarAction(id: (typeof SELECTION_TOOLBAR_ACTIONS)[number]['id'], 
     if (id === 'emphasis') commands.call(toggleEmphasisCommand.key)
     if (id === 'strike') commands.call(toggleStrikethroughCommand.key)
     if (id === 'inline-code') commands.call(toggleInlineCodeCommand.key)
-    if (id === 'link') commands.call(toggleLinkCommand.key)
   })
 }
 
@@ -88,8 +98,6 @@ const controller = useEditor((root) =>
     .config((ctx) => {
       ctx.set(rootCtx, root)
       ctx.set(defaultValueCtx, props.initialValue)
-      configureLinkTooltip(ctx)
-
       // markdownUpdated rather than `updated`: the parent stores Markdown, and
       // serialising here keeps the ProseMirror document from leaking outward.
       ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
@@ -103,19 +111,13 @@ const controller = useEditor((root) =>
     .use(listener)
     // Without this, ctrl/cmd-Z inside the editor hits the browser's own undo
     // and does the wrong thing.
-    .use(history)
-    .use(linkTooltipPlugin),
+    .use(history),
 )
 
 function onKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape') {
     closePortalOverlays()
-    return
   }
-  if (!editorRoot.value?.contains(event.target as Node)) return
-  if (!isLinkShortcut(event)) return
-  event.preventDefault()
-  controller.get()?.action((ctx) => ctx.get(commandsCtx).call(toggleLinkCommand.key))
 }
 
 function closePortalOverlays(): void {
@@ -153,7 +155,7 @@ function onEditorKeydown(event: KeyboardEvent): void {
 watch(controller.loading, async (loading) => {
   if (!loading) {
     await nextTick()
-    if (editorRoot.value !== null) syncHeadingSections(editorRoot.value)
+    syncHeadingsWhenReady()
     emit('ready', controller)
   }
 }, { immediate: true })
@@ -163,18 +165,10 @@ onMounted(async () => {
   document.addEventListener('keyup', onKeyup, true)
   document.addEventListener('selectionchange', onSelectionChange)
   await nextTick()
-  if (editorRoot.value !== null) {
-    syncHeadingSections(editorRoot.value)
-    headingObserver = new MutationObserver(() => {
-      if (editorRoot.value !== null) syncHeadingSections(editorRoot.value)
-    })
-    headingObserver.observe(editorRoot.value, { childList: true, subtree: true })
-  }
+  syncHeadingsWhenReady()
 })
 
 onBeforeUnmount(() => {
-  headingObserver?.disconnect()
-  headingObserver = null
   document.removeEventListener('keydown', onKeydown, true)
   document.removeEventListener('keyup', onKeyup, true)
   document.removeEventListener('selectionchange', onSelectionChange)

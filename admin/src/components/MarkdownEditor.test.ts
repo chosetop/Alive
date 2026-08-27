@@ -4,13 +4,15 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 describe('MarkdownEditor Milkdown controls', () => {
-  it('configures the link tooltip before mounting its plugin', () => {
+  it('does not mount the bottom link paste tooltip', () => {
     const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'MarkdownEditor.vue'), 'utf8')
 
-    expect(source).toContain('configureLinkTooltip(ctx)')
+    expect(source).not.toContain('configureLinkTooltip')
+    expect(source).not.toContain('linkTooltipPlugin')
+    expect(source).not.toContain('Paste link...')
   })
 
-  it('handles Escape at document level so portal tooltips can close', () => {
+  it('handles Escape at document level for editor overlays', () => {
     const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'MarkdownEditor.vue'), 'utf8')
 
     expect(source).toContain("event.key === 'Escape'")
