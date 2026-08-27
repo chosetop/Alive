@@ -32,6 +32,14 @@ function closeOnEscape(event: KeyboardEvent): void {
   }
 }
 
+function openOnHover(): void {
+  if (toggle.value) toggle.value.open = true
+}
+
+function closeOnHoverEnd(): void {
+  if (toggle.value) toggle.value.open = false
+}
+
 onMounted(() => {
   document.addEventListener('pointerdown', closeOnOutsidePointerDown)
   document.addEventListener('keydown', closeOnEscape)
@@ -44,7 +52,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <details ref="toggle" class="toggle">
+  <details ref="toggle" class="toggle" @mouseenter="openOnHover" @mouseleave="closeOnHoverEnd">
     <summary :aria-label="`当前主题：${labels[theme]}`">{{ labels[theme] }}</summary>
     <div class="menu" role="menu" aria-label="选择主题">
       <button type="button" role="menuitem" :aria-checked="visitorTheme === null" @click="selectTheme('site')">
