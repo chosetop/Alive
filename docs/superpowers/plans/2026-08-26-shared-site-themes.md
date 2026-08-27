@@ -291,7 +291,7 @@ git commit -m "feat: expose site theme settings"
 **Interfaces:**
 - Produces: theme store with `siteDefault`, `preview`, `isDirty`, `saveDefault`, `cancelPreview`
 
-- [ ] **Step 1: Write failing theme-store tests**
+- [x] **Step 1: Write failing theme-store tests**
 
 ```ts
 store.hydrate({ default_theme: 'ink', revision: 1 })
