@@ -16,6 +16,7 @@ const labels: Record<ThemeName, string> = Object.fromEntries(THEMES.map((item) =
 
 function selectTheme(value: string): void {
   setVisitorTheme(value === 'site' ? null : (value as ThemeName))
+  if (toggle.value) toggle.value.open = false
 }
 
 function closeOnOutsidePointerDown(event: PointerEvent): void {
@@ -128,11 +129,14 @@ details[open] summary::after {
   right: 0;
   z-index: 2;
   display: grid;
-  min-width: 10rem;
-  padding: var(--space-2);
-  border: 1px solid var(--c-line);
-  background: var(--c-surface);
-  box-shadow: 0 8px 20px var(--c-overlay);
+  min-width: 11.5rem;
+  padding: 0.375rem;
+  border: 1px solid color-mix(in srgb, var(--c-line) 72%, transparent);
+  border-radius: 0.875rem;
+  background: color-mix(in srgb, var(--c-surface) 88%, transparent);
+  box-shadow: 0 0.75rem 2rem color-mix(in srgb, var(--c-overlay) 72%, transparent), 0 0.125rem 0.375rem color-mix(in srgb, var(--c-ink) 10%, transparent);
+  -webkit-backdrop-filter: saturate(1.4) blur(1rem);
+  backdrop-filter: saturate(1.4) blur(1rem);
   animation: theme-menu-in var(--duration-fast) var(--ease-out);
 }
 
@@ -148,14 +152,21 @@ details[open] summary::after {
 }
 
 .menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
   padding: var(--space-2) var(--space-3);
   border: 0;
+  border-radius: 0.625rem;
   background: transparent;
   color: var(--c-ink);
   font-family: var(--font-ui);
   font-size: var(--text-sm);
   text-align: left;
   cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
 .menu button:hover,
@@ -164,10 +175,21 @@ details[open] summary::after {
   color: var(--c-accent);
 }
 
+.menu button[aria-checked='true']::after {
+  content: '✓';
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+
+.menu button:active {
+  transform: scale(0.98);
+}
+
 @media (prefers-reduced-motion: reduce) {
   summary,
   summary::after,
-  .menu {
+  .menu,
+  .menu button {
     animation: none;
     transition: none;
   }
