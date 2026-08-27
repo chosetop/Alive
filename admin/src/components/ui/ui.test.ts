@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import UiButton from './UiButton.vue'
 import UiDialog from './UiDialog.vue'
+import UiIcon from './UiIcon.vue'
 import UiIconButton from './UiIconButton.vue'
 import UiMenu from './UiMenu.vue'
 import UiPopover from './UiPopover.vue'
@@ -100,11 +101,13 @@ describe('UiIconButton', () => {
 
   it('shares the iOS visual semantics across primitives', () => {
     const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'ui.css'), 'utf8')
+    const tokens = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../style.css'), 'utf8')
 
     expect(css).toContain('var(--c-glass)')
     expect(css).toContain('var(--c-focus)')
     expect(css).toContain('var(--radius-control)')
     expect(css).toContain('var(--shadow-float)')
+    expect(tokens).toContain('var(--c-shadow-control)')
     expect(css).toContain('var(--motion-fast)')
     expect(css).toContain('prefers-reduced-motion')
   })
@@ -140,6 +143,17 @@ describe('UiIconButton', () => {
     // "false" must be present, not absent: the directory toggle has two states and
     // both need announcing.
     expect(closed.attributes('aria-pressed')).toBe('false')
+  })
+})
+
+describe('UiIcon', () => {
+  it('renders a decorative SVG glyph outside the accessibility tree', () => {
+    const wrapper = mount(UiIcon, { props: { name: 'search' } })
+
+    expect(wrapper.element.tagName).toBe('svg')
+    expect(wrapper.attributes('aria-hidden')).toBe('true')
+    expect(wrapper.attributes('focusable')).toBe('false')
+    expect(wrapper.find('path').attributes('d')).toBeTruthy()
   })
 })
 

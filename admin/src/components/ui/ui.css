@@ -343,6 +343,7 @@
   }
 
   .ui-menu__item {
+    min-height: 44px;
     padding: 0.625rem var(--space-3);
   }
 }

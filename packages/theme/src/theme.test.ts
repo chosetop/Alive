@@ -51,7 +51,7 @@ describe('shared theme manifest', () => {
       '--c-paper', '--c-surface', '--c-surface-sunken', '--c-glass', '--c-glass-border',
       '--c-ink', '--c-prose', '--c-ink-muted', '--c-ink-faint', '--c-line', '--c-line-strong',
       '--c-accent', '--c-accent-hover', '--c-focus', '--c-success', '--c-success-surface',
-      '--c-danger', '--c-danger-surface', '--c-on-accent', '--c-overlay',
+      '--c-danger', '--c-danger-surface', '--c-shadow-control', '--c-shadow-float', '--c-on-accent', '--c-overlay',
     ]
 
     for (const theme of THEMES) {

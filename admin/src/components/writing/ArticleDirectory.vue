@@ -6,7 +6,7 @@ import { entriesApi, toUserMessage } from '../../api'
 import { EntryRecoveryStore } from '../../editor/recovery-store'
 import { useWritingStore, writingFlushKey } from '../../stores/writing'
 import type { EntryListItem, EntryStatus } from '../../types/api'
-import { UiButton, UiIconButton } from '../ui'
+import { UiButton, UiIcon, UiIconButton } from '../ui'
 import ThemePicker from './ThemePicker.vue'
 
 /**
@@ -298,8 +298,7 @@ function isUnsynced(item: EntryListItem): boolean {
         data-directory-collapse
         @click="writing.setDirectoryOpen(false)"
       >
-        <!-- The glyph is aria-hidden inside UiIconButton; the label names it. -->
-        <span aria-hidden="true">⟨</span>
+        <UiIcon name="chevron-left" />
       </UiIconButton>
     </div>
 

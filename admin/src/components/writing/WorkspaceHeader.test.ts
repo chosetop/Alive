@@ -134,6 +134,7 @@ describe('WorkspaceHeader', () => {
     const toggle = wrapper.get('[data-directory-expand]')
     // Named, because it is icon-only: an unnamed one is announced as "button".
     expect(toggle.attributes('aria-label')).toBe('展开文章目录')
+    expect(toggle.get('.ui-icon').attributes('aria-hidden')).toBe('true')
 
     await toggle.trigger('click')
     expect(store.directoryOpen).toBe(true)
@@ -153,6 +154,7 @@ describe('WorkspaceHeader', () => {
     const wrapper = mountHeader({ entryStatus: 'draft' })
 
     expect(wrapper.get('[data-header-delete]').text()).toBe('删除')
+    expect(wrapper.get('[data-more-actions] .ui-icon').attributes('aria-hidden')).toBe('true')
     expect(wrapper.find('[data-header-delete-confirm]').exists()).toBe(false)
     expect(wrapper.get('[data-publish]').text()).toBe('发布')
   })

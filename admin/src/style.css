@@ -16,8 +16,8 @@
   --radius-md: 16px;
   --radius-control: 12px;
   --radius-surface: 16px;
-  --shadow-control: 0 1px 2px rgb(23 32 42 / 8%);
-  --shadow-float: 0 12px 32px rgb(23 32 42 / 14%);
+  --shadow-control: 0 1px 2px var(--c-shadow-control);
+  --shadow-float: 0 12px 32px var(--c-shadow-float);
   --motion-fast: 160ms;
 
   --space-1: 0.25rem;

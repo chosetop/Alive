@@ -4,7 +4,7 @@ import { computed, ref } from 'vue'
 import type { SaveStatus } from '../../editor/save-coordinator'
 import { useWritingStore } from '../../stores/writing'
 import type { EntryStatus } from '../../types/api'
-import { UiButton, UiIconButton, UiMenu, type UiMenuItem } from '../ui'
+import { UiButton, UiIcon, UiIconButton, UiMenu, type UiMenuItem } from '../ui'
 
 /**
  * The workspace header.
@@ -99,7 +99,7 @@ const publishLabel = computed(() =>
         data-directory-expand
         @click="writing.setDirectoryOpen(true)"
       >
-        <span aria-hidden="true">⟩</span>
+        <UiIcon name="chevron-right" />
       </UiIconButton>
     </div>
 
@@ -137,7 +137,7 @@ const publishLabel = computed(() =>
       >
         <template #trigger>
           <UiIconButton label="更多操作" data-more-actions>
-            <span aria-hidden="true">⋯</span>
+            <UiIcon name="more-horizontal" />
           </UiIconButton>
         </template>
       </UiMenu>

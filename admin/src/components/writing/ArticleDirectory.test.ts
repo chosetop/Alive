@@ -436,6 +436,7 @@ describe('ArticleDirectory', () => {
     // icon-only control has nothing else to go on.
     const column = await mountDirectory({ drawer: false })
     expect(column.get('[data-directory-collapse]').attributes('aria-label')).toBe('收起文章目录')
+    expect(column.get('[data-directory-collapse] .ui-icon').attributes('aria-hidden')).toBe('true')
 
     const drawer = await mountDirectory({ drawer: true })
     expect(drawer.get('[data-directory-collapse]').attributes('aria-label')).toBe('关闭文章目录')

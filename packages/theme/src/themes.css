@@ -18,6 +18,8 @@
   --c-surface-sunken: #ebedf0;
   --c-glass: rgb(255 255 255 / 72%);
   --c-glass-border: rgb(23 32 42 / 10%);
+  --c-shadow-control: rgb(23 32 42 / 8%);
+  --c-shadow-float: rgb(23 32 42 / 14%);
   --c-ink: #17202a;
   --c-prose: #292621;
   --c-ink-muted: #62718a;
@@ -48,6 +50,8 @@
   --c-surface-sunken: #2d2a27;
   --c-glass: rgb(36 34 32 / 72%);
   --c-glass-border: rgb(240 237 231 / 14%);
+  --c-shadow-control: rgb(0 0 0 / 24%);
+  --c-shadow-float: rgb(0 0 0 / 42%);
   --c-ink: #f0ede7;
   --c-prose: #e6e1d8;
   --c-ink-muted: #b5aea3;
@@ -78,6 +82,8 @@
   --c-surface-sunken: #ebe7f0;
   --c-glass: rgb(255 255 255 / 72%);
   --c-glass-border: rgb(104 57 157 / 12%);
+  --c-shadow-control: rgb(104 57 157 / 10%);
+  --c-shadow-float: rgb(104 57 157 / 18%);
   --c-ink: #68399d;
   --c-prose: #7652a2;
   --c-ink-muted: #755b91;
@@ -109,6 +115,8 @@
   --c-surface-sunken: #0c1119;
   --c-glass: rgb(30 41 59 / 72%);
   --c-glass-border: rgb(203 213 225 / 18%);
+  --c-shadow-control: rgb(0 0 0 / 28%);
+  --c-shadow-float: rgb(0 0 0 / 48%);
   --c-ink: #f4dfc4;
   --c-prose: #e7d0b3;
   --c-ink-muted: #b9a994;
