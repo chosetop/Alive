@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { entryTypeStyle } from '~/composables/useEntryType'
 import { entryDate, formatFullDate, toDateAttribute } from '~/utils/date'
+import { getEntryNeighbors } from '~/utils/entry-navigation'
 import { markdownToText, renderMarkdown } from '~/utils/markdown'
 
 /**
@@ -14,7 +15,7 @@ import { markdownToText, renderMarkdown } from '~/utils/markdown'
  */
 
 const route = useRoute()
-const { getBySlug } = useEntriesApi()
+const { getBySlug, list } = useEntriesApi()
 
 const slug = computed(() => String(route.params.slug))
 
@@ -37,6 +38,20 @@ if (error.value || !entry.value) {
   // sanitises it, which would strip Chinese text.
   throw createError({ statusCode: 404, message: '没有这一篇', fatal: true })
 }
+
+/**
+ * The detail request remains authoritative for the article. Navigation is an
+ * enhancement, so a list failure leaves the reader on a healthy detail page.
+ */
+const { data: navigationPage } = await useAsyncData(
+  () => `entry-navigation-${slug.value}`,
+  () => list({ page_size: 50 }),
+  { watch: [slug] },
+)
+
+const neighbors = computed(() =>
+  getEntryNeighbors(navigationPage.value?.data ?? [], slug.value),
+)
 
 const style = computed(() => entryTypeStyle(entry.value!.type))
 const date = computed(() => entryDate(entry.value!))
@@ -128,6 +143,29 @@ useHead({
     <div class="prose" v-html="html" />
 
     <footer class="foot">
+      <nav v-if="neighbors.previous || neighbors.next" class="neighbors" aria-label="文章导航">
+        <NuxtLink
+          v-if="neighbors.previous"
+          class="neighbor neighbor--previous"
+          :to="`/${neighbors.previous.slug}`"
+          rel="prev"
+        >
+          <span class="neighbor__direction">上一篇</span>
+          <span class="neighbor__title">{{ neighbors.previous.title }}</span>
+        </NuxtLink>
+        <span v-else class="neighbor neighbor--empty" aria-hidden="true" />
+
+        <NuxtLink
+          v-if="neighbors.next"
+          class="neighbor neighbor--next"
+          :to="`/${neighbors.next.slug}`"
+          rel="next"
+        >
+          <span class="neighbor__direction">下一篇</span>
+          <span class="neighbor__title">{{ neighbors.next.title }}</span>
+        </NuxtLink>
+        <span v-else class="neighbor neighbor--empty" aria-hidden="true" />
+      </nav>
       <NuxtLink to="/" class="back">← 回到全部</NuxtLink>
     </footer>
   </article>
@@ -202,6 +240,45 @@ useHead({
   border-top: 1px solid var(--c-line);
 }
 
+.neighbors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5);
+  margin-bottom: var(--space-6);
+}
+
+.neighbor {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--c-ink-muted);
+  text-decoration: none;
+}
+
+.neighbor--next {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.neighbor__direction {
+  color: var(--c-ink-faint);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+
+.neighbor__title {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--c-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.neighbor:hover .neighbor__title {
+  color: var(--c-accent);
+}
+
 .back {
   color: var(--c-ink-muted);
   font-family: var(--font-ui);
@@ -216,6 +293,10 @@ useHead({
 @media (max-width: 34rem) {
   .title {
     font-size: var(--text-xl);
+  }
+
+  .neighbors {
+    gap: var(--space-3);
   }
 }
 </style>
