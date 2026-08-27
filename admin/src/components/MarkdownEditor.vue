@@ -1,11 +1,23 @@
 <script setup lang="ts">
-import { defaultValueCtx, Editor, rootCtx } from '@milkdown/kit/core'
+import { commandsCtx, defaultValueCtx, Editor, rootCtx } from '@milkdown/kit/core'
+import { configureLinkTooltip, linkTooltipPlugin, toggleLinkCommand } from '@milkdown/kit/component/link-tooltip'
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener'
 import { commonmark } from '@milkdown/kit/preset/commonmark'
 import { gfm } from '@milkdown/kit/preset/gfm'
 import { history } from '@milkdown/kit/plugin/history'
-import { Milkdown, useEditor } from '@milkdown/vue'
+import {
+  toggleEmphasisCommand,
+  toggleInlineCodeCommand,
+  toggleStrongCommand,
+} from '@milkdown/kit/preset/commonmark'
+import { toggleStrikethroughCommand } from '@milkdown/kit/preset/gfm'
+import { Milkdown, useEditor, type UseEditorReturn } from '@milkdown/vue'
 import { nord } from '@milkdown/theme-nord'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+
+import { SELECTION_TOOLBAR_ACTIONS } from '../editor/selection-toolbar'
+import { isLinkShortcut } from '../editor/link-shortcut'
+import { configureSlashMenu, slashMenuPlugin } from '../editor/slash-plugin'
 
 // Both stylesheets are required, not optional polish. ProseMirror's own CSS
 // carries editing behaviour that is visual — selection, gap cursor, placeholder
@@ -41,14 +53,42 @@ const props = defineProps<{
   disabled?: boolean
 }>()
 
-const emit = defineEmits<{ update: [markdown: string] }>()
+const emit = defineEmits<{
+  update: [markdown: string]
+  ready: [controller: UseEditorReturn]
+}>()
 
-useEditor((root) =>
+const toolbarVisible = ref(false)
+const editorRoot = ref<HTMLDivElement | null>(null)
+
+function hasSelectionInsideEditor(): boolean {
+  const selection = window.getSelection()
+  const root = editorRoot.value
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed || !root) return false
+  return root.contains(selection.anchorNode) && root.contains(selection.focusNode)
+}
+
+function runToolbarAction(id: (typeof SELECTION_TOOLBAR_ACTIONS)[number]['id'], controller: UseEditorReturn): void {
+  const editor = controller.get()
+  if (!editor) return
+  editor.action((ctx) => {
+    const commands = ctx.get(commandsCtx)
+    if (id === 'bold') commands.call(toggleStrongCommand.key)
+    if (id === 'emphasis') commands.call(toggleEmphasisCommand.key)
+    if (id === 'strike') commands.call(toggleStrikethroughCommand.key)
+    if (id === 'inline-code') commands.call(toggleInlineCodeCommand.key)
+    if (id === 'link') commands.call(toggleLinkCommand.key)
+  })
+}
+
+const controller = useEditor((root) =>
   Editor.make()
     .config(nord)
     .config((ctx) => {
       ctx.set(rootCtx, root)
       ctx.set(defaultValueCtx, props.initialValue)
+      configureSlashMenu(ctx)
+      configureLinkTooltip(ctx)
 
       // markdownUpdated rather than `updated`: the parent stores Markdown, and
       // serialising here keeps the ProseMirror document from leaking outward.
@@ -63,13 +103,57 @@ useEditor((root) =>
     .use(listener)
     // Without this, ctrl/cmd-Z inside the editor hits the browser's own undo
     // and does the wrong thing.
-    .use(history),
+    .use(history)
+    .use(slashMenuPlugin)
+    .use(linkTooltipPlugin),
 )
+
+function onKeydown(event: KeyboardEvent): void {
+  if (!isLinkShortcut(event)) return
+  event.preventDefault()
+  controller.get()?.action((ctx) => ctx.get(commandsCtx).call(toggleLinkCommand.key))
+}
+
+function onSelectionChange(): void {
+  toolbarVisible.value = hasSelectionInsideEditor()
+}
+
+watch(controller.loading, (loading) => {
+  if (!loading) emit('ready', controller)
+}, { immediate: true })
+
+onMounted(() => {
+  editorRoot.value?.addEventListener('keydown', onKeydown)
+  document.addEventListener('selectionchange', onSelectionChange)
+})
+
+onBeforeUnmount(() => {
+  editorRoot.value?.removeEventListener('keydown', onKeydown)
+  document.removeEventListener('selectionchange', onSelectionChange)
+})
 </script>
 
 <template>
-  <div class="editor-shell" :inert="disabled" :aria-disabled="disabled || undefined">
+  <div
+    ref="editorRoot"
+    class="editor-shell"
+    :inert="disabled"
+    :aria-disabled="disabled || undefined"
+  >
     <Milkdown />
+    <div v-if="toolbarVisible" class="selection-toolbar" role="toolbar" aria-label="文字格式">
+      <button
+        v-for="action in SELECTION_TOOLBAR_ACTIONS"
+        :key="action.id"
+        type="button"
+        class="selection-toolbar__button"
+        :aria-label="action.label"
+        @mousedown.prevent
+        @click="runToolbarAction(action.id, controller)"
+      >
+        {{ action.label }}
+      </button>
+    </div>
   </div>
 </template>
 
@@ -82,6 +166,34 @@ useEditor((root) =>
 
 .editor-shell:focus-within {
   border-color: var(--c-accent);
+}
+
+.selection-toolbar {
+  display: flex;
+  gap: 0.125rem;
+  width: fit-content;
+  margin: 0 var(--space-4) var(--space-3);
+  padding: 0.25rem;
+  border: 1px solid var(--c-line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--c-paper);
+  box-shadow: var(--shadow-sm);
+}
+
+.selection-toolbar__button {
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0.25rem 0.5rem;
+  color: var(--c-ink);
+  background: transparent;
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.selection-toolbar__button:hover,
+.selection-toolbar__button:focus-visible {
+  background: var(--c-surface-sunken);
 }
 
 .editor-shell[aria-disabled='true'] {

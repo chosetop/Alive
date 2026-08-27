@@ -1324,3 +1324,24 @@ harness 需要 `VITE_API_BASE_URL`（客户端没有它会抛错），临时写�
 - admin 在 Node 22.17.0 下全量 **175 tests passed**，build 通过。
 - 真实浏览器已复用现有登录会话进入 `/entries/18`：确认元数据已从主画布移入设置面板，设置字段 label 可定位，预览面板可打开，发布面板会显示阻塞项/提醒项。
 - 375×700 实测：页面 `scrollWidth=375`；设置面板宽度为 375px 且内部可滚动；预览框左右边界为 24px/351px，无横向溢出。浏览器临时视口覆盖已清除。未创建临时账号。
+
+## 20. Task 6 上下文编辑器控件（2026-08-27，进行中）
+
+### 20.1 实现与测试
+
+- `editor-commands.ts` 提供 slash 命令注册表，支持中文标签和英文关键词筛选，并把命令执行与 slash 文本删除绑定。
+- `slash-plugin.ts` 接入 Milkdown `slashFactory` / `SlashProvider`，在段落末尾的 `/` 上下文显示 `UiMenu`，支持键盘导航、回车执行和代码块隐藏。
+- `selection-toolbar.ts` 定义粗体、斜体、删除线、行内代码、链接五个非空选区动作；`MarkdownEditor.vue` 按真实选区显示工具条。
+- `MarkdownEditor.vue` 接入链接 tooltip、Cmd/Ctrl+K 快捷键、Milkdown history，并新增 `ready(controller)` 事件；原有 Markdown `update` 输出契约保持不变。
+- 新增链接快捷键、slash 插件和 MarkdownEditor 配置测试。
+
+验证：admin 全量 **178 tests passed**，Node 22.17.0 下 `npm run build` 通过。
+
+### 20.2 真实浏览器复验
+
+- 复用现有登录会话进入 `/entries/18`，输入 `/` 后确认 slash 菜单出现；按 Enter 选择“二级标题”后确认 ProseMirror 节点转换为标题。
+- 选中文本后确认“文字格式”工具条出现，包含五个动作。
+- 选中文本后按 Cmd/Ctrl+K，确认链接编辑浮层出现并聚焦 `Paste link...` 输入框。
+- 发现并修复 slash 命令转换标题后 slash 文本删除失效的问题；删除逻辑现在同时识别段落和标题节点。
+
+本轮没有可用的独立审查子进程工具，因此没有把自审称作独立审查；已用失败测试、全量测试、类型检查、构建和真实浏览器行为复核。Task 6 尚未提交，Task 7 尚未开始。Plan 3 主题系统与 Plan 4 媒体上传没有触碰。
