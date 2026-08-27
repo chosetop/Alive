@@ -143,6 +143,7 @@ onBeforeUnmount(() => {
   <div
     ref="editorRoot"
     class="editor-shell"
+    data-editor-visual-mode="quiet-paper"
     :inert="disabled"
     :aria-disabled="disabled || undefined"
   >
@@ -169,7 +170,7 @@ onBeforeUnmount(() => {
   width: 100%;
   min-width: 0;
   padding: var(--space-4) 0;
-  background: var(--c-paper);
+  background: transparent;
 }
 
 .selection-toolbar {
@@ -178,10 +179,11 @@ onBeforeUnmount(() => {
   width: fit-content;
   margin: 0 var(--space-4) var(--space-3);
   padding: 0.25rem;
-  border: 1px solid var(--c-line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--c-paper);
-  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--radius-control);
+  background: var(--c-glass);
+  box-shadow: var(--shadow-float);
+  backdrop-filter: blur(18px) saturate(140%);
 }
 
 .selection-toolbar__button {
@@ -211,7 +213,9 @@ onBeforeUnmount(() => {
 .editor-shell :deep(.milkdown) {
   box-sizing: border-box;
   width: 100%;
-  padding: 0 var(--space-4);
+  max-width: 42rem;
+  margin-inline: auto;
+  padding: 0 var(--space-5);
 }
 
 .editor-shell :deep(.ProseMirror) {
@@ -219,6 +223,9 @@ onBeforeUnmount(() => {
   max-width: none;
   min-height: 24rem;
   outline: none;
+  color: var(--c-prose);
+  caret-color: var(--c-alive);
+  font-family: var(--font-prose);
   font-size: 0.9375rem;
   line-height: 1.7;
   overflow-wrap: anywhere;
@@ -228,7 +235,10 @@ onBeforeUnmount(() => {
 .editor-shell :deep(.ProseMirror h2),
 .editor-shell :deep(.ProseMirror h3) {
   margin: 1.5em 0 0.5em;
+  color: var(--c-ink);
+  font-family: var(--font-heading);
   line-height: 1.3;
+  text-wrap: balance;
 }
 
 .editor-shell :deep(.ProseMirror h1) {
@@ -245,12 +255,13 @@ onBeforeUnmount(() => {
 
 .editor-shell :deep(.ProseMirror p) {
   margin: 0.75em 0;
+  text-wrap: pretty;
 }
 
 .editor-shell :deep(.ProseMirror blockquote) {
   margin: 1em 0;
   padding-left: var(--space-4);
-  border-left: 2px solid var(--c-line-strong);
+  border-left: 1px solid var(--c-line-strong);
   color: var(--c-ink-muted);
 }
 
@@ -302,5 +313,26 @@ onBeforeUnmount(() => {
 .editor-shell :deep(.ProseMirror th) {
   background: var(--c-surface-sunken);
   font-weight: 500;
+}
+
+@media (max-width: 23.4375rem) {
+  .editor-shell,
+  .selection-toolbar {
+    max-width: 100vw;
+    overflow-x: clip;
+  }
+
+  .selection-toolbar {
+    margin-inline: var(--space-3);
+  }
+
+  .editor-shell :deep(.milkdown) {
+    padding-inline: var(--space-3);
+  }
+
+  .editor-shell :deep(.ProseMirror) {
+    font-size: 1rem;
+    line-height: 1.75;
+  }
 }
 </style>

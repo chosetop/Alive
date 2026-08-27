@@ -88,7 +88,7 @@ const publishLabel = computed(() =>
 </script>
 
 <template>
-  <header class="header" data-workspace-header>
+  <header class="header" data-workspace-header data-surface="glass">
     <div class="left">
       <!-- Rendered only while the directory is hidden. Its counterpart lives in
            the directory's own header, so the control is always beside the thing
@@ -109,6 +109,12 @@ const publishLabel = computed(() =>
       the region has to exist before it has anything to announce.
     -->
     <div class="status" data-save-status aria-live="polite">
+      <span
+        class="save-cursor"
+        :data-status="saveStatus"
+        data-save-cursor
+        aria-hidden="true"
+      />
       <span class="status-text" :data-status="saveStatus">{{ statusText }}</span>
       <button
         v-if="canRetry"
@@ -170,6 +176,9 @@ const publishLabel = computed(() =>
 
 <style scoped>
 .header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   display: grid;
   /* Three tracks with the middle one taking the slack, so the status sits in the
      optical centre of the canvas regardless of how wide the action cluster grows.
@@ -180,8 +189,10 @@ const publishLabel = computed(() =>
   height: var(--header-height);
   flex-shrink: 0;
   padding: 0 var(--space-4);
-  border-bottom: 1px solid var(--c-line);
-  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-glass-border);
+  background: var(--c-glass);
+  box-shadow: var(--shadow-control);
+  backdrop-filter: blur(18px) saturate(140%);
 }
 
 .left {
@@ -213,6 +224,34 @@ const publishLabel = computed(() =>
 .status-text {
   color: var(--c-ink-muted);
   font-size: 0.75rem;
+}
+
+.save-cursor {
+  width: 0.1875rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  border-radius: var(--radius-control);
+  background: var(--c-alive);
+}
+
+.save-cursor[data-status='saved'] {
+  background: var(--c-signal);
+}
+
+.save-cursor[data-status='offline'],
+.save-cursor[data-status='error'],
+.save-cursor[data-status='conflict'] {
+  background: var(--c-danger);
+}
+
+.save-cursor[data-status='saving'] {
+  animation: save-cursor-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes save-cursor-pulse {
+  50% {
+    opacity: 0.35;
+  }
 }
 
 /* Weight and colour together. Colour alone would not survive greyscale, and the
@@ -295,6 +334,29 @@ const publishLabel = computed(() =>
   /* The word is redundant next to a publish button that already reads 已发布. */
   .entry-status {
     display: none;
+  }
+}
+
+@media (max-width: 23.4375rem) {
+  .header {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'left'
+      'right'
+      'status';
+    padding: var(--space-2) var(--space-3);
+    overflow-x: clip;
+  }
+
+  .right {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .save-cursor[data-status='saving'] {
+    animation: none;
   }
 }
 </style>

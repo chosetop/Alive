@@ -467,4 +467,16 @@ describe('ArticleDirectory', () => {
     // without walking the canvas.
     expect(wrapper.get('nav[aria-label="文章目录"]').element).toBeTruthy()
   })
+
+  it('identifies its translucent writing-desk surface and current-article cursor', async () => {
+    api.listEntriesAdmin.mockResolvedValue(page([item({ id: 8 }), item({ id: 9 })]))
+    const wrapper = await mountDirectory()
+    useWritingStore().setActiveEntry(9)
+    await flushPromises()
+
+    expect(wrapper.get('[data-article-directory]').attributes('data-surface')).toBe('glass')
+    expect(wrapper.get('[data-entry-id="9"] [data-alive-cursor]').attributes('aria-hidden')).toBe(
+      'true',
+    )
+  })
 })

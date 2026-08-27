@@ -26,6 +26,20 @@ const entry: EntryDetail = {
 }
 
 describe('PublishPanel', () => {
+  it('uses the shared writing-panel action hierarchy', () => {
+    const wrapper = mount(PublishPanel, {
+      props: {
+        open: true,
+        entry,
+        checks: { blockers: [], reminders: [] },
+      },
+    })
+
+    expect(wrapper.get('[data-writing-panel="publish"]').element).toBeTruthy()
+    expect(wrapper.get('[data-publish-close] .ui-icon').attributes('aria-hidden')).toBe('true')
+    expect(wrapper.get('[data-publish-confirm]').attributes('data-variant')).toBe('primary')
+  })
+
   it('disables publish while blockers remain', () => {
     const wrapper = mount(PublishPanel, {
       props: {

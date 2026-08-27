@@ -73,6 +73,18 @@ describe('WorkspaceHeader', () => {
     }
   })
 
+  it('marks every save state with the Alive cursor without replacing its text', () => {
+    for (const status of ['saved', 'pending', 'saving', 'offline', 'error', 'conflict'] as const) {
+      const wrapper = mountHeader({ saveStatus: status })
+      const cursor = wrapper.get('[data-save-cursor]')
+
+      expect(cursor.attributes('data-status'), status).toBe(status)
+      expect(cursor.attributes('aria-hidden'), status).toBe('true')
+      expect(wrapper.get('[data-save-status]').text(), status).not.toBe('')
+      wrapper.unmount()
+    }
+  })
+
   it('offers retry only for the two states a retry can fix', () => {
     for (const status of ['offline', 'error'] as const) {
       const wrapper = mountHeader({ saveStatus: status })
