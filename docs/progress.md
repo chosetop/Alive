@@ -1456,7 +1456,7 @@ harness 需要 `VITE_API_BASE_URL`（客户端没有它会抛错），临时写�
 
 ## 32. 后台 iOS 风格视觉重构设计（2026-08-27）
 
-- 已根据用户确认的方向完成设计规格：`docs/superpowers/specs/2026-08-27-admin-ios-visual-redesign-design.md`。
+- 已根据用户确认的方向完成设计规格：`docs/superpowers/specs/2026-08-27-admin-ios-visual-redesign-design.md`；用户补充允许扩展主题变量和新增主题，已纳入规格。
 - 设计主题为「Alive Writing Desk」，以 iOS 风格的纸张底、玻璃控制层、墨色文字和 Alive 光标作为统一视觉语言。
 - 本阶段只完成设计文档与进度记录，没有修改 `admin/` 代码、API、路由或数据模型。
 - 规格审阅通过后，新增实施计划将插入现有 Plan 3「共享站点主题系统」之后，原 Plan 4「媒体上传」顺延为 Plan 5。
