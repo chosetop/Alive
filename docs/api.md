@@ -609,7 +609,41 @@ level=INFO msg="category deleted, its entries are now uncategorised" category_id
 
 ---
 
-## 6. 探针
+## 6. 站点设置
+
+### `GET /api/v1/site`
+
+公开读取当前站点设置。无需登录。主题默认值为 `ink`，响应包含 `revision`，供后台更新时进行乐观并发控制。
+
+```jsonc
+{
+  "data": {
+    "default_theme": "ink",
+    "revision": 1,
+    "updated_at": "2026-08-27T09:00:00Z"
+  }
+}
+```
+
+### `PATCH /api/v1/admin/site`
+
+需登录。更新站点默认主题，整个请求体只能包含 `default_theme` 和 `revision`：
+
+```json
+{"default_theme":"codex-lavender","revision":1}
+```
+
+成功返回更新后的设置和递增后的 revision。支持的主题为 `ink`、`lamp`、`codex-lavender`。
+
+| 失败 | 状态 | 说明 |
+|---|---|---|
+| 未登录 | 401 | |
+| 主题不支持 | 400 | `fields.default_theme` |
+| revision 已过期 | 409 | `fields.revision`，不能覆盖当前站点设置 |
+
+---
+
+## 7. 探针
 
 在根路径，不带版本前缀：探针 URL 不应该因为 API 升版而改变。
 
@@ -635,7 +669,7 @@ level=INFO msg="category deleted, its entries are now uncategorised" category_id
 
 ---
 
-## 7. 前端接入清单
+## 8. 前端接入清单
 
 写 `frontend/` 或 `admin/` 时最容易踩的几点：
 

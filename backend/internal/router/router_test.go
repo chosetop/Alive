@@ -13,6 +13,7 @@ import (
 	"github.com/p30huiwei/alive/backend/internal/config"
 	"github.com/p30huiwei/alive/backend/internal/entry"
 	"github.com/p30huiwei/alive/backend/internal/router"
+	"github.com/p30huiwei/alive/backend/internal/site"
 	"github.com/p30huiwei/alive/backend/internal/taxonomy"
 )
 
@@ -57,6 +58,7 @@ func newRouterWith(cfg *config.Config) http.Handler {
 	authService := auth.NewService(auth.NewRepository(nil))
 	entryService := entry.NewService(entry.NewRepository(nil))
 	taxonomyService := taxonomy.NewService(taxonomy.NewRepository(nil))
+	siteService := site.NewService(site.NewRepository(nil))
 
 	return router.New(router.Dependencies{
 		Config:          cfg,
@@ -65,6 +67,7 @@ func newRouterWith(cfg *config.Config) http.Handler {
 		AuthService:     authService,
 		EntryService:    entryService,
 		TaxonomyService: taxonomyService,
+		SiteService:     siteService,
 	})
 }
 
@@ -122,6 +125,22 @@ func TestNewRequiresTaxonomyService(t *testing.T) {
 	})
 }
 
+func TestNewRequiresSiteService(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("router.New accepted a nil SiteService")
+		}
+	}()
+
+	router.New(router.Dependencies{
+		Config:          &config.Config{Env: config.EnvDevelopment},
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		AuthService:     auth.NewService(auth.NewRepository(nil)),
+		EntryService:    entry.NewService(entry.NewRepository(nil)),
+		TaxonomyService: taxonomy.NewService(taxonomy.NewRepository(nil)),
+	})
+}
+
 // TestHealthThroughFullMiddlewareChain is the check the README documents:
 // GET /health returns 200 with {"data":{"status":"ok"}}.
 func TestHealthThroughFullMiddlewareChain(t *testing.T) {
@@ -142,6 +161,27 @@ func TestHealthThroughFullMiddlewareChain(t *testing.T) {
 	// Every response carries a correlation id, health included.
 	if rec.Header().Get("X-Request-ID") == "" {
 		t.Error("X-Request-ID header is missing")
+	}
+}
+
+func TestSiteRoutesAreMountedWithTheRightGuards(t *testing.T) {
+	handler := newTestRouter()
+
+	for _, tc := range []struct {
+		method string
+		path   string
+		want   int
+	}{
+		{method: http.MethodGet, path: "/api/v1/site", want: http.StatusInternalServerError},
+		{method: http.MethodPatch, path: "/api/v1/admin/site", want: http.StatusUnauthorized},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{"default_theme":"lamp","revision":1}`)))
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d: %s", rec.Code, tc.want, rec.Body.String())
+			}
+		})
 	}
 }
 

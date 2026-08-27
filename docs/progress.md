@@ -1378,4 +1378,6 @@ harness 需要 `VITE_API_BASE_URL`（客户端没有它会抛错），临时写�
 - admin 与 frontend 的 manifest 和 lockfile 已接入本地主题包。
 - TDD 验证：先确认主题包入口缺失导致测试失败，再实现后 3 tests passed。
 - Task 2 已完成：新增 `site_settings` 单例表、`000007` migration、sqlc 查询、`internal/site` domain service 和 repository，以 revision 保证主题默认值更新的乐观并发控制。
-- TDD 验证：服务测试先因 `internal/site` 实现缺失而失败，实现后 4 tests passed。Task 3–6 尚未开始。Plan 4 媒体上传没有触碰。
+- TDD 验证：服务测试先因 `internal/site` 实现缺失而失败，实现后 4 tests passed。
+- Task 3 已完成：新增公开 `GET /api/v1/site`、登录保护的 `PATCH /api/v1/admin/site`，并在 router 与 server 启动装配中接入；API 文档已同步。
+- TDD 验证：handler 测试先因 `NewHandler` 缺失而失败，实现后 sitehttp、router、server 定向测试通过。Task 4–6 尚未开始。Plan 4 媒体上传没有触碰。

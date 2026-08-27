@@ -239,11 +239,11 @@ git commit -m "feat: persist the site default theme"
 - Produces: `GET /api/v1/site`
 - Produces: `PATCH /api/v1/admin/site` body `{default_theme, revision}`
 
-- [ ] **Step 1: Write failing handler and router tests**
+- [x] **Step 1: Write failing handler and router tests**
 
 Assert public GET needs no session, admin PATCH returns 401 without a session, valid PATCH increments revision, invalid theme returns `fields.default_theme`, and stale revision returns 409 with `fields.revision`.
 
-- [ ] **Step 2: Implement DTOs and handlers**
+- [x] **Step 2: Implement DTOs and handlers**
 
 Use one response:
 
@@ -257,17 +257,17 @@ type siteSettingsResponse struct {
 
 The public response includes revision so the admin can reuse GET without a second shape. PATCH accepts no other site fields.
 
-- [ ] **Step 3: Wire the service**
+- [x] **Step 3: Wire the service**
 
 Add `SiteService *site.Service` to router dependencies, require it at startup, register public GET on `/site`, and authenticated PATCH on `/admin/site`. Construct the service in `cmd/server/main.go`.
 
-- [ ] **Step 4: Run backend tests**
+- [x] **Step 4: Run backend tests**
 
 Run: `cd backend && go test ./internal/sitehttp ./internal/router ./cmd/server -count=1`
 
 Expected: PASS.
 
-- [ ] **Step 5: Update API docs and commit**
+- [x] **Step 5: Update API docs and commit**
 
 ```bash
 git add backend/internal/sitehttp backend/internal/router backend/cmd/server docs/api.md

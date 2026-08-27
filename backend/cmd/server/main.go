@@ -20,6 +20,7 @@ import (
 	"github.com/p30huiwei/alive/backend/internal/entry"
 	"github.com/p30huiwei/alive/backend/internal/postgres"
 	"github.com/p30huiwei/alive/backend/internal/router"
+	"github.com/p30huiwei/alive/backend/internal/site"
 	"github.com/p30huiwei/alive/backend/internal/taxonomy"
 )
 
@@ -78,6 +79,8 @@ func run() error {
 		taxonomy.WithLogger(logger),
 	)
 
+	siteService := site.NewService(site.NewRepository(pool))
+
 	handler := router.New(router.Dependencies{
 		Config:          cfg,
 		Logger:          logger,
@@ -85,6 +88,7 @@ func run() error {
 		AuthService:     authService,
 		EntryService:    entryService,
 		TaxonomyService: taxonomyService,
+		SiteService:     siteService,
 	})
 
 	server := &http.Server{

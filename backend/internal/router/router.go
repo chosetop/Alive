@@ -22,6 +22,8 @@ import (
 	"github.com/p30huiwei/alive/backend/internal/httpx"
 	"github.com/p30huiwei/alive/backend/internal/middleware"
 	"github.com/p30huiwei/alive/backend/internal/postgres"
+	"github.com/p30huiwei/alive/backend/internal/site"
+	"github.com/p30huiwei/alive/backend/internal/sitehttp"
 	"github.com/p30huiwei/alive/backend/internal/taxonomy"
 	"github.com/p30huiwei/alive/backend/internal/taxonomyhttp"
 )
@@ -50,6 +52,9 @@ type Dependencies struct {
 	// resolves through it, and an optional service would mean that filter silently
 	// answering with every entry on the site.
 	TaxonomyService *taxonomy.Service
+
+	// SiteService owns the singleton site settings, including the default theme.
+	SiteService *site.Service
 }
 
 // New builds the fully wired HTTP handler.
@@ -69,6 +74,9 @@ func New(deps Dependencies) *gin.Engine {
 	}
 	if deps.TaxonomyService == nil {
 		panic("router: TaxonomyService is required")
+	}
+	if deps.SiteService == nil {
+		panic("router: SiteService is required")
 	}
 
 	if !deps.Config.IsDevelopment() {
@@ -169,6 +177,10 @@ func New(deps Dependencies) *gin.Engine {
 	taxonomyHandler := taxonomyhttp.NewHandler(deps.TaxonomyService, deps.Logger)
 	taxonomyHandler.Register(api, authHandler.RequireAuth())
 	taxonomyHandler.RegisterAdmin(api, authHandler.RequireAuth())
+
+	// GET   /api/v1/site       public site settings
+	// PATCH /api/v1/admin/site requires a session and an expected revision
+	sitehttp.NewHandler(deps.SiteService, deps.Logger).Register(api, authHandler.RequireAuth())
 
 	return engine
 }
