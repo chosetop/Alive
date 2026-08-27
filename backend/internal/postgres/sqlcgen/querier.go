@@ -187,6 +187,7 @@ type Querier interface {
 	// expiry, and the service decides. That keeps two different outcomes apart:
 	// an unknown token and a known but expired one.
 	GetSessionByHash(ctx context.Context, tokenHash []byte) (GetSessionByHashRow, error)
+	GetSiteSettings(ctx context.Context) (GetSiteSettingsRow, error)
 	GetUserByID(ctx context.Context, id int64) (GetUserByIDRow, error)
 	// The login lookup, and the only query that exposes password_hash.
 	//
@@ -327,6 +328,7 @@ type Querier interface {
 	//
 	// updated_at is left to the entries_set_updated_at trigger from 000001.
 	UpdateEntry(ctx context.Context, arg UpdateEntryParams) (UpdateEntryRow, error)
+	UpdateSiteTheme(ctx context.Context, arg UpdateSiteThemeParams) (UpdateSiteThemeRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -52,6 +52,13 @@ type Session struct {
 	Ip        *netip.Addr
 }
 
+type SiteSetting struct {
+	ID           int16
+	DefaultTheme string
+	Revision     int64
+	UpdatedAt    time.Time
+}
+
 type User struct {
 	ID           int64
 	Username     string

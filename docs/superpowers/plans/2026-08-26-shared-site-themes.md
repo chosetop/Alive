@@ -158,7 +158,7 @@ git commit -m "feat: add shared Alive theme package"
 - Produces: singleton `SiteSettings{DefaultTheme string, Revision int64, UpdatedAt time.Time}`
 - Produces: `Get(ctx)` and `UpdateTheme(ctx, theme, expectedRevision)`
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Cover default read, three accepted keys, unknown key rejection, stale revision, and revision increment.
 
@@ -169,7 +169,7 @@ if err != nil || updated.Revision != 2 || updated.DefaultTheme != "codex-lavende
 }
 ```
 
-- [ ] **Step 2: Add migration 000007**
+- [x] **Step 2: Add migration 000007**
 
 ```sql
 CREATE TABLE site_settings (
@@ -188,7 +188,7 @@ CREATE TRIGGER site_settings_set_updated_at
 
 The down migration drops the table only.
 
-- [ ] **Step 3: Add sqlc queries**
+- [x] **Step 3: Add sqlc queries**
 
 ```sql
 -- name: GetSiteSettings :one
@@ -201,11 +201,11 @@ WHERE id = 1 AND revision = sqlc.arg(expected_revision)
 RETURNING default_theme, revision, updated_at;
 ```
 
-- [ ] **Step 4: Implement domain and repository**
+- [x] **Step 4: Implement domain and repository**
 
 Define `ErrInvalidTheme` and `ErrVersionConflict` in the `site` package. The repository translates `pgx.ErrNoRows` on update into `ErrVersionConflict`; the singleton row is created by migration and absence is an internal error.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run:
 
@@ -217,7 +217,7 @@ go test ./internal/site -count=1
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/migrations/000007_* backend/sql/queries/site.sql backend/internal/postgres/sqlcgen backend/internal/site

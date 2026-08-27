@@ -1377,4 +1377,5 @@ harness 需要 `VITE_API_BASE_URL`（客户端没有它会抛错），临时写�
 - 已定义 `ink`、`lamp`、`codex-lavender` 三套共享语义 token，包含字体、表面、正文、边框、强调色、危险色和遮罩色。
 - admin 与 frontend 的 manifest 和 lockfile 已接入本地主题包。
 - TDD 验证：先确认主题包入口缺失导致测试失败，再实现后 3 tests passed。
-- 当前提交范围只包含 Plan 3 Task 1，Task 2–6 尚未开始。Plan 4 媒体上传没有触碰。
+- Task 2 已完成：新增 `site_settings` 单例表、`000007` migration、sqlc 查询、`internal/site` domain service 和 repository，以 revision 保证主题默认值更新的乐观并发控制。
+- TDD 验证：服务测试先因 `internal/site` 实现缺失而失败，实现后 4 tests passed。Task 3–6 尚未开始。Plan 4 媒体上传没有触碰。
