@@ -146,8 +146,7 @@ describe('WorkspaceHeader', () => {
 
     expect(wrapper.find('[data-publish]').exists()).toBe(false)
     expect(wrapper.find('[data-more-actions]').exists()).toBe(false)
-    // Preview stays: it describes the canvas, which exists either way.
-    expect(wrapper.find('[data-preview]').exists()).toBe(true)
+    expect(wrapper.find('[data-preview]').exists()).toBe(false)
   })
 
   it('places deletion in the header with explicit confirmation', () => {
@@ -173,14 +172,13 @@ describe('WorkspaceHeader', () => {
     expect(wrapper.get('[data-publish]').attributes('disabled')).toBeDefined()
   })
 
-  it('emits publish and preview without acting on them', async () => {
+  it('emits publish without exposing a preview action', async () => {
     const wrapper = mountHeader({ entryStatus: 'draft' })
 
     await wrapper.get('[data-publish]').trigger('click')
-    await wrapper.get('[data-preview]').trigger('click')
 
     expect(wrapper.emitted('publish')).toHaveLength(1)
-    expect(wrapper.emitted('preview')).toHaveLength(1)
+    expect(wrapper.find('[data-preview]').exists()).toBe(false)
   })
 
   /**

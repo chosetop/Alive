@@ -12,7 +12,6 @@ import {
 import MarkdownEditor from '../components/MarkdownEditor.vue'
 import WorkspaceHeader from '../components/writing/WorkspaceHeader.vue'
 import ArticleSettings from '../components/writing/ArticleSettings.vue'
-import EntryPreview from '../components/writing/EntryPreview.vue'
 import PublishPanel from '../components/writing/PublishPanel.vue'
 import { EntryRecoveryStore } from '../editor/recovery-store'
 import {
@@ -62,7 +61,6 @@ const isTransitioning = ref(false)
 const isDeleting = ref(false)
 const isRecovering = ref(false)
 const settingsOpen = ref(false)
-const previewOpen = ref(false)
 const publishOpen = ref(false)
 let bypassRouteFlush = false
 let isActive = false
@@ -151,7 +149,6 @@ const controlsDisabled = computed(
 async function load(targetId: number | null = entryId.value): Promise<void> {
   const generation = ++loadGeneration
   settingsOpen.value = false
-  previewOpen.value = false
   publishOpen.value = false
   isLoading.value = true
   loadError.value = null
@@ -277,15 +274,6 @@ function handleHeaderAction(action: string): void {
   if (action === 'settings') settingsOpen.value = true
   else if (action === 'unpublish') void transition('unpublish')
   else if (action === 'archive') void transition('archive')
-}
-
-/**
- * Preview is Task 5's panel. Until it exists this is a no-op rather than a hidden
- * button: the control is part of the header the spec specifies, and removing it
- * would make the header wrong in a way that outlasts the missing panel.
- */
-function handlePreview(): void {
-  previewOpen.value = true
 }
 
 function handleSettingsUpdate(fields: EntryPatchFields): void {
@@ -557,7 +545,6 @@ function createCoordinatorBridge(): CoordinatorBridge {
         :entry-status="currentStatus"
         :busy="controlsDisabled"
         @retry="flushBeforeAction"
-        @preview="handlePreview"
           @publish="publishOpen = true"
           @delete="void handleDelete()"
         @action="handleHeaderAction"
@@ -623,12 +610,6 @@ function createCoordinatorBridge(): CoordinatorBridge {
         @update:open="settingsOpen = $event"
         @update="handleSettingsUpdate"
         @delete="handleDelete"
-      />
-      <EntryPreview
-        :open="previewOpen"
-        :title="form.title"
-        :content-md="form.contentMd"
-        @update:open="previewOpen = $event"
       />
       <PublishPanel
         v-if="editorEntry"

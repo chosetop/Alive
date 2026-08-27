@@ -10,7 +10,7 @@ import { UiButton, UiIconButton, UiMenu, type UiMenuItem } from '../ui'
  * The workspace header.
  *
  * The workspace actions stay in one fixed-height bar: directory toggle, save
- * state, preview, settings, delete confirmation and publish.
+ * state, settings, delete confirmation and publish.
  *
  * The save state sits in a fixed-height slot. Every status string here differs in
  * length ("已保存" against "离线，本地草稿已保留"), and the conflict state adds three
@@ -45,7 +45,6 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  preview: []
   publish: []
   delete: []
   retry: []
@@ -129,8 +128,6 @@ const publishLabel = computed(() =>
 
     <div class="right">
       <span v-if="entryStatus" class="entry-status">{{ ENTRY_STATUS_TEXT[entryStatus] }}</span>
-
-      <UiButton variant="quiet" data-preview @click="emit('preview')">预览</UiButton>
 
       <UiMenu
         v-if="menuItems.length > 0"
