@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { UiIcon } from '../components/ui'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
@@ -16,7 +17,7 @@ const greeting = computed(() => {
 
 <template>
   <div class="page">
-    <header class="intro">
+    <header class="page-header" data-page-header>
       <h1 class="greeting">{{ greeting }}</h1>
       <p class="welcome">欢迎回来，{{ auth.displayName }}。</p>
     </header>
@@ -26,39 +27,28 @@ const greeting = computed(() => {
       numbers invented here would be indistinguishable from real ones — which is
       exactly what makes them worse than an empty space.
     -->
-    <section class="section">
-      <h2 class="section-title">开始</h2>
+    <section class="section" aria-labelledby="dashboard-start-title">
+      <h2 id="dashboard-start-title" class="section-title">开始</h2>
       <!-- Links rather than a fabricated "recent activity" list: the backend has
            no such endpoint, and the two real screens are one click away. -->
-      <p class="links">
-        <RouterLink :to="{ name: 'entries' }">内容</RouterLink>
-        <RouterLink :to="{ name: 'categories' }">分类</RouterLink>
-      </p>
+      <div class="action-grid">
+        <RouterLink class="action-card" :to="{ name: 'entries' }">
+          <span>内容</span><UiIcon class="action-card__icon" name="chevron-right" />
+        </RouterLink>
+        <RouterLink class="action-card" :to="{ name: 'categories' }">
+          <span>分类</span><UiIcon class="action-card__icon" name="chevron-right" />
+        </RouterLink>
+      </div>
       <p class="placeholder">编辑器将在下一步接入，目前内容列表是只读的。</p>
     </section>
   </div>
 </template>
 
 <style scoped>
-.page {
-  /* A comfortable measure for reading. Full-width text on a wide monitor is
-     hard to track from line to line. */
-  max-width: 42rem;
-}
-
-.intro {
-  margin-bottom: var(--space-8);
-}
-
-.greeting {
-  margin-bottom: var(--space-2);
-  font-size: 1.375rem;
-}
-
-.welcome {
-  color: var(--c-ink-muted);
-  font-size: 0.9375rem;
-}
+.page { max-width: 52rem; }
+.page-header { margin-bottom: var(--space-7); }
+.greeting { margin: 0 0 var(--space-2); font-family: var(--font-heading); font-size: clamp(1.5rem, 3vw, 2rem); font-weight: 600; letter-spacing: -0.02em; }
+.welcome { margin: 0; color: var(--c-ink-muted); font-size: 0.875rem; }
 
 .section-title {
   margin-bottom: var(--space-3);
@@ -69,18 +59,19 @@ const greeting = computed(() => {
   text-transform: uppercase;
 }
 
-.links {
-  display: flex;
-  gap: var(--space-4);
-  margin-bottom: var(--space-4);
-  font-size: 0.9375rem;
-}
+.action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+.action-card { display: flex; align-items: center; justify-content: space-between; min-height: 5.5rem; padding: var(--space-4); border: 1px solid var(--c-glass-border); border-radius: var(--radius-surface); background: var(--c-glass); box-shadow: var(--shadow-control); color: var(--c-ink); font-size: 0.9375rem; font-weight: 600; transition: background-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease, color var(--motion-fast) ease; backdrop-filter: blur(18px) saturate(140%); }
+.action-card:hover { background: var(--c-surface); box-shadow: var(--shadow-float); color: var(--c-accent); text-decoration: none; }
+.action-card__icon { width: 1rem; height: 1rem; }
 
 .placeholder {
-  padding: var(--space-5);
-  border: 1px dashed var(--c-line-strong);
-  border-radius: var(--radius-md);
+  margin: 0;
+  padding: var(--space-4);
+  border-radius: var(--radius-surface);
+  background: var(--c-surface-sunken);
   color: var(--c-ink-faint);
   font-size: 0.875rem;
 }
+
+@media (max-width: 32rem) { .action-grid { grid-template-columns: 1fr; } }
 </style>

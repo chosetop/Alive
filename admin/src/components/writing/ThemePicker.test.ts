@@ -1,15 +1,21 @@
+import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { describe, expect, it } from 'vitest'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
-import { readFileSync } from 'node:fs'
+
+import { useThemeStore } from '../../stores/theme'
+import ThemePicker from './ThemePicker.vue'
 
 describe('ThemePicker', () => {
-  const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'ThemePicker.vue'), 'utf8')
+  it('shows the preserved 薰衣草 label in the theme picker', () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const theme = useThemeStore()
+    theme.hydrate({ default_theme: 'ink', revision: 1, updated_at: '' })
 
-  it('renders the shared manifest and an explicit save action', () => {
-    expect(source).toContain("import { THEMES, type ThemeName } from '@alive/theme'")
-    expect(source).toContain('THEMES.map')
-    expect(source).toContain('设为站点默认')
-    expect(source).toContain('取消预览')
+    const wrapper = mount(ThemePicker, { global: { plugins: [pinia] } })
+
+    // This fails if the shared manifest stops driving the visible control and
+    // 薰衣草 becomes hidden behind a local, incomplete theme list.
+    expect(wrapper.text()).toContain('薰衣草')
   })
 })

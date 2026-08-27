@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { entriesApi, toUserMessage } from '../api'
 import type { EntryListItem, EntryStatus } from '../types/api'
 import EntryRow from '../components/EntryRow.vue'
+import { UiIcon } from '../components/ui'
 
 /**
  * The article list: a todo queue first, an archive second.
@@ -91,12 +92,14 @@ const emptyMessage = computed(() => {
 
 <template>
   <div class="page">
-    <header class="head">
-      <div>
+    <header class="head" data-page-header>
+      <div class="head-copy">
         <h1 class="title">内容</h1>
         <p class="subtitle">草稿是待办队列，归档不是。这里把两者分开。</p>
       </div>
-      <RouterLink class="btn btn--primary" :to="{ name: 'entry-new' }">写一篇</RouterLink>
+      <RouterLink class="btn btn--primary" data-primary-action :to="{ name: 'entry-new' }">
+        <span>写一篇</span><UiIcon class="primary-icon" name="plus" />
+      </RouterLink>
     </header>
 
     <!-- Tabs, not a select: four values, and the current one should be visible
@@ -109,6 +112,7 @@ const emptyMessage = computed(() => {
         :class="{ 'tab--active': activeStatus === tab.value }"
         type="button"
         role="tab"
+        :aria-label="tab.label"
         :aria-selected="activeStatus === tab.value"
         @click="selectStatus(tab.value)"
       >
@@ -141,7 +145,7 @@ const emptyMessage = computed(() => {
 
 <style scoped>
 .page {
-  max-width: 52rem;
+  max-width: 56rem;
 }
 
 .head {
@@ -149,47 +153,68 @@ const emptyMessage = computed(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-6);
 }
 
+.head-copy { min-width: 0; }
+
 .btn--primary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.5rem;
   border-color: var(--c-accent);
   background: var(--c-accent);
-  color: var(--c-paper);
-  padding: 0.375rem 0.875rem;
+  box-shadow: var(--shadow-control);
+  color: var(--c-on-accent);
+  padding: 0 var(--space-3);
   font-size: 0.875rem;
+  font-weight: 600;
 }
 
 .btn--primary:hover {
   border-color: var(--c-accent-hover);
   background: var(--c-accent-hover);
-  color: var(--c-paper);
+  box-shadow: var(--shadow-float);
+  color: var(--c-on-accent);
   text-decoration: none;
 }
 
+.primary-icon { width: 1rem; height: 1rem; }
+
 .title {
-  margin-bottom: var(--space-2);
-  font-size: 1.375rem;
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-heading);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .subtitle {
+  margin: 0;
   color: var(--c-ink-muted);
   font-size: 0.875rem;
 }
 
 .tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-1);
   margin-bottom: var(--space-5);
-  border-bottom: 1px solid var(--c-line);
+  padding: var(--space-1);
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--radius-control);
+  background: var(--c-glass);
+  box-shadow: var(--shadow-control);
+  backdrop-filter: blur(18px) saturate(140%);
 }
 
 .tab {
-  padding: 0.375rem var(--space-3);
+  min-height: 2rem;
+  padding: 0 var(--space-3);
   border: none;
   /* Sits on the container's border so the active tab can cover it. */
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+  border-radius: calc(var(--radius-control) - var(--space-1));
   background: transparent;
   color: var(--c-ink-muted);
   font-family: inherit;
@@ -206,16 +231,17 @@ const emptyMessage = computed(() => {
 
 /* Weight shifts along with the underline: the state survives greyscale. */
 .tab--active {
-  border-bottom-color: var(--c-accent);
+  background: var(--c-surface);
+  box-shadow: var(--shadow-control);
   color: var(--c-ink);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .alert {
   margin-bottom: var(--space-4);
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--c-danger);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--radius-surface);
   background: var(--c-danger-surface);
   color: var(--c-danger);
   font-size: 0.875rem;
@@ -223,21 +249,25 @@ const emptyMessage = computed(() => {
 
 .state {
   padding: var(--space-5);
+  border-radius: var(--radius-surface);
+  background: var(--c-surface-sunken);
   color: var(--c-ink-faint);
   font-size: 0.875rem;
 }
 
 .state--empty {
   border: 1px dashed var(--c-line-strong);
-  border-radius: var(--radius-md);
 }
 
 .list {
   margin: 0;
   padding: 0;
   list-style: none;
-  border: 1px solid var(--c-line);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--radius-surface);
+  background: var(--c-glass);
+  box-shadow: var(--shadow-control);
+  backdrop-filter: blur(18px) saturate(140%);
 }
 
 .pager {
@@ -261,8 +291,8 @@ const emptyMessage = computed(() => {
 .btn {
   padding: 0.25rem 0.625rem;
   border: 1px solid var(--c-line-strong);
-  border-radius: var(--radius-sm);
-  background: transparent;
+  border-radius: var(--radius-control);
+  background: var(--c-surface);
   color: var(--c-ink-muted);
   font-size: 0.8125rem;
   cursor: pointer;
@@ -280,4 +310,6 @@ const emptyMessage = computed(() => {
   color: var(--c-ink-faint);
   cursor: not-allowed;
 }
+
+@media (max-width: 40rem) { .head { flex-direction: column; } }
 </style>
