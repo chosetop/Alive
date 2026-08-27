@@ -17,7 +17,6 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { SELECTION_TOOLBAR_ACTIONS } from '../editor/selection-toolbar'
 import { isLinkShortcut } from '../editor/link-shortcut'
-import { configureSlashMenu, slashMenuPlugin } from '../editor/slash-plugin'
 
 // Both stylesheets are required, not optional polish. ProseMirror's own CSS
 // carries editing behaviour that is visual — selection, gap cursor, placeholder
@@ -87,7 +86,6 @@ const controller = useEditor((root) =>
     .config((ctx) => {
       ctx.set(rootCtx, root)
       ctx.set(defaultValueCtx, props.initialValue)
-      configureSlashMenu(ctx)
       configureLinkTooltip(ctx)
 
       // markdownUpdated rather than `updated`: the parent stores Markdown, and
@@ -104,7 +102,6 @@ const controller = useEditor((root) =>
     // Without this, ctrl/cmd-Z inside the editor hits the browser's own undo
     // and does the wrong thing.
     .use(history)
-    .use(slashMenuPlugin)
     .use(linkTooltipPlugin),
 )
 
@@ -175,6 +172,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .editor-shell {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
   border: 1px solid var(--c-line-strong);
   border-radius: var(--radius-sm);
   background: var(--c-paper);
@@ -221,14 +221,19 @@ onBeforeUnmount(() => {
    :deep(). The alternative is a global stylesheet, which would then apply to any
    future editor instance whether or not that was wanted. */
 .editor-shell :deep(.milkdown) {
+  box-sizing: border-box;
+  width: 100%;
   padding: var(--space-4);
 }
 
 .editor-shell :deep(.ProseMirror) {
+  width: 100%;
+  max-width: none;
   min-height: 24rem;
   outline: none;
   font-size: 0.9375rem;
   line-height: 1.7;
+  overflow-wrap: anywhere;
 }
 
 .editor-shell :deep(.ProseMirror h1),

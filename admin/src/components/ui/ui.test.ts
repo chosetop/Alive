@@ -211,7 +211,7 @@ describe('UiDialog', () => {
 
 describe('UiMenu', () => {
   /**
-   * Items are passed as data, not as slotted markup. The slash palette and the
+   * Items are passed as data, not as slotted markup. The contextual action menu and the
    * header's more-actions menu both drive this from a computed list, and a
    * slot-based API would have each call site rewiring roving tabindex and
    * typeahead — which is exactly where those get dropped.

@@ -710,6 +710,8 @@ function createCoordinatorBridge(): CoordinatorBridge {
  * still largely a form.
  */
 .page {
+  box-sizing: border-box;
+  width: min(100%, 52rem);
   max-width: 52rem;
   margin-inline: auto;
   padding: var(--space-6) var(--space-5);

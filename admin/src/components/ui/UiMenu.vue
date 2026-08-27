@@ -13,10 +13,9 @@ import { computed } from 'vue'
  * An actions menu.
  *
  * Items arrive as data rather than as slotted markup. That is the deliberate
- * choice: the slash command palette and the header's more-actions menu both need
- * the same keyboard behaviour over a list that is computed, and a slot-based API
- * would have each call site rebuilding item wiring — which is where roving
- * tabindex and typeahead get dropped.
+ * choice: the header's more-actions menu and other computed action lists need the
+ * same keyboard behaviour, and a slot-based API would have each call site
+ * rebuilding item wiring, which is where roving tabindex and typeahead get dropped.
  *
  * Reka provides arrow-key navigation, Home/End, typeahead, Escape, and focus
  * return. A `danger` item is styled apart from its neighbours, and the plan's

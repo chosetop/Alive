@@ -4,11 +4,13 @@
 
 **Goal:** Replace the form-first admin editor with a Codex-style article directory, centered writing canvas, contextual editing controls, settings drawer, preview, and publish check.
 
-**Architecture:** The authenticated admin shell becomes a writing workspace for entry routes while category management keeps the existing utility layout. Reka UI supplies unstyled accessible primitives; Alive owns a small visual component layer. Milkdown remains the Markdown engine and gains slash, tooltip, and link components. A shared Markdown package keeps admin preview and Nuxt rendering behavior identical.
+**Architecture:** The authenticated admin shell becomes a writing workspace for entry routes while category management keeps the existing utility layout. Reka UI supplies unstyled accessible primitives; Alive owns a small visual component layer. Milkdown remains the Markdown engine and gains selection formatting, tooltip, and link components. A shared Markdown package keeps admin preview and Nuxt rendering behavior identical.
 
 **Tech Stack:** Vue 3.5.41, Vue Router 5.2, Pinia 4, Milkdown 7.22.1, Reka UI 2.10.4, markdown-it 14.1.0, Vitest 4.1.0, Go/Gin/PostgreSQL for article search.
 
 **Spec:** `docs/superpowers/specs/2026-08-26-admin-writing-experience-design.md`
+
+**Status:** Complete through Task 7. The slash-command menu was removed after browser acceptance feedback; selection formatting, link editing, settings, preview, publishing checks, responsive behavior, and accessibility checkpoints remain in scope and are complete.
 
 ## Global Constraints
 
@@ -34,7 +36,7 @@
 - `admin/src/components/writing/PublishPanel.vue`: blocking checks, reminders, preview, transition.
 - `admin/src/components/writing/EntryPreview.vue`: shared Markdown render and viewport switch.
 - `admin/src/components/ui/*`: thin Reka-based primitives.
-- `admin/src/editor/slash-menu.ts`, `selection-toolbar.ts`, `editor-commands.ts`: Milkdown-specific behavior.
+- `admin/src/editor/selection-toolbar.ts`, `link-shortcut.ts`: Milkdown-specific behavior.
 - `packages/markdown`: one renderer consumed by frontend and admin.
 - `backend/sql/queries/entry.sql` and entry service/HTTP files: article directory search.
 
@@ -305,7 +307,7 @@ Run: `cd admin && npm test -- --run src/components/writing src/layouts src/store
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add admin/src/router admin/src/layouts admin/src/components/writing/ArticleDirectory.vue admin/src/components/writing/WorkspaceHeader.vue admin/src/stores admin/src/views/EntryEditor.vue
@@ -358,7 +360,7 @@ Run: `cd admin && npm test -- --run src/components/writing src/editor/publish-ch
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add admin/src/components/writing admin/src/editor/publish-checks* admin/src/views/EntryEditor.vue
@@ -368,52 +370,38 @@ git commit -m "feat: add article settings and publish check"
 ### Task 6: Add contextual Milkdown controls
 
 **Files:**
-- Create: `admin/src/editor/editor-commands.ts`
-- Create: `admin/src/editor/slash-menu.ts`
 - Create: `admin/src/editor/selection-toolbar.ts`
+- Create: `admin/src/editor/link-shortcut.ts`
 - Modify: `admin/src/components/MarkdownEditor.vue`
 - Test: `admin/src/editor/*.test.ts`, `admin/src/components/MarkdownEditor.test.ts`
 
 **Interfaces:**
-- Produces: `EditorCommand` registry shared by slash and selection UI
 - Produces: `MarkdownEditor` emits only `update(markdown)` and `ready(controller)`
 
-- [ ] **Step 1: Define and test the command registry**
+- [x] **Step 1: Add selection formatting controls**
 
-```ts
-export interface EditorCommand {
-  id: 'heading-2' | 'heading-3' | 'bullet-list' | 'ordered-list' | 'quote' | 'code' | 'divider'
-  label: string
-  keywords: string[]
-  run(ctx: Ctx): boolean
-}
-```
+Use a contextual toolbar for bold, emphasis, strike, inline code, and link. Do not
+render it for an empty selection. Use the same fixed 14px typography for every action.
 
-Test filtering by Chinese label and English keyword, command execution, and removal of the typed slash text.
-
-- [ ] **Step 2: Add slash-plugin behavior**
-
-Use `slashFactory` and `SlashProvider` from `@milkdown/kit/plugin/slash`. Show only in a paragraph when text before the caret begins with `/`; hide inside code blocks. Render the menu with Vue and the Alive `UiMenu` wrapper, with ArrowUp/ArrowDown, Enter, and Esc behavior.
-
-- [ ] **Step 3: Add selection tooltip behavior**
+- [x] **Step 2: Add selection tooltip behavior**
 
 Use the Milkdown tooltip factory for bold, emphasis, strike, inline code, and link. Do not render it for an empty selection. Use the same fixed 14px typography for every action.
 
-- [ ] **Step 4: Add link component and shortcut**
+- [x] **Step 3: Add link component and shortcut**
 
 Use Milkdown's link tooltip component. Bind `Cmd/Ctrl + K`; if text is selected, enter add-link mode, otherwise edit the link under the caret. Escape closes and restores the editor selection.
 
-- [ ] **Step 5: Test the mounted editor**
+- [x] **Step 4: Test the mounted editor**
 
-Test slash opening, keyboard selection, tooltip visibility, link shortcut, undo history, Markdown output, and destruction on route change. Do not snapshot the entire ProseMirror DOM.
+Test keyboard selection, tooltip visibility, link shortcut, undo history, Markdown output, and destruction on route change. Do not snapshot the entire ProseMirror DOM.
 
-- [ ] **Step 6: Run tests and build**
+- [x] **Step 5: Run tests and build**
 
 Run: `cd admin && npm test -- --run src/editor src/components/MarkdownEditor.test.ts && npm run build`
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add admin/src/editor admin/src/components/MarkdownEditor.vue admin/src/components/MarkdownEditor.test.ts
@@ -426,7 +414,7 @@ git commit -m "feat: add contextual writing controls"
 - Modify: admin writing components and styles only as evidence requires
 - Modify: `docs/progress.md`
 
-- [ ] **Step 1: Run automated checks**
+- [x] **Step 1: Run automated checks**
 
 Run:
 
@@ -436,19 +424,19 @@ cd ../admin && npm test -- --run && npm run build
 cd ../frontend && npm run typecheck && npm run build
 ```
 
-- [ ] **Step 2: Verify keyboard-only use**
+- [x] **Step 2: Verify keyboard-only use**
 
-Using a real browser, create and switch articles, search, open settings, edit a link, open the slash menu, preview, publish, close every overlay with Esc, and verify focus returns to the trigger.
+Using a real browser, create and switch articles, search, open settings, edit a link, preview, publish, close every overlay with Esc, and verify focus returns to the trigger.
 
-- [ ] **Step 3: Verify responsive surfaces**
+- [x] **Step 3: Verify responsive surfaces**
 
 Capture desktop, iPad landscape, iPad portrait, and 375px views. Check long Chinese titles, English words, empty title fallback, large code blocks, tables, and the full visibility labels.
 
-- [ ] **Step 4: Verify the calm-writing constraints**
+- [x] **Step 4: Verify the calm-writing constraints**
 
 Confirm no persistent formatting toolbar, no form fields in the main flow, no layout jitter between save states, no adjacent destructive and primary actions, and no horizontal overflow at 375px.
 
-- [ ] **Step 5: Update evidence and commit**
+- [x] **Step 5: Update evidence and commit**
 
 ```bash
 git add admin docs/progress.md

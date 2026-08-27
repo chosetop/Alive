@@ -16,4 +16,18 @@ describe('MarkdownEditor Milkdown controls', () => {
     expect(source).toContain("event.key === 'Escape'")
     expect(source).toContain("document.body.dispatchEvent(new Event('pointerdown'")
   })
+
+  it('does not mount a slash command menu', () => {
+    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'MarkdownEditor.vue'), 'utf8')
+
+    expect(source).not.toContain('slashMenuPlugin')
+    expect(source).not.toContain('configureSlashMenu')
+  })
+
+  it('gives the editor a stable full-width writing surface', () => {
+    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'MarkdownEditor.vue'), 'utf8')
+
+    expect(source).toContain('width: 100%')
+    expect(source).toContain('min-width: 0')
+  })
 })
