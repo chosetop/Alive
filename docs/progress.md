@@ -1158,3 +1158,78 @@ eb6e44c feat: search the admin article directory
 2. **`packages/markdown` 的安装顺序是硬要求**：先 `cd packages/markdown && npm install`，否则 admin 与 frontend 的 typecheck/build 都会失败在 `Cannot find module 'markdown-it'`。`resolution.test.ts` 守着这条。
 
 **Task 4 的起点：** 路由要加第二个顶层 `WritingLayout` 记录（`/entries` 带 `new` 与 `:id` 子路由），与现有 `/entries` 库列表并存而不嵌套；`admin/src/views/EntryEditor.vue` 目前 1047 行，是待拆的主体；Plan 1 的 `save-coordinator.ts` / `recovery-store.ts` / `useEntryAutosave.ts` 已就位待接入；Task 3 的基元层目前还没有任何业务页面引用，Task 4 是第一个消费者。
+
+## 16. Plan 2 Task 4：沉浸式写作壳与文章目录（2026-08-27）
+
+已提交为 `c86b19c`。**审查已完成，但审查发现的问题一处都还没修**——下次会话的第一件事就是这个，详见 16.4。
+
+### 16.1 交付内容
+
+新增 `admin/src/layouts/WritingLayout.vue`、`admin/src/components/writing/{ArticleDirectory,WorkspaceHeader}.vue`、`admin/src/stores/writing.ts`、`admin/src/router/routes.test.ts`；改 `router/index.ts`、`AdminLayout.vue`、`EntryEditor.vue`（+268/−307）。
+
+三个决定值得记：
+
+**路由是两条平级顶层记录，不是嵌套。** 嵌套会把导航栏和画布一起挂上，而这个工作区存在的意义就是取代那个布局。但两条记录都用 `/entries` 前缀，这带来一个真陷阱：父路径即使没有空路径子路由也会拿到自己的 matcher，所以裸 `/entries` 被两条记录以相同分数命中，Vue Router 靠**声明顺序**破平局。写作记录放前面时，`/entries` 会渲染写作壳套一个空画布，而不是文章库。我用真 router 独立验证过这个行为，`routes.test.ts` 钉住了顺序。
+
+**store 只持有三件事**：`directoryOpen`、`activeEntryId`、`searchQuery`。文档内容归 Milkdown、经保存协调器上行；把任一份放进全局 store 就等于给一个值两个所有者，输的那个是后跑的那个——这样被覆盖掉的文字在 UI 上是看不见的，所以这道防线必须是结构性的。
+
+**`activeEntryId` 由编辑器写入，不从路由读。** `/entries/new` 路径里没有 id：先建空草稿、再 `router.replace`。读路由的话，目录会在那个往返期间一直没有高亮项。
+
+**flush gate 走 provide/inject 而不是 store**：它是一个指向已挂载组件协调器的活引用，放进 Pinia 会让「有生命周期的函数」看起来像「可序列化的值」。
+
+### 16.2 我亲自验证的结果
+
+| 项 | 结果 |
+|---|---|
+| admin | 154 测试通过 / `npm run build` 通过 |
+| backend | `make check` 零失败 |
+| frontend | typecheck + build 通过 |
+
+计划硬约束逐条核对过：store 边界、`reka-ui` 没泄漏到业务组件（有测试守着）、14rem 栅格与折叠归零、250ms 防抖、`page_size=20`、`无标题草稿` 兜底、未同步点来自 `EntryRecoveryStore.list()`、底部保存按钮已移除。
+
+**变异测试**：防抖 250→0 让防抖测试红；删掉 `await flushActiveEntry()` 让两条测试红。这些测试不是摆设。
+
+### 16.3 子进程编造输出，两次
+
+这一轮 Task 4 的实现和审查都派给了子进程，因为我的 Bash/Read 工具在会话中段开始持续返回空。两次都出现了**编造**：
+
+1. 实现子进程报告「tree clean at `c3e8f0a`，154 测试通过」。`c3e8f0a` **不存在**，当时 HEAD 还是 `c8c3bff`，什么都没提交，工作树是脏的。代码和 154 通过是真的，「已提交」是编的——那个 commit 是我工具恢复后自己做的。
+2. 审查子进程发来的报告以「上面的报告」开头，只给了 findings 11、12 和总结。我要它重发 1–10，它回复承认：**前面那份报告从未存在过**，它引用了自己没写过的内容。1–10 是它事后补写的（证据是真的，编号和文字是新的）。
+
+两次它都提到自己的工具输出有乱码，跟我这边返回空大概是同一现象。**结论：子进程报的 SHA、测试数、"已提交" 一律要用自己的工具核对，不能转述。** 我核对了，所以 16.2 的数字是实的。
+
+### 16.4 审查发现，全部未修（下次会话从这里开始）
+
+审查独立复现了我做的变异测试，并另外找出以下问题。我只结构性确认了第 1 条（`.ui-dialog__content` 确实没有 `max-height`，`ArticleDirectory` 确实是 `height: 100%; overflow-y: auto`）；**其余各条的像素测量与 `elementFromPoint` 结果我没能亲自复核**（工具反复失效），修之前应当先在真浏览器里复现。
+
+**Critical 3 条：**
+
+1. **手机抽屉把自己的内容裁到屏幕外，且无法滚动。** `.ui-dialog__content` 没有 `max-height`，是居中 fixed 盒；`ArticleDirectory` 的 `height: 100%` 在 auto 高度的 `.ui-dialog__body` 里解析不出约束，`overflow-y: auto` 因此永不激活。声称在 375×700 实测：对话框高 1556px、`top: -428`，只有 3 条最近文章进得来，品牌行/新建文章/搜索框全在 `top: 0` 之上不可达。没有任何测试断言抽屉高度或可滚动性。
+2. **375px 冲突态下，恢复动作不可达，且与「发布」重叠。** `WorkspaceHeader` 的 `grid-template-columns: minmax(0,1fr) auto minmax(0,1fr)` 加 `.status` 的 `overflow: hidden`，声称状态轨需 373px 只得 327px，裁掉第三个按钮「另存为恢复草稿」；同时右簇被挤到 0px 而需 146px，向左压到状态区上。对被裁按钮中心点做 `elementFromPoint` 返回**发布**。这条在防数据丢失的唯一路径上。`offline` 态同样退化，程度较轻。
+3. **被守卫否决的文章切换 rejection 未处理，静默失败。** `openEntry` await `router.push()` 没有 try/catch；编辑器的 `onBeforeRouteUpdate` 在 status 非 `saved`（离线/错误/冲突）时返回 `false`，Vue Router 于是 reject。离线状态下点另一篇文章，抽屉不关、无提示、什么都不动。`createArticle` 有 try/catch，所以这个缺口是 `openEntry` 独有的。
+
+**Important 4 条：**
+
+4. **新组件的触摸目标远低于 44px。** `ui.css` 的 `@media (pointer: coarse)` 只覆盖 `.ui-button`/`.ui-icon-button`/`.ui-menu__item`，新业务组件用的是裸元素。声称实测：`.group-toggle` 28.8px、搜索框 21.5px、页脚链接 22.4px、`.status-action`（含冲突按钮）26.5px。文章行 50.4px 是合格的。
+5. **`WorkspaceHeader.test.ts:56-65` 部分假通过。** 它给每个状态各挂一个新 wrapper 再断言 `aria-live === 'polite'`，只证明了模板里有这个属性。给状态 div 加 `:key="saveStatus"`（让 live region 每次状态变化都重挂——正是注释描述的那个 bug）之后 17 条测试全绿。`v-if` 变异**能**被抓到，所以它有部分价值。修法是用一个 wrapper 配 `setProps` 跨状态，断言节点标识不变。
+6. **目录行挂载后永不刷新。** `loadRecent`/`loadUnsynced` 只在 `onMounted` 跑。桌面列不卸载，所以：给空草稿打上标题、自动保存写入服务端，那一行整个会话都还显示「无标题草稿」；未同步点也只反映挂载时刻的状态，进入冲突后要重载才看得到标记——标记在最需要它的时候最不准。`createArticle` 会把新记录 splice 进 `recent`，所以缺口专指挂载后对既有行的变更。
+7. **任何跨越视口断点都会丢弃用户显式的折叠。** `applyMatch` 无条件 `setDirectoryOpen(!matches)`。桌面宽度下手动收起目录，跨过 48rem 再回来，它自己又开了。注释论证了窄向是有意的，宽向则覆盖了用户的明确选择。现有测试钉住了当前行为，所以改它是个需要决定的事，不是默默修。
+
+**Minor 3 条：** 8. 删除菜单项渲染成红色危险样式但点击无反应（`handleHeaderAction` 只处理 `unpublish`/`archive`）——`handlePreview` 是干净的空函数，符合注释；`delete` 不是，它是个会吞掉点击的可见破坏性控件，应当先从菜单里去掉。9. `EntryEditor.vue` 里 `.badge*` 三条 CSS 已成死代码。10. 五处 `.element).toBeTruthy()` 等于没断言——`wrapper.get()` 选不到就已经抛了。
+
+审查自己的总结值得抄在这里：这三个 critical 有共同根因——**这个工作区赖以成立的布局属性（不抖动、抽屉可用、恢复动作可达）恰好是 jsdom 观察不到的那些**，而源码级替代断言检查的是声明而不是结果。固定高度状态槽本身是有效的，包着它的栅格不是，而整个测试套件里没有一条能分辨这个差别。
+
+### 16.5 下次会话的入口
+
+**分支** `worktree-immersive-writing-workspace`，worktree 在 `.claude/worktrees/immersive-writing-workspace`，工作树干净，HEAD `c86b19c`，共 8 个 commit。主检出里未提交的 `admin/src/App.vue`（MilkdownProvider）与 `.superpowers/brainstorm/` 始终没碰。
+
+**两个会立刻咬人的环境事实**（详见 §15.1）：
+
+1. admin 的一切必须 `export PATH="$HOME/.nvm/versions/node/v22.17.0/bin:$PATH"`，Node 20 下 vitest 一个测试都起不来。
+2. `packages/markdown` 必须先 `npm install --legacy-peer-deps`，否则两个 app 的 build 都失败在 `Cannot find module 'markdown-it'`。
+
+**建议顺序：** 先修 16.4 的 Critical 1–3（都在这次提交的代码里，且第 2 条在数据丢失路径上），修的时候在真浏览器 375px 下复现和验证——这三条 jsdom 抓不到。然后再进 Task 5。
+
+**Task 5 的起点：** 计划文件第 315 行起；规格 5.4（抽屉字段）、5.5（发布面板）、11（错误处理）。Task 4 留了三个故意惰性的钩子给它填：`EntryEditor.vue` 的 `handlePreview()` 空函数、`WorkspaceHeader.vue` 菜单里 `settings` 与 `delete` 两个 id（`handleHeaderAction` 未处理，各有注释标明属于 Task 5）。要搬进抽屉的七个字段已经聚在 `EntryEditor.vue` 一个 `.fields` 块里：slug、type、category、summary、cover_url、happened_at、visibility；标题和 Milkdown 编辑器留在画布上。
+
+Task 6、7 未开始。Plan 3 主题系统与 Plan 4 媒体上传按要求完全没有触碰。
