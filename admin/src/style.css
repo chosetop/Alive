@@ -10,8 +10,15 @@
  */
 
 :root {
-  --radius-sm: 4px;
-  --radius-md: 6px;
+  /* iOS-like geometry is deliberately compact: controls read as soft, without
+     becoming pills or competing with the writing canvas. */
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-control: 12px;
+  --radius-surface: 16px;
+  --shadow-control: 0 1px 2px rgb(23 32 42 / 8%);
+  --shadow-float: 0 12px 32px rgb(23 32 42 / 14%);
+  --motion-fast: 160ms;
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;

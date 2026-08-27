@@ -87,6 +87,28 @@ describe('UiButton', () => {
 })
 
 describe('UiIconButton', () => {
+  it('keeps icon-only controls named and exposes a coarse pointer target', () => {
+    const wrapper = mount(UiIconButton, {
+      props: { label: '搜索文章' },
+      slots: { default: '<UiIcon name="search" />' },
+    })
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'ui.css'), 'utf8')
+
+    expect(wrapper.attributes('aria-label')).toBe('搜索文章')
+    expect(css).toContain('44px')
+  })
+
+  it('shares the iOS visual semantics across primitives', () => {
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'ui.css'), 'utf8')
+
+    expect(css).toContain('var(--c-glass)')
+    expect(css).toContain('var(--c-focus)')
+    expect(css).toContain('var(--radius-control)')
+    expect(css).toContain('var(--shadow-float)')
+    expect(css).toContain('var(--motion-fast)')
+    expect(css).toContain('prefers-reduced-motion')
+  })
+
   it('requires and applies an accessible label', () => {
     // An icon-only control is unreachable without one.
     const wrapper = mount(UiIconButton, { props: { label: '收起目录' } })
