@@ -243,9 +243,9 @@ Run: `cd admin && npm test -- --run src/views/Entries.test.ts src/views/Categori
 
 Expected: FAIL only for the new data hooks/semantic layout assertions; existing API behavior tests remain passing.
 
-- [ ] **Step 3: Implement the page visual layer**
+- [ ] **Step 3: Implement the page visual layer and keyboard theme selection**
 
-Convert page headers to a consistent title/context/action structure, use the semantic surface and status tokens, preserve all current Chinese copy and API calls, add icon affordances only where they clarify an existing action, and ensure the theme picker renders all manifest entries. Keep empty and error messages as real state messages rather than decorative dashboard content.
+Convert page headers to a consistent title/context/action structure, use the semantic surface and status tokens, preserve all current Chinese copy and API calls, add icon affordances only where they clarify an existing action, and ensure the theme picker renders all manifest entries. For the custom `radiogroup`, implement roving `tabindex`, ArrowLeft/ArrowRight/ArrowUp/ArrowDown, Home, and End so keyboard selection updates preview and `aria-checked`; keep the existing explicit save/cancel flow. Keep empty and error messages as real state messages rather than decorative dashboard content.
 
 - [ ] **Step 4: Run page tests and build**
 
