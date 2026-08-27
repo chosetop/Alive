@@ -135,12 +135,18 @@ useHead({
 
 <style scoped>
 /*
- * The measure is applied to the article, and `.prose` inherits it. Everything on
- * this page shares one text column: a dateline wider than the body it introduces
- * reads as a different page element.
+ * The detail page gets a wider reading column than the shared prose default.
+ * Keeping the whole article in one centered column aligns the title, metadata,
+ * cover and body without making the page feel left-heavy on large screens.
  */
 .entry {
-  max-width: var(--measure);
+  width: min(100%, 48rem);
+  max-width: 48rem;
+  margin-inline: auto;
+}
+
+.entry > .prose {
+  max-width: none;
 }
 
 .head {
