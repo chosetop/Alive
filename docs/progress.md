@@ -1233,3 +1233,47 @@ eb6e44c feat: search the admin article directory
 **Task 5 的起点：** 计划文件第 315 行起；规格 5.4（抽屉字段）、5.5（发布面板）、11（错误处理）。Task 4 留了三个故意惰性的钩子给它填：`EntryEditor.vue` 的 `handlePreview()` 空函数、`WorkspaceHeader.vue` 菜单里 `settings` 与 `delete` 两个 id（`handleHeaderAction` 未处理，各有注释标明属于 Task 5）。要搬进抽屉的七个字段已经聚在 `EntryEditor.vue` 一个 `.fields` 块里：slug、type、category、summary、cover_url、happened_at、visibility；标题和 Milkdown 编辑器留在画布上。
 
 Task 6、7 未开始。Plan 3 主题系统与 Plan 4 媒体上传按要求完全没有触碰。
+
+## 17. Task 4 Critical 1 的浏览器实测（2026-08-27，进行中）
+
+**代码没有任何改动。** HEAD 仍是 `bda68a0`，工作树干净。这一节只记录一次实测结果，因为它和 §16.4 审查声称的数字**不一致**，下次动手前需要知道这件事。
+
+### 17.1 做法
+
+在真浏览器里搭了一个一次性 harness（`admin/repro.html` + `repro.ts`，已删除），挂载**真实组件与真实样式表** —— `WorkspaceHeader`、`ArticleDirectory`、`UiDialog`，加载 `style.css` 与 `ui.css`，API 在 `fetch` 层打桩返回 20 条（真实 `page_size`），这样目录自己的加载代码原样运行。视口 375×700。
+
+harness 需要 `VITE_API_BASE_URL`（客户端没有它会抛错），临时写了 `admin/.env`（已被 gitignore，且已删除）。
+
+### 17.2 实测数字 vs 审查声称
+
+| 项 | 审查声称 | 我实测 |
+|---|---|---|
+| 对话框高度 | 1556px | **1482.9px** |
+| `top` | −428.2 | **−391.4** |
+| `bottom` | 1128.2 | **1091.4** |
+| 完整可见的文章行 | **3** | **12** |
+| `.ui-dialog__content` 的 `max-height` | 无 | **`none`**（确认） |
+| 可滚动祖先 | 无 | **`null`**（确认） |
+| 搜索框可达 | 不可达 | **不可达**（`top: −231.3`） |
+
+**缺陷是真的，量级不是。** 结构性根因完全确认：`.ui-dialog__content` 的 `max-height` 计算值是 `none`、`overflow` 是 `visible`，从文章行往上找不到任何可滚动祖先（`scrollableAncestor: null`）。所以对话框高 1482.9px 撑在 700px 视口里，上下都溢出，且**没有任何方式滚动**。搜索框在 `top: −231.3`，品牌行和「新建文章」在它之上，全部不可达 —— 这部分和审查一致。
+
+但「只有 3 条进得来」是错的，实测 12 条完整可见。差异原因大概是审查用的行高假设与真实渲染不同（它自己也说过测量是在它的环境里做的）。**修复的紧迫性不变，但描述缺陷时要用 12 这个数。**
+
+这也再次印证 §16.3 的结论：子进程报的具体数字必须自己复核。这次三个数量级里有一个是错的。
+
+### 17.3 Critical 2、3 仍未复核
+
+被打断前只做完了 Critical 1。**Critical 2（375px 冲突态下「另存为恢复草稿」被裁、其像素点命中「发布」）和 Critical 3（`openEntry` 未捕获路由守卫 reject）我仍然没有亲自复现过。** 修之前应当用同样的 harness 手法验证，尤其是第 2 条的 `elementFromPoint` 结论 —— 那是整条发现的要害，而它来自一个已经在数量上出过错的来源。
+
+复现 Critical 2 的要点：harness 里 `WorkspaceHeader` 的 `saveStatus` 设为 `'conflict'`，`conflict` 插槽放三个 `.status-action` 按钮（真实内容见 `EntryEditor.vue:545-572`：载入服务端 / 覆盖服务端 / 另存为恢复草稿），375px 下量三条栅格轨道的实际宽度与需求宽度，再对被裁按钮中心点做 `document.elementFromPoint`。
+
+### 17.4 下次继续
+
+入口不变，见 §16.5。顺序建议：
+
+1. 复现并修 Critical 1（根因已确认：`.ui-dialog__content` 缺 `max-height`，抽屉内无可滚动容器）
+2. 复现 Critical 2、3，确认后再修
+3. 修完在真浏览器 375px 复验，然后进 Task 5
+
+注意 harness 是一次性的，已删除；重建时记得 `admin/.env` 里给 `VITE_API_BASE_URL`，用完连 `.playwright-mcp/` 一起删掉，别提交进去。
