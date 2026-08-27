@@ -10,5 +10,13 @@ export default defineConfig({
     // shifted port would fail preflight with nothing in the UI to explain it.
     port: 5173,
     strictPort: true,
+    proxy: {
+      '/fonts/chillkai.woff2': {
+        target: 'https://mp-af7fce00-5123-404b-a663-efef7a2e5985.cdn.bspapp.com',
+        changeOrigin: true,
+        rewrite: () => '/zine/ChillKai-subset.woff2',
+        headers: { referer: 'https://mp-af7fce00-5123-404b-a663-efef7a2e5985.cdn.bspapp.com/' },
+      },
+    },
   },
 })

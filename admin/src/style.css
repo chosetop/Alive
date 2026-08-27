@@ -4,46 +4,12 @@
  * Per-component styling lives in that component's `scoped` block. What is here
  * is either a shared value or a browser default worth correcting once.
  *
- * The palette is deliberately quiet: warm off-white paper, near-black ink, one
- * restrained accent. This is a tool someone sits in to write for long stretches,
- * so contrast carries the hierarchy instead of colour.
+ * Theme colours and typography come from @alive/theme. The admin shell keeps
+ * only layout aliases and geometry here so one selected theme reaches every
+ * surface consistently.
  */
 
 :root {
-  /* Surfaces, lightest to darkest. */
-  --c-paper: #faf9f7;
-  --c-surface: #ffffff;
-  --c-surface-sunken: #f2f0ec;
-
-  /* Ink, strongest to faintest. */
-  --c-ink: #1b1a18;
-  --c-ink-muted: #5f5b54;
-  --c-ink-faint: #8d8880;
-
-  --c-line: #e3dfd8;
-  --c-line-strong: #cfc9c0;
-
-  /* One accent, used for focus and the primary action only. */
-  --c-accent: #3a5a72;
-  --c-accent-hover: #2e4a5f;
-  --c-danger: #a5342c;
-  --c-danger-surface: #fdf2f0;
-
-  /*
-   * Text on a filled accent surface. A token rather than a literal white, because
-   * this is the one colour whose correct value is decided by the accent behind it:
-   * a theme with a pale accent needs dark text here, and a hard-coded #fff would
-   * make the primary button the one element that ignores the theme.
-   */
-  --c-on-accent: #ffffff;
-
-  /*
-   * The modal scrim. --c-ink at 32%, expressed as a token so a dark theme can
-   * darken rather than lighten it -- an inlined light scrim over a dark surface
-   * reads as a rendering fault.
-   */
-  --c-overlay: rgb(27 26 24 / 32%);
-
   --radius-sm: 4px;
   --radius-md: 6px;
 
@@ -55,10 +21,7 @@
   --space-6: 2rem;
   --space-8: 3rem;
 
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
-    'Microsoft YaHei', sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-sans: var(--font-ui);
 
   --sidebar-width: 13rem;
   --header-height: 3.5rem;

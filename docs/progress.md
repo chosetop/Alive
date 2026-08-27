@@ -1371,7 +1371,7 @@ harness 需要 `VITE_API_BASE_URL`（客户端没有它会抛错），临时写�
 - 新增测试确保 slash 菜单未挂载，并确保编辑器使用稳定的全宽写作面。
 
 验证：admin 定向测试和构建通过；真实浏览器已复核桌面端与 375px 布局，确认无 slash 菜单、编辑器稳定占宽且无横向溢出。Plan 2（Task 1–7）至此完成；未触碰 Plan 3 主题系统或 Plan 4 媒体上传。
-## 23. Plan 3：共享站点主题系统（2026-08-27，Task 1 完成）
+## 23. Plan 3：共享站点主题系统（2026-08-27，Task 1–4 完成）
 
 - 已建立 `@alive/theme` 本地包，提供 `THEMES`、`ThemeName`、`isThemeName` 和 `resolveTheme`。
 - 已定义 `ink`、`lamp`、`codex-lavender` 三套共享语义 token，包含字体、表面、正文、边框、强调色、危险色和遮罩色。
@@ -1381,3 +1381,6 @@ harness 需要 `VITE_API_BASE_URL`（客户端没有它会抛错），临时写�
 - TDD 验证：服务测试先因 `internal/site` 实现缺失而失败，实现后 4 tests passed。
 - Task 3 已完成：新增公开 `GET /api/v1/site`、登录保护的 `PATCH /api/v1/admin/site`，并在 router 与 server 启动装配中接入；API 文档已同步。
 - TDD 验证：handler 测试先因 `NewHandler` 缺失而失败，实现后 sitehttp、router、server 定向测试通过。Task 4–6 尚未开始。Plan 4 媒体上传没有触碰。
+- Task 4 已完成：后台主题 store 支持预览、取消预览和 revision-aware 保存；目录底部接入 ThemePicker；共享主题 CSS 只加载一次，后台保留布局 token；开发环境已代理 ChillKai 字体。
+- TDD 验证：ThemePicker 源码测试先因实现缺失而失败，实现后主题 store 与组件测试共 5 tests passed；Node 22 下 admin build 通过。构建仅提示字体绝对路径在运行时解析及既有大 chunk warning。
+- Task 4 代码审查：当前环境没有可用的独立审查子进程，因此未将自审称作独立审查；已通过逐文件审阅、定向测试、类型检查和生产构建复核。Task 5–6 尚未开始，Plan 4 媒体上传没有触碰。

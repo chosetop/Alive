@@ -304,7 +304,7 @@ expect(api.patchSite).toHaveBeenCalledWith({ default_theme: 'codex-lavender', re
 
 Also test save failure retaining preview while site default remains unchanged.
 
-- [ ] **Step 2: Import shared CSS once**
+- [x] **Step 2: Import shared CSS once**
 
 Add `import '@alive/theme/themes.css'` in `admin/src/main.ts`. Remove palette literals from `admin/src/style.css`; keep spacing, geometry, typography scale, and admin-only semantic aliases there.
 
@@ -313,21 +313,21 @@ using the same verified CDN source and cache behavior already documented in
 `frontend/nuxt.config.ts`. In production, keep the absolute `/fonts/...` URL so
 the existing site-level font route serves both `/` and `/admin`.
 
-- [ ] **Step 3: Implement API and store**
+- [x] **Step 3: Implement API and store**
 
 Create `getSiteSettings` and `updateSiteSettings`. The Pinia store writes `data-theme` for preview, stores the last server revision, and changes `siteDefault` only after PATCH succeeds.
 
-- [ ] **Step 4: Implement ThemePicker**
+- [x] **Step 4: Implement ThemePicker**
 
 Open from the directory footer. Render the three theme names and representative swatches from CSS custom properties. Clicking previews. Render “设为站点默认” only when dirty, and “取消预览” to return to the current site default.
 
-- [ ] **Step 5: Run admin tests and build**
+- [x] **Step 5: Run admin tests and build**
 
 Run: `cd admin && npm test -- --run src/stores/theme.test.ts src/components/writing/ThemePicker.test.ts && npm run build`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add admin/src admin/package*

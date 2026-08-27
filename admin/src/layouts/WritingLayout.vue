@@ -3,6 +3,8 @@ import { onBeforeUnmount, onMounted, provide, ref } from 'vue'
 
 import ArticleDirectory from '../components/writing/ArticleDirectory.vue'
 import { UiDialog } from '../components/ui'
+import { getSiteSettings } from '../api/site'
+import { useThemeStore } from '../stores/theme'
 import { useWritingStore, writingFlushKey, type WritingFlushGate } from '../stores/writing'
 
 /**
@@ -29,6 +31,7 @@ import { useWritingStore, writingFlushKey, type WritingFlushGate } from '../stor
 const DRAWER_QUERY = '(max-width: 48rem)'
 
 const writing = useWritingStore()
+const theme = useThemeStore()
 
 const isNarrow = ref(false)
 let mediaQuery: MediaQueryList | null = null
@@ -51,6 +54,7 @@ function applyMatch(matches: boolean): void {
 }
 
 onMounted(() => {
+  void loadTheme()
   // jsdom has no matchMedia unless a test installs one. Absent, the workspace
   // stays in its desktop layout, which is the correct fallback: a two-column
   // grid degrades to a wide directory, while assuming narrow would hide the
@@ -61,6 +65,14 @@ onMounted(() => {
   applyMatch(mediaQuery.matches)
   mediaQuery.addEventListener('change', handleMediaChange)
 })
+
+async function loadTheme(): Promise<void> {
+  try {
+    theme.hydrate(await getSiteSettings())
+  } catch {
+    // Ink is the shared fallback; a settings outage must not block writing.
+  }
+}
 
 onBeforeUnmount(() => {
   mediaQuery?.removeEventListener('change', handleMediaChange)

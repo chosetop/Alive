@@ -4,6 +4,7 @@ import { setUnauthorizedHandler } from './api'
 import App from './App.vue'
 import router from './router'
 import { useAuthStore } from './stores/auth'
+import '@alive/theme/themes.css'
 import './style.css'
 // After style.css, which defines the tokens these rules read. The primitives are
 // styled globally rather than in scoped blocks because Reka teleports overlay

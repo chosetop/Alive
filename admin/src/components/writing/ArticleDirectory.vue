@@ -7,6 +7,7 @@ import { EntryRecoveryStore } from '../../editor/recovery-store'
 import { useWritingStore, writingFlushKey } from '../../stores/writing'
 import type { EntryListItem, EntryStatus } from '../../types/api'
 import { UiButton, UiIconButton } from '../ui'
+import ThemePicker from './ThemePicker.vue'
 
 /**
  * The article directory.
@@ -426,12 +427,10 @@ function isUnsynced(item: EntryListItem): boolean {
       </section>
     </template>
 
-    <!-- Site settings and the theme picker belong here per the spec, but they are
-         Plan 3's surface. Linking to routes that do not exist would be worse than
-         the gap, so the footer holds only what works today. -->
     <div class="footer">
       <RouterLink class="footer-link" :to="{ name: 'categories' }">分类管理</RouterLink>
       <RouterLink class="footer-link" :to="{ name: 'entries' }">文章列表</RouterLink>
+      <ThemePicker />
     </div>
   </nav>
 </template>
