@@ -1371,3 +1371,10 @@ harness 需要 `VITE_API_BASE_URL`（客户端没有它会抛错），临时写�
 - 新增测试确保 slash 菜单未挂载，并确保编辑器使用稳定的全宽写作面。
 
 验证：admin 定向测试和构建通过；真实浏览器已复核桌面端与 375px 布局，确认无 slash 菜单、编辑器稳定占宽且无横向溢出。Plan 2（Task 1–7）至此完成；未触碰 Plan 3 主题系统或 Plan 4 媒体上传。
+## 23. Plan 3：共享站点主题系统（2026-08-27，Task 1 完成）
+
+- 已建立 `@alive/theme` 本地包，提供 `THEMES`、`ThemeName`、`isThemeName` 和 `resolveTheme`。
+- 已定义 `ink`、`lamp`、`codex-lavender` 三套共享语义 token，包含字体、表面、正文、边框、强调色、危险色和遮罩色。
+- admin 与 frontend 的 manifest 和 lockfile 已接入本地主题包。
+- TDD 验证：先确认主题包入口缺失导致测试失败，再实现后 3 tests passed。
+- 当前提交范围只包含 Plan 3 Task 1，Task 2–6 尚未开始。Plan 4 媒体上传没有触碰。

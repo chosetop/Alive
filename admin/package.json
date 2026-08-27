@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@alive/markdown": "file:../packages/markdown",
+    "@alive/theme": "file:../packages/theme",
     "@milkdown/kit": "7.22.1",
     "@milkdown/theme-nord": "7.22.1",
     "@milkdown/vue": "7.22.1",

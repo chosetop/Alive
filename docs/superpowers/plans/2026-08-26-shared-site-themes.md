@@ -50,7 +50,7 @@
 - Produces: `ThemeName`, `THEMES`, `isThemeName`, `resolveTheme`
 - Produces: `@alive/theme/themes.css`
 
-- [ ] **Step 1: Write failing manifest and precedence tests**
+- [x] **Step 1: Write failing manifest and precedence tests**
 
 ```ts
 expect(THEMES.map((x) => x.name)).toEqual(['ink', 'lamp', 'codex-lavender'])
@@ -59,7 +59,7 @@ expect(resolveTheme({ visitor: null, siteDefault: 'codex-lavender' })).toBe('cod
 expect(resolveTheme({ visitor: 'bogus', siteDefault: 'ink' })).toBe('ink')
 ```
 
-- [ ] **Step 2: Create the package manifest**
+- [x] **Step 2: Create the package manifest**
 
 ```json
 {
@@ -95,7 +95,7 @@ export function resolveTheme(input: { visitor: unknown; siteDefault: unknown }):
 
 Invalid site defaults fall back to `ink`; an invalid visitor value is treated as absent.
 
-- [ ] **Step 3: Move semantic palettes into shared CSS**
+- [x] **Step 3: Move semantic palettes into shared CSS**
 
 Define every semantic token under all three selectors. The Codex Lavender core must use:
 
@@ -118,7 +118,7 @@ Define every semantic token under all three selectors. The Codex Lavender core m
 
 Verify text token contrast on its intended surface before accepting the values. If a sampled value fails WCAG AA, darken that semantic text token while preserving hue; do not change the approved prose family to neutral gray.
 
-- [ ] **Step 4: Install the local package in both apps**
+- [x] **Step 4: Install the local package in both apps**
 
 Run:
 
@@ -128,13 +128,13 @@ cd admin && npm install '@alive/theme@file:../packages/theme'
 cd ../frontend && npm install '@alive/theme@file:../packages/theme'
 ```
 
-- [ ] **Step 5: Run package tests**
+- [x] **Step 5: Run package tests**
 
 Run: `cd packages/theme && npx vitest run`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/theme admin/package* frontend/package*

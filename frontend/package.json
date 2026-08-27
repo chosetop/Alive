@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@alive/markdown": "file:../packages/markdown",
+    "@alive/theme": "file:../packages/theme",
     "markdown-it": "14.1.0",
     "nuxt": "3.21.11",
     "pinia": "3.0.4",

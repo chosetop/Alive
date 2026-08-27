@@ -1,0 +1,16 @@
+{
+  "name": "@alive/theme",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./themes.css": "./src/themes.css"
+  },
+  "scripts": {
+    "test": "vitest --run"
+  },
+  "devDependencies": {
+    "vitest": "4.1.0"
+  }
+}

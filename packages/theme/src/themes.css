@@ -1,0 +1,77 @@
+@font-face {
+  font-family: 'ChillKai';
+  src: url('/fonts/chillkai.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root,
+[data-theme='ink'] {
+  color-scheme: light;
+  --font-prose: 'ChillKai', 'Songti SC', 'STSong', 'Source Han Serif SC', 'Noto Serif CJK SC', Georgia, serif;
+  --font-heading: var(--font-prose);
+  --font-ui: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --c-paper: #faf9f7;
+  --c-surface: #ffffff;
+  --c-surface-sunken: #f2f0ec;
+  --c-ink: #1b1a18;
+  --c-prose: #292621;
+  --c-ink-muted: #5f5b54;
+  --c-ink-faint: #6f6a62;
+  --c-line: #e3dfd8;
+  --c-line-strong: #cfc9c0;
+  --c-accent: #3a5a72;
+  --c-accent-hover: #2e4a5f;
+  --c-danger: #a5342c;
+  --c-danger-surface: #fdf2f0;
+  --c-on-accent: #ffffff;
+  --c-overlay: rgb(27 26 24 / 32%);
+}
+
+[data-theme='lamp'] {
+  color-scheme: dark;
+  --font-prose: 'ChillKai', 'Songti SC', 'STSong', 'Source Han Serif SC', 'Noto Serif CJK SC', Georgia, serif;
+  --font-heading: var(--font-prose);
+  --font-ui: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --c-paper: #191817;
+  --c-surface: #242220;
+  --c-surface-sunken: #2d2a27;
+  --c-ink: #f0ede7;
+  --c-prose: #e6e1d8;
+  --c-ink-muted: #b5aea3;
+  --c-ink-faint: #aaa196;
+  --c-line: #3e3934;
+  --c-line-strong: #5c554d;
+  --c-accent: #9fc0d6;
+  --c-accent-hover: #c0d9e7;
+  --c-danger: #ef9b91;
+  --c-danger-surface: #3b2421;
+  --c-on-accent: #191817;
+  --c-overlay: rgb(0 0 0 / 56%);
+}
+
+[data-theme='codex-lavender'] {
+  color-scheme: light;
+  --font-prose: 'ChillKai', 'Songti SC', 'STSong', 'Source Han Serif SC', 'Noto Serif CJK SC', Georgia, serif;
+  --font-heading: var(--font-prose);
+  --font-ui: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --c-paper: #fcfbfd;
+  --c-surface: #ffffff;
+  --c-surface-sunken: #ebe7f0;
+  --c-ink: #68399d;
+  --c-prose: #7652a2;
+  --c-ink-muted: #755b91;
+  --c-ink-faint: #765b94;
+  --c-line: #ece8ef;
+  --c-line-strong: #dcd3e5;
+  --c-accent: #9a6bdc;
+  --c-accent-hover: #8454c9;
+  --c-danger: #a53c55;
+  --c-danger-surface: #fceff3;
+  --c-on-accent: #ffffff;
+  --c-overlay: rgb(55 35 76 / 28%);
+}
