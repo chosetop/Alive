@@ -77,6 +77,16 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
+/* Bridges the visual gap so hover can travel from the pill into the popover. */
+.toggle::after {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: 100%;
+  height: var(--space-2);
+  content: '';
+}
+
 summary {
   display: inline-flex;
   align-items: center;
