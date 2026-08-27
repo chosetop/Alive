@@ -29,6 +29,7 @@
 - `packages/theme/src/themes.css`: complete semantic palettes, fonts, and new surface/status variables for every theme.
 - `packages/theme/src/theme.test.ts`: manifest, label, resolver, and semantic-token contract tests.
 - `backend/internal/site/model.go`, `backend/internal/site/service_test.go`, `backend/internal/sitehttp/handler.go`, `backend/internal/sitehttp/handler_test.go`: accept the new theme as a validated site default without changing the endpoint contract.
+- `backend/migrations/000008_allow_night_ink.*.sql`: update the persisted site-theme check constraint for the new theme.
 - `admin/src/style.css`: admin geometry aliases, global typography, glass surfaces, focus, and motion rules.
 - `admin/src/components/ui/ui.css`: iOS-like primitives and interaction states.
 - `admin/src/components/ui/UiIcon.vue`, `admin/src/components/ui/index.ts`: the only business-facing icon boundary if the current primitives need it.
@@ -54,6 +55,8 @@
 - Modify: `backend/internal/site/service_test.go`
 - Modify: `backend/internal/sitehttp/handler.go`
 - Modify: `backend/internal/sitehttp/handler_test.go`
+- Create: `backend/migrations/000008_allow_night_ink.up.sql`
+- Create: `backend/migrations/000008_allow_night_ink.down.sql`
 
 **Interfaces:**
 - Produces: `ThemeName` including `night-ink`, `THEMES` entry `{ name: 'night-ink', label: '夜航', colorScheme: 'dark' }`, and semantic variables `--c-glass`, `--c-glass-border`, `--c-focus`, `--c-success`, and `--c-success-surface`.
@@ -82,9 +85,9 @@ Run: `cd packages/theme && npm test -- --run src/theme.test.ts && cd ../../backe
 
 Expected: FAIL because `night-ink` is absent from the manifest and backend allow-list.
 
-- [ ] **Step 3: Add the manifest entry and semantic palettes**
+- [ ] **Step 3: Add the manifest entry, semantic palettes, and database constraint migration**
 
-Add `night-ink` to `THEMES`, keep `薰衣草` unchanged, and define every semantic variable under `ink`, `lamp`, `codex-lavender`, and `night-ink`. The new theme must include a deep blue-black paper, translucent slate glass, warm readable ink, a violet-blue Alive accent, green success state, danger state, focus ring, and overlay. Update backend validation and the invalid-theme message to list the supported values.
+Add `night-ink` to `THEMES`, keep `薰衣草` unchanged, and define every semantic variable under `ink`, `lamp`, `codex-lavender`, and `night-ink`. The new theme must include a deep blue-black paper, translucent slate glass, warm readable ink, a violet-blue Alive accent, green success state, danger state, focus ring, and overlay. Update backend validation and the invalid-theme message to list the supported values. Add migration `000008_allow_night_ink` that drops and recreates `site_settings_theme_check` with all four supported keys; do not rewrite migration `000007`.
 
 - [ ] **Step 4: Run focused tests and contrast checks**
 
