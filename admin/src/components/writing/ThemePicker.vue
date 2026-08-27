@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 
 import { THEMES, type ThemeName } from '@alive/theme'
 import { toUserMessage } from '../../api'
@@ -18,6 +18,34 @@ function selectTheme(name: string): void {
   if (!THEMES.some((item) => item.name === name)) return
   theme.previewTheme(name as ThemeName)
   error.value = null
+}
+
+function handleOptionKeydown(event: KeyboardEvent, currentIndex: number): void {
+  let nextIndex: number
+
+  switch (event.key) {
+    case 'ArrowRight':
+    case 'ArrowDown':
+      nextIndex = (currentIndex + 1) % THEMES.length
+      break
+    case 'ArrowLeft':
+    case 'ArrowUp':
+      nextIndex = (currentIndex - 1 + THEMES.length) % THEMES.length
+      break
+    case 'Home':
+      nextIndex = 0
+      break
+    case 'End':
+      nextIndex = THEMES.length - 1
+      break
+    default:
+      return
+  }
+
+  event.preventDefault()
+  const group = (event.currentTarget as HTMLElement).closest('[role="radiogroup"]')
+  selectTheme(THEMES[nextIndex].name)
+  void nextTick(() => group?.querySelectorAll<HTMLElement>('[role="radio"]')[nextIndex]?.focus())
 }
 
 async function save(): Promise<void> {
@@ -45,8 +73,10 @@ async function save(): Promise<void> {
         :class="{ 'theme-option--current': item.name === theme.preview }"
         :data-theme-option="item.name"
         role="radio"
+        :tabindex="item.name === theme.preview ? 0 : -1"
         :aria-checked="item.name === theme.preview"
         @click="selectTheme(item.name)"
+        @keydown="handleOptionKeydown($event, THEMES.indexOf(item))"
       >
         <span class="theme-swatch" :data-theme-swatch="item.name" aria-hidden="true" />
         <span>{{ item.label }}</span>
