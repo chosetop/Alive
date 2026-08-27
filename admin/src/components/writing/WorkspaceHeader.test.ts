@@ -33,6 +33,15 @@ describe('WorkspaceHeader', () => {
     setActivePinia(createPinia())
   })
 
+  it('gives the mobile conflict actions their own full-width row', () => {
+    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'WorkspaceHeader.vue'), 'utf8')
+
+    expect(source).toMatch(/grid-template-areas:\s*['"]left right['"]\s*['"]status status['"]/
+    )
+    expect(source).toMatch(/\.status\s*\{[\s\S]*overflow:\s*visible/)
+    expect(source).toMatch(/\.status-slot\s*\{[\s\S]*flex-wrap:\s*wrap/)
+  })
+
   it('describes every save state in words', () => {
     // Not colour, not an animated dot. A writer who cannot tell "已保存" from
     // "保存失败" has no way to know whether to worry, and the greyscale case is

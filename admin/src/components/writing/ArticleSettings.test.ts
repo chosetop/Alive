@@ -61,4 +61,14 @@ describe('ArticleSettings', () => {
     await wrapper.get('[data-delete-confirm]').trigger('click')
     expect(onDelete).toHaveBeenCalledOnce()
   })
+
+  it('closes on Escape', async () => {
+    const wrapper = mount(ArticleSettings, {
+      props: { open: true, entry, categories },
+    })
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+
+    expect(wrapper.emitted('update:open')).toEqual([[false]])
+  })
 })

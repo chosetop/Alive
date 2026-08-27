@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MilkdownProvider } from '@milkdown/vue'
+
 /**
  * Root component. Deliberately nothing but the outlet: the authenticated
  * chrome belongs to AdminLayout, which the router mounts for the routes that
@@ -7,5 +9,7 @@
 </script>
 
 <template>
-  <RouterView />
+  <MilkdownProvider>
+    <RouterView />
+  </MilkdownProvider>
 </template>

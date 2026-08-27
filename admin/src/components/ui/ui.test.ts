@@ -122,6 +122,14 @@ describe('UiIconButton', () => {
 })
 
 describe('UiDialog', () => {
+  it('constrains dialog content so an overflowing body can scroll', () => {
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'ui.css'), 'utf8')
+    const contentRule = css.match(/\.ui-dialog__content\s*\{([^}]*)\}/)?.[1] ?? ''
+
+    expect(contentRule).toMatch(/max-height:\s*min\(/)
+    expect(contentRule).toMatch(/overflow-y:\s*auto/)
+  })
+
   it('opens from its trigger and exposes the dialog role', async () => {
     const wrapper = mount(UiDialog, {
       attachTo: document.body,

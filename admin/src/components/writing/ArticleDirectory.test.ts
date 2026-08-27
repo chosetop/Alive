@@ -256,6 +256,43 @@ describe('ArticleDirectory', () => {
     expect(navigation.push).toHaveBeenCalledWith({ name: 'entry-edit', params: { id: '5' } })
   })
 
+  it('reports a navigation veto instead of silently doing nothing', async () => {
+    navigation.push.mockRejectedValue(new Error('navigation aborted by guard'))
+    api.listEntriesAdmin.mockResolvedValue(page([item({ id: 5 })]))
+    const wrapper = await mountDirectory()
+
+    await wrapper.get('[data-entry-id="5"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('无法切换文章')
+  })
+
+  it('reports a resolved navigation failure instead of closing the drawer', async () => {
+    navigation.push.mockResolvedValue({ type: 4 })
+    api.listEntriesAdmin.mockResolvedValue(page([item({ id: 5 })]))
+    const wrapper = await mountDirectory({ drawer: true })
+
+    await wrapper.get('[data-entry-id="5"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('无法切换文章')
+    expect(useWritingStore().directoryOpen).toBe(true)
+  })
+
+  it('reports a flush veto instead of silently doing nothing', async () => {
+    const flush: WritingFlushGate = ref(async () => {
+      throw new Error('flush vetoed')
+    })
+    api.listEntriesAdmin.mockResolvedValue(page([item({ id: 6 })]))
+    const wrapper = await mountDirectory({ flush })
+
+    await wrapper.get('[data-entry-id="6"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('无法切换文章')
+    expect(navigation.push).not.toHaveBeenCalled()
+  })
+
   it('navigates without a flush when no editor is mounted', async () => {
     api.listEntriesAdmin.mockResolvedValue(page([item({ id: 6 })]))
     // No gate provided at all: the drawer can be open over a canvas with no

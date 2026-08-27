@@ -168,7 +168,9 @@
   left: 50%;
   z-index: 50;
   width: min(28rem, calc(100vw - 2 * var(--space-4)));
+  max-height: min(40rem, calc(100vh - 2 * var(--space-4)));
   padding: var(--space-5);
+  overflow-y: auto;
   transform: translate(-50%, -50%);
   border: 1px solid var(--c-line);
   border-radius: var(--radius-md);

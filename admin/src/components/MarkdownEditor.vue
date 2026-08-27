@@ -109,9 +109,23 @@ const controller = useEditor((root) =>
 )
 
 function onKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    closePortalOverlays()
+    return
+  }
+  if (!editorRoot.value?.contains(event.target as Node)) return
   if (!isLinkShortcut(event)) return
   event.preventDefault()
   controller.get()?.action((ctx) => ctx.get(commandsCtx).call(toggleLinkCommand.key))
+}
+
+function closePortalOverlays(): void {
+  document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+  toolbarVisible.value = false
+}
+
+function onKeyup(event: KeyboardEvent): void {
+  if (event.key === 'Escape') closePortalOverlays()
 }
 
 function onSelectionChange(): void {
@@ -123,12 +137,14 @@ watch(controller.loading, (loading) => {
 }, { immediate: true })
 
 onMounted(() => {
-  editorRoot.value?.addEventListener('keydown', onKeydown)
+  document.addEventListener('keydown', onKeydown, true)
+  document.addEventListener('keyup', onKeyup, true)
   document.addEventListener('selectionchange', onSelectionChange)
 })
 
 onBeforeUnmount(() => {
-  editorRoot.value?.removeEventListener('keydown', onKeydown)
+  document.removeEventListener('keydown', onKeydown, true)
+  document.removeEventListener('keyup', onKeyup, true)
   document.removeEventListener('selectionchange', onSelectionChange)
 })
 </script>

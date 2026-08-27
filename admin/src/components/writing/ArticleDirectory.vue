@@ -211,9 +211,17 @@ async function openEntry(entryId: number): Promise<void> {
     return
   }
 
-  await flushActiveEntry()
-  await router.push({ name: 'entry-edit', params: { id: String(entryId) } })
-  if (props.drawer) writing.setDirectoryOpen(false)
+  try {
+    await flushActiveEntry()
+    const navigationResult = await router.push({ name: 'entry-edit', params: { id: String(entryId) } })
+    if (navigationResult) throw navigationResult
+    if (props.drawer) writing.setDirectoryOpen(false)
+  } catch {
+    // A route guard can veto a switch when the editor is offline, errored, or in
+    // conflict. The rejected navigation is not user-visible by itself, so keep
+    // the current article and explain why the tap did nothing.
+    if (!disposed) error.value = '无法切换文章，当前编辑状态未改变。'
+  }
 }
 
 async function createArticle(): Promise<void> {

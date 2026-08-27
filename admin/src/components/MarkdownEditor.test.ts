@@ -9,4 +9,11 @@ describe('MarkdownEditor Milkdown controls', () => {
 
     expect(source).toContain('configureLinkTooltip(ctx)')
   })
+
+  it('handles Escape at document level so portal tooltips can close', () => {
+    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'MarkdownEditor.vue'), 'utf8')
+
+    expect(source).toContain("event.key === 'Escape'")
+    expect(source).toContain("document.body.dispatchEvent(new Event('pointerdown'")
+  })
 })

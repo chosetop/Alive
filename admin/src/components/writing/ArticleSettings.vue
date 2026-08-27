@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 
 import { fromFormDateTime, toFormDateTime } from '../../api'
 import type { Category, EntryDetail, EntryPatchFields, EntryType, EntryVisibility } from '../../types/api'
@@ -21,6 +21,7 @@ const emit = defineEmits<{
 }>()
 
 const confirmingDelete = ref(false)
+const returnFocus = shallowRef<HTMLElement | null>(null)
 
 const TYPES: ReadonlyArray<{ value: EntryType; label: string }> = [
   { value: 'journal', label: '日志' },
@@ -44,7 +45,19 @@ function update(fields: EntryPatchFields): void {
 function close(): void {
   confirmingDelete.value = false
   emit('update:open', false)
+  void nextTick(() => returnFocus.value?.focus())
 }
+
+function onKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && props.open) close()
+}
+
+watch(() => props.open, (open) => {
+  if (open && document.activeElement instanceof HTMLElement) returnFocus.value = document.activeElement
+})
+
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 function confirmDelete(): void {
   confirmingDelete.value = false

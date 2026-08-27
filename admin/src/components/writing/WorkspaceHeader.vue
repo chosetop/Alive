@@ -247,7 +247,37 @@ const publishLabel = computed(() =>
 
 @media (max-width: 48rem) {
   .header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'left right'
+      'status status';
+    height: auto;
+    min-height: var(--header-height);
+    row-gap: var(--space-2);
     padding: 0 var(--space-3);
+  }
+
+  .left {
+    grid-area: left;
+  }
+
+  .status {
+    grid-area: status;
+    justify-content: flex-start;
+    height: auto;
+    min-height: 1.75rem;
+    overflow: visible;
+    flex-wrap: wrap;
+  }
+
+  .status-slot {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .right {
+    grid-area: right;
+    min-width: 0;
   }
 
   /* The word is redundant next to a publish button that already reads 已发布. */
