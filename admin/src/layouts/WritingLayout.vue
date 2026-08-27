@@ -29,12 +29,20 @@ import { useWritingStore, writingFlushKey, type WritingFlushGate } from '../stor
  * on iOS Safari, and this only needs the two states.
  */
 const DRAWER_QUERY = '(max-width: 48rem)'
+const MIN_DIRECTORY_WIDTH = 220
+const MAX_DIRECTORY_WIDTH = 420
+const DEFAULT_DIRECTORY_WIDTH = 224
+const DIRECTORY_WIDTH_STORAGE_KEY = 'alive:writing-directory-width'
 
 const writing = useWritingStore()
 const theme = useThemeStore()
 
 const isNarrow = ref(false)
+const directoryWidth = ref(DEFAULT_DIRECTORY_WIDTH)
 let mediaQuery: MediaQueryList | null = null
+let resizeStartX = 0
+let resizeStartWidth = DEFAULT_DIRECTORY_WIDTH
+let resizing = false
 
 /**
  * The gate the directory pulls before it navigates. The editor registers itself
@@ -53,7 +61,78 @@ function applyMatch(matches: boolean): void {
   writing.setDirectoryOpen(!matches)
 }
 
+function clampDirectoryWidth(width: number): number {
+  return Math.min(MAX_DIRECTORY_WIDTH, Math.max(MIN_DIRECTORY_WIDTH, width))
+}
+
+function readDirectoryWidth(): void {
+  try {
+    const stored = Number(window.localStorage.getItem(DIRECTORY_WIDTH_STORAGE_KEY))
+    if (Number.isFinite(stored)) directoryWidth.value = clampDirectoryWidth(stored)
+  } catch {
+    // A restricted storage context should not prevent the writing shell from opening.
+  }
+}
+
+function persistDirectoryWidth(): void {
+  try {
+    window.localStorage.setItem(DIRECTORY_WIDTH_STORAGE_KEY, String(directoryWidth.value))
+  } catch {
+    // Persistence is a convenience, not a prerequisite for resizing.
+  }
+}
+
+function stopResize(): void {
+  if (!resizing) return
+  resizing = false
+  window.removeEventListener('pointermove', resizeDirectory)
+  window.removeEventListener('pointerup', stopResize)
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+  persistDirectoryWidth()
+}
+
+function resizeDirectory(event: PointerEvent): void {
+  if (!resizing) return
+  directoryWidth.value = clampDirectoryWidth(resizeStartWidth + event.clientX - resizeStartX)
+}
+
+function startResize(event: PointerEvent): void {
+  if (isNarrow.value || !writing.directoryOpen) return
+  resizing = true
+  resizeStartX = event.clientX
+  resizeStartWidth = directoryWidth.value
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  window.addEventListener('pointermove', resizeDirectory)
+  window.addEventListener('pointerup', stopResize)
+}
+
+function resizeByKeyboard(delta: number): void {
+  directoryWidth.value = clampDirectoryWidth(directoryWidth.value + delta)
+  persistDirectoryWidth()
+}
+
+function handleResizeKeydown(event: KeyboardEvent): void {
+  if (event.key === 'ArrowLeft') {
+    event.preventDefault()
+    resizeByKeyboard(-16)
+  } else if (event.key === 'ArrowRight') {
+    event.preventDefault()
+    resizeByKeyboard(16)
+  } else if (event.key === 'Home') {
+    event.preventDefault()
+    directoryWidth.value = MIN_DIRECTORY_WIDTH
+    persistDirectoryWidth()
+  } else if (event.key === 'End') {
+    event.preventDefault()
+    directoryWidth.value = MAX_DIRECTORY_WIDTH
+    persistDirectoryWidth()
+  }
+}
+
 onMounted(() => {
+  readDirectoryWidth()
   void loadTheme()
   // jsdom has no matchMedia unless a test installs one. Absent, the workspace
   // stays in its desktop layout, which is the correct fallback: a two-column
@@ -75,6 +154,7 @@ async function loadTheme(): Promise<void> {
 }
 
 onBeforeUnmount(() => {
+  stopResize()
   mediaQuery?.removeEventListener('change', handleMediaChange)
   mediaQuery = null
 })
@@ -88,6 +168,7 @@ function handleMediaChange(event: MediaQueryListEvent): void {
   <div
     class="workspace"
     data-writing-workspace
+    :style="{ '--directory-width': `${directoryWidth}px` }"
     :data-directory-open="writing.directoryOpen && !isNarrow ? 'true' : 'false'"
   >
     <!--
@@ -97,6 +178,19 @@ function handleMediaChange(event: MediaQueryListEvent): void {
     -->
     <div v-if="!isNarrow" class="rail" :data-collapsed="writing.directoryOpen ? 'false' : 'true'">
       <ArticleDirectory v-if="writing.directoryOpen" />
+      <button
+        v-if="writing.directoryOpen"
+        class="rail-resize"
+        type="button"
+        role="separator"
+        aria-label="调整文章目录宽度"
+        :aria-valuemin="MIN_DIRECTORY_WIDTH"
+        :aria-valuemax="MAX_DIRECTORY_WIDTH"
+        :aria-valuenow="directoryWidth"
+        data-directory-resize
+        @pointerdown.prevent="startResize"
+        @keydown="handleResizeKeydown"
+      />
     </div>
 
     <UiDialog
@@ -121,7 +215,7 @@ function handleMediaChange(event: MediaQueryListEvent): void {
   /* The directory column is a grid track rather than a flex sibling so that
      collapsing it to 0 lets the canvas recentre in the same layout pass. A flex
      child animating to width:0 keeps its padding and its border in the flow. */
-  grid-template-columns: 14rem minmax(0, 1fr);
+  grid-template-columns: var(--directory-width, 14rem) minmax(0, 1fr);
   height: 100vh;
   background: var(--c-paper);
 }
@@ -131,9 +225,28 @@ function handleMediaChange(event: MediaQueryListEvent): void {
 }
 
 .rail {
+  position: relative;
   min-width: 0;
   border-right: 1px solid var(--c-line);
   overflow: hidden;
+}
+
+.rail-resize {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: -0.25rem;
+  bottom: 0;
+  width: 0.5rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+}
+
+.rail-resize:hover,
+.rail-resize:focus-visible {
+  background: color-mix(in srgb, var(--c-accent) 35%, transparent);
 }
 
 /* Border and all: a collapsed rail that kept its 1px line would leave a stripe
@@ -146,6 +259,13 @@ function handleMediaChange(event: MediaQueryListEvent): void {
   min-width: 0;
   height: 100%;
   overflow-y: auto;
+}
+
+@media (pointer: coarse) {
+  .rail-resize {
+    width: 0.875rem;
+    right: -0.4375rem;
+  }
 }
 
 @media (max-width: 48rem) {

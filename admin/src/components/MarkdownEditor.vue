@@ -15,7 +15,6 @@ import { nord } from '@milkdown/theme-nord'
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { SELECTION_TOOLBAR_ACTIONS } from '../editor/selection-toolbar'
-import { syncHeadingSections, toggleHeadingSection } from '../editor/heading-collapse'
 
 // Both stylesheets are required, not optional polish. ProseMirror's own CSS
 // carries editing behaviour that is visual — selection, gap cursor, placeholder
@@ -58,20 +57,6 @@ const emit = defineEmits<{
 
 const toolbarVisible = ref(false)
 const editorRoot = ref<HTMLDivElement | null>(null)
-
-function syncHeadingsWhenReady(attempt = 0): void {
-  const root = editorRoot.value
-  if (root === null) {
-    if (attempt < 120) window.requestAnimationFrame(() => syncHeadingsWhenReady(attempt + 1))
-    return
-  }
-  const headings = root.querySelectorAll('h1, h2, h3, h4, h5, h6')
-  if (headings.length > 0 || attempt >= 120) {
-    syncHeadingSections(root)
-    return
-  }
-  window.requestAnimationFrame(() => syncHeadingsWhenReady(attempt + 1))
-}
 
 function hasSelectionInsideEditor(): boolean {
   const selection = window.getSelection()
@@ -133,29 +118,9 @@ function onSelectionChange(): void {
   toolbarVisible.value = hasSelectionInsideEditor()
 }
 
-function headingFromEvent(event: Event): HTMLHeadingElement | null {
-  const target = event.target
-  return target instanceof HTMLElement ? target.closest<HTMLHeadingElement>('h1, h2, h3, h4, h5, h6') : null
-}
-
-function onEditorClick(event: MouseEvent): void {
-  const heading = headingFromEvent(event)
-  if (heading === null) return
-  toggleHeadingSection(heading)
-}
-
-function onEditorKeydown(event: KeyboardEvent): void {
-  if (event.key !== 'Enter' && event.key !== ' ') return
-  const heading = headingFromEvent(event)
-  if (heading === null) return
-  event.preventDefault()
-  toggleHeadingSection(heading)
-}
-
 watch(controller.loading, async (loading) => {
   if (!loading) {
     await nextTick()
-    syncHeadingsWhenReady()
     emit('ready', controller)
   }
 }, { immediate: true })
@@ -165,7 +130,6 @@ onMounted(async () => {
   document.addEventListener('keyup', onKeyup, true)
   document.addEventListener('selectionchange', onSelectionChange)
   await nextTick()
-  syncHeadingsWhenReady()
 })
 
 onBeforeUnmount(() => {
@@ -181,8 +145,6 @@ onBeforeUnmount(() => {
     class="editor-shell"
     :inert="disabled"
     :aria-disabled="disabled || undefined"
-    @click="onEditorClick"
-    @keydown="onEditorKeydown"
   >
     <Milkdown />
     <div v-if="toolbarVisible" class="selection-toolbar" role="toolbar" aria-label="文字格式">
@@ -250,39 +212,6 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   width: 100%;
   padding: 0 var(--space-4);
-}
-
-.editor-shell :deep(.ProseMirror h1),
-.editor-shell :deep(.ProseMirror h2),
-.editor-shell :deep(.ProseMirror h3),
-.editor-shell :deep(.ProseMirror h4),
-.editor-shell :deep(.ProseMirror h5),
-.editor-shell :deep(.ProseMirror h6) {
-  cursor: pointer;
-}
-
-.editor-shell :deep(.ProseMirror h1)::before,
-.editor-shell :deep(.ProseMirror h2)::before,
-.editor-shell :deep(.ProseMirror h3)::before,
-.editor-shell :deep(.ProseMirror h4)::before,
-.editor-shell :deep(.ProseMirror h5)::before,
-.editor-shell :deep(.ProseMirror h6)::before {
-  display: inline-block;
-  width: 1em;
-  margin-inline-start: -1em;
-  color: var(--c-ink-faint);
-  content: '⌄';
-  font-family: var(--font-ui);
-  font-size: 0.75em;
-}
-
-.editor-shell :deep(.ProseMirror h1[data-heading-collapsed='true'])::before,
-.editor-shell :deep(.ProseMirror h2[data-heading-collapsed='true'])::before,
-.editor-shell :deep(.ProseMirror h3[data-heading-collapsed='true'])::before,
-.editor-shell :deep(.ProseMirror h4[data-heading-collapsed='true'])::before,
-.editor-shell :deep(.ProseMirror h5[data-heading-collapsed='true'])::before,
-.editor-shell :deep(.ProseMirror h6[data-heading-collapsed='true'])::before {
-  content: '›';
 }
 
 .editor-shell :deep(.ProseMirror) {

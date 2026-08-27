@@ -33,10 +33,4 @@ describe('MarkdownEditor Milkdown controls', () => {
     expect(source).toContain('min-width: 0')
   })
 
-  it('supports collapsing heading sections without changing Markdown content', () => {
-    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'MarkdownEditor.vue'), 'utf8')
-
-    expect(source).toContain('toggleHeadingSection')
-    expect(source).toContain('data-heading-collapsed')
-  })
 })

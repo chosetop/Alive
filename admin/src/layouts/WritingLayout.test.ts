@@ -227,4 +227,16 @@ describe('WritingLayout', () => {
 
     expect(collapsed).toMatch(/grid-template-columns:\s*0\s/)
   })
+
+  it('renders a keyboard-accessible rail resize handle with bounded width tokens', () => {
+    const source = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), 'WritingLayout.vue'),
+      'utf8',
+    )
+
+    expect(source).toContain('data-directory-resize')
+    expect(source).toContain('--directory-width')
+    expect(source).toContain('MIN_DIRECTORY_WIDTH')
+    expect(source).toContain('MAX_DIRECTORY_WIDTH')
+  })
 })

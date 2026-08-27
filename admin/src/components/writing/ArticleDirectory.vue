@@ -446,7 +446,29 @@ function isUnsynced(item: EntryListItem): boolean {
   min-height: 0;
   padding: var(--space-4) var(--space-3);
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-line-strong) transparent;
   background: var(--c-surface-sunken);
+}
+
+.directory::-webkit-scrollbar {
+  width: 6px;
+}
+
+.directory::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.directory::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--c-line-strong);
+  background-clip: content-box;
+}
+
+.directory::-webkit-scrollbar-thumb:hover {
+  background: var(--c-ink-faint);
+  background-clip: content-box;
 }
 
 .brand {
