@@ -11,6 +11,9 @@ import {
 } from '../api'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
 import WorkspaceHeader from '../components/writing/WorkspaceHeader.vue'
+import ArticleSettings from '../components/writing/ArticleSettings.vue'
+import EntryPreview from '../components/writing/EntryPreview.vue'
+import PublishPanel from '../components/writing/PublishPanel.vue'
 import { EntryRecoveryStore } from '../editor/recovery-store'
 import {
   createSaveCoordinator,
@@ -18,14 +21,13 @@ import {
   type SaveSnapshot,
 } from '../editor/save-coordinator'
 import { useEntryAutosave } from '../editor/useEntryAutosave'
+import { getPublishChecks } from '../editor/publish-checks'
 import { useWritingStore, writingFlushKey } from '../stores/writing'
 import type {
   Category,
   EntryDetail,
   EntryPatchFields,
   EntryStatus,
-  EntryType,
-  EntryVisibility,
 } from '../types/api'
 
 /**
@@ -60,6 +62,9 @@ const isTransitioning = ref(false)
 const isDeleting = ref(false)
 const confirmingDelete = ref(false)
 const isRecovering = ref(false)
+const settingsOpen = ref(false)
+const previewOpen = ref(false)
+const publishOpen = ref(false)
 let bypassRouteFlush = false
 let isActive = false
 let loadGeneration = 0
@@ -104,21 +109,6 @@ const form = ref<EntryFormState>({
   happenedAt: '',
 })
 
-const TYPES: ReadonlyArray<{ value: EntryType; label: string }> = [
-  { value: 'journal', label: '日志' },
-  { value: 'book', label: '书' },
-  { value: 'movie', label: '影' },
-  { value: 'music', label: '乐' },
-  { value: 'travel', label: '行' },
-  { value: 'photo', label: '影像' },
-]
-
-const VISIBILITIES: ReadonlyArray<{ value: EntryVisibility; label: string; hint: string }> = [
-  { value: 'public', label: '公开', hint: '出现在列表里，凭 slug 也能打开' },
-  { value: 'unlisted', label: '不列出', hint: '不在列表、计数、sitemap 里，但有链接就能打开。这不是访问控制' },
-  { value: 'private', label: '私密', hint: '前台完全不可达' },
-]
-
 const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/
 
 const localError = computed<string | null>(() => {
@@ -133,6 +123,24 @@ const localError = computed<string | null>(() => {
 })
 
 const currentStatus = computed<EntryStatus | null>(() => original.value?.status ?? null)
+const editorEntry = computed<EntryDetail | null>(() => {
+  if (original.value === null) return null
+  return {
+    ...original.value,
+    title: form.value.title,
+    slug: form.value.slug,
+    summary: form.value.summary,
+    content_md: form.value.contentMd,
+    cover_url: form.value.coverUrl,
+    type: form.value.type,
+    visibility: form.value.visibility,
+    category_id: form.value.categoryId,
+    happened_at: form.value.happenedAt === '' ? null : fromFormDateTime(form.value.happenedAt),
+  }
+})
+const publishChecks = computed(() =>
+  editorEntry.value === null ? { blockers: [], reminders: [] } : getPublishChecks(editorEntry.value),
+)
 const controlsDisabled = computed(
   () => isLoading.value || isTransitioning.value || isRecovering.value || isDeleting.value,
 )
@@ -248,15 +256,6 @@ function queueUpdate(fields: EntryPatchFields): void {
   coordinatorBridge.update(fields)
 }
 
-function queueHappenedAt(): void {
-  queueUpdate({
-    happened_at:
-      form.value.happenedAt === ''
-        ? '0001-01-01T00:00:00Z'
-        : fromFormDateTime(form.value.happenedAt),
-  })
-}
-
 async function flushBeforeAction(): Promise<boolean> {
   await autosave.flush()
   return autosave.status.value === 'saved'
@@ -277,7 +276,9 @@ async function flushBeforeRouteChange(): Promise<boolean> {
  * and a stale id is a display bug, not a reason to break the editor.
  */
 function handleHeaderAction(action: string): void {
-  if (action === 'unpublish') void transition('unpublish')
+  if (action === 'settings') settingsOpen.value = true
+  else if (action === 'delete') void handleDelete()
+  else if (action === 'unpublish') void transition('unpublish')
   else if (action === 'archive') void transition('archive')
 }
 
@@ -286,7 +287,28 @@ function handleHeaderAction(action: string): void {
  * button: the control is part of the header the spec specifies, and removing it
  * would make the header wrong in a way that outlasts the missing panel.
  */
-function handlePreview(): void {}
+function handlePreview(): void {
+  previewOpen.value = true
+}
+
+function handleSettingsUpdate(fields: EntryPatchFields): void {
+  if ('title' in fields && fields.title !== undefined) form.value.title = fields.title
+  if ('slug' in fields && fields.slug !== undefined) form.value.slug = fields.slug
+  if ('summary' in fields && fields.summary !== undefined) form.value.summary = fields.summary
+  if ('cover_url' in fields && fields.cover_url !== undefined) form.value.coverUrl = fields.cover_url
+  if ('type' in fields && fields.type !== undefined) form.value.type = fields.type
+  if ('visibility' in fields && fields.visibility !== undefined) form.value.visibility = fields.visibility
+  if ('category_id' in fields && fields.category_id !== undefined) form.value.categoryId = fields.category_id
+  if ('happened_at' in fields && fields.happened_at !== undefined) {
+    form.value.happenedAt = toFormDateTime(fields.happened_at)
+  }
+  queueUpdate(fields)
+}
+
+async function publishFromPanel(): Promise<void> {
+  publishOpen.value = false
+  await transition('publish')
+}
 
 async function handleSaveShortcut(event: KeyboardEvent): Promise<void> {
   if (event.key.toLowerCase() !== 's' || (!event.metaKey && !event.ctrlKey)) return
@@ -539,7 +561,7 @@ function createCoordinatorBridge(): CoordinatorBridge {
         :busy="controlsDisabled"
         @retry="flushBeforeAction"
         @preview="handlePreview"
-        @publish="transition('publish')"
+        @publish="publishOpen = true"
         @action="handleHeaderAction"
       >
         <template #conflict>
@@ -590,68 +612,6 @@ function createCoordinatorBridge(): CoordinatorBridge {
             <p v-if="fieldErrors.title" class="field-error">{{ fieldErrors.title }}</p>
           </div>
 
-          <div class="row">
-            <div class="field">
-              <label class="label" for="e-slug">slug</label>
-              <input
-                id="e-slug"
-                v-model="form.slug"
-                class="input input--mono"
-                :class="{ 'input--invalid': fieldErrors.slug }"
-                type="text"
-                maxlength="255"
-                spellcheck="false"
-                :disabled="controlsDisabled"
-                @input="queueUpdate({ slug: form.slug })"
-              />
-              <p class="hint">URL 里的那一段，自己填。改它不会和自己冲突。</p>
-              <p v-if="fieldErrors.slug" class="field-error">{{ fieldErrors.slug }}</p>
-            </div>
-
-            <div class="field">
-              <label class="label" for="e-type">类型</label>
-              <select
-                id="e-type"
-                v-model="form.type"
-                class="input"
-                :disabled="controlsDisabled"
-                @change="queueUpdate({ type: form.type })"
-              >
-                <option v-for="t in TYPES" :key="t.value" :value="t.value">{{ t.label }}</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <label class="label" for="e-category">分类</label>
-              <select
-                id="e-category"
-                v-model.number="form.categoryId"
-                class="input"
-                :class="{ 'input--invalid': fieldErrors.category_id }"
-                :disabled="controlsDisabled"
-                @change="queueUpdate({ category_id: form.categoryId })"
-              >
-                <!-- 0 is a real value meaning uncategorised, not a placeholder. -->
-                <option :value="0">未分类</option>
-                <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
-              </select>
-              <p v-if="fieldErrors.category_id" class="field-error">{{ fieldErrors.category_id }}</p>
-            </div>
-          </div>
-
-          <div class="field">
-            <label class="label" for="e-summary">摘要</label>
-            <textarea
-              id="e-summary"
-              v-model="form.summary"
-              class="input textarea"
-              rows="2"
-              :disabled="controlsDisabled"
-              @input="queueUpdate({ summary: form.summary })"
-            ></textarea>
-            <p class="hint">列表和 meta description 用。留空即清除。</p>
-          </div>
-
           <div class="field">
             <label class="label">正文</label>
             <!-- Mounted only once the content is known, and keyed by id: Milkdown
@@ -666,47 +626,6 @@ function createCoordinatorBridge(): CoordinatorBridge {
             <p class="hint">所见即所得，存的是 Markdown 源文本。</p>
           </div>
 
-          <div class="row">
-            <div class="field">
-              <label class="label" for="e-cover">封面 URL</label>
-              <input
-                id="e-cover"
-                v-model="form.coverUrl"
-                class="input input--mono"
-                type="url"
-                :disabled="controlsDisabled"
-                @input="queueUpdate({ cover_url: form.coverUrl })"
-              />
-            </div>
-
-            <div class="field">
-              <label class="label" for="e-happened">发生时间</label>
-              <input
-                id="e-happened"
-                v-model="form.happenedAt"
-                class="input"
-                type="datetime-local"
-                :disabled="controlsDisabled"
-                @input="queueHappenedAt"
-              />
-              <p class="hint">事情发生的时间，不是写作时间。留空即清除。</p>
-            </div>
-          </div>
-
-          <fieldset class="field fieldset">
-            <legend class="label">可见性</legend>
-            <label v-for="v in VISIBILITIES" :key="v.value" class="radio">
-              <input
-                v-model="form.visibility"
-                type="radio"
-                :value="v.value"
-                :disabled="controlsDisabled"
-                @change="queueUpdate({ visibility: form.visibility })"
-              />
-              <span class="radio-label">{{ v.label }}</span>
-              <span class="radio-hint">{{ v.hint }}</span>
-            </label>
-          </fieldset>
         </div>
 
         <p v-if="categoryError" class="alert" role="alert">{{ categoryError }}</p>
@@ -736,6 +655,32 @@ function createCoordinatorBridge(): CoordinatorBridge {
           </button>
         </div>
       </div>
+
+      <ArticleSettings
+        v-if="editorEntry"
+        :open="settingsOpen"
+        :entry="editorEntry"
+        :categories="categories"
+        :disabled="controlsDisabled"
+        @update:open="settingsOpen = $event"
+        @update="handleSettingsUpdate"
+        @delete="handleDelete"
+      />
+      <EntryPreview
+        :open="previewOpen"
+        :title="form.title"
+        :content-md="form.contentMd"
+        @update:open="previewOpen = $event"
+      />
+      <PublishPanel
+        v-if="editorEntry"
+        :open="publishOpen"
+        :entry="editorEntry"
+        :checks="publishChecks"
+        :busy="controlsDisabled"
+        @update:open="publishOpen = $event"
+        @publish="publishFromPanel"
+      />
     </template>
   </div>
 </template>

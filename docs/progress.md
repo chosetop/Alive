@@ -1277,3 +1277,50 @@ harness 需要 `VITE_API_BASE_URL`（客户端没有它会抛错），临时写�
 3. 修完在真浏览器 375px 复验，然后进 Task 5
 
 注意 harness 是一次性的，已删除；重建时记得 `admin/.env` 里给 `VITE_API_BASE_URL`，用完连 `.playwright-mcp/` 一起删掉，别提交进去。
+
+## 18. Critical 1–3 修复与 Task 5 起步（2026-08-27）
+
+### 18.1 Critical 1–3：复现、修复、复验
+
+按要求先在真实浏览器 375×700 复现，再动 Critical 2、3。Critical 1 的审查数字再次证明不准确：修复前实际对话框高度不是 1556px 而是 1482.9px，但根因一致——`.ui-dialog__content` 没有高度约束，目录没有可滚动祖先，搜索框在视口上方不可达。
+
+修复如下：
+
+- `.ui-dialog__content` 增加 `max-height: min(40rem, calc(100vh - 2 * var(--space-4)))` 与 `overflow-y: auto`。
+- 375px 冲突态先实测确认：三枚恢复按钮确实被右侧栅格挤出且命中其他按钮。移动端 header 改为两行，冲突状态占整行并允许按钮换行；最终真实测量三枚按钮均完整位于视口内，`elementFromPoint` 命中自身。
+- 真实点击目录文章时确认 Vue Router 的守卫否决在此处可能以 resolved NavigationFailure 返回，也可能由 flush gate reject。`openEntry` 现在捕获两种情况，保留当前文章/抽屉并显示“无法切换文章，当前编辑状态未改变。”。
+
+目标 worktree 的 `App.vue` 同步补上 `MilkdownProvider`。这是主检出里原本未提交、且明确未触碰的文件；主检出内容没有修改。没有该 provider，真实编辑页会在 Milkdown setup 阶段报 `editorFactory` 注入缺失，无法进行后续浏览器验收。
+
+### 18.2 验证与代码审查记录
+
+先红后绿的新增测试覆盖：对话框滚动约束、移动端冲突行布局、flush rejection、resolved NavigationFailure、App 的 Milkdown provider，以及发布检查纯函数。admin 全量结果：**162 tests passed，build passed**。`git diff --check` 无输出。
+
+本轮没有可用的独立审查子进程工具，因此按审查清单对 diff、测试变异点、浏览器几何和命中元素逐项复核；未声称把这一步等同于独立审查。Task 5 目前只完成 `publish-checks.ts` 与其 2 条测试，设置抽屉、发布面板、预览尚未开始；Task 6、7 未开始。Plan 3 主题系统与 Plan 4 媒体上传没有触碰。
+
+## 19. Task 5 面板与 Task 6 命令基础（2026-08-27，进行中）
+
+### 19.1 Task 5：已实现并验证
+
+- 新增 `ArticleSettings.vue`：slug、类型、分类、摘要、封面 URL、发生时间、可见性，以及显式确认删除；每次字段变化只向 `EntryEditor` 发局部 PATCH 字段。
+- 新增 `EntryPreview.vue`：使用共享 `@alive/markdown` 渲染本地标题和正文，支持桌面/手机预览宽度。
+- 新增 `PublishPanel.vue`：阻塞项、提醒确认、可见性文案和 revision-aware 发布事件。
+- `EntryEditor.vue` 已接通 settings、preview、publish 菜单和面板，发布仍由原 autosave/coordinator 与 transition 逻辑执行。
+
+验证：Task 5 相关测试通过；包含 Task 6 基础测试的 admin 全量 **174 tests passed**，`npm run build` 通过。Task 5 没有可用的独立审查子进程工具，因此没有把自审称作独立审查；已用测试、类型检查和构建复核。
+
+### 19.2 Task 6：已开始
+
+- 新增并测试 `editor-commands.ts` 命令注册表，覆盖二级/三级标题、列表、引用、代码块、分隔线。
+- 新增并测试 `slash-menu.ts` 的 slash 查询识别与命令筛选。
+- 新增并测试 `selection-toolbar.ts` 的非空选区显示规则和五个动作定义。
+
+尚未完成 Milkdown 插件实际挂载、命令执行到 ProseMirror、选区工具条、链接快捷键及 MarkdownEditor 的完整集成；Task 7 尚未开始。Plan 3 主题系统与 Plan 4 媒体上传没有触碰。
+
+### 19.3 全仓验证与浏览器缺口
+
+- backend `make check` 通过。
+- frontend 在 Node 22.17.0 下 `npm run typecheck` 与 `npm run build` 通过；Node 18 会在 Nuxt CLI 的 `node:util styleText` 处失败。
+- admin 在 Node 22.17.0 下全量 **175 tests passed**，build 通过。
+- 真实浏览器已复用现有登录会话进入 `/entries/18`：确认元数据已从主画布移入设置面板，设置字段 label 可定位，预览面板可打开，发布面板会显示阻塞项/提醒项。
+- 375×700 实测：页面 `scrollWidth=375`；设置面板宽度为 375px 且内部可滚动；预览框左右边界为 24px/351px，无横向溢出。浏览器临时视口覆盖已清除。未创建临时账号。

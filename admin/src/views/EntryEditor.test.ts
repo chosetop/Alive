@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref, type Ref } from 'vue'
 
 import WorkspaceHeader from '../components/writing/WorkspaceHeader.vue'
+import ArticleSettings from '../components/writing/ArticleSettings.vue'
 import { useWritingStore, writingFlushKey } from '../stores/writing'
 
 import { ApiClientError, NETWORK_ERROR } from '../api/errors'
@@ -194,6 +195,7 @@ describe('EntryEditor autosave integration', () => {
   it('queues every remaining form field with only its API field', async () => {
     const server = installMutableServer()
     const wrapper = await mountEditor(server.current)
+    await openSettings(wrapper)
 
     const changes: Array<[string, string, unknown]> = [
       ['#e-slug', 'new-slug', 'new-slug'],
@@ -237,6 +239,7 @@ describe('EntryEditor autosave integration', () => {
   it('prevents the browser save command and flushes immediately', async () => {
     const server = installMutableServer()
     const wrapper = await mountEditor(server.current)
+    await openSettings(wrapper)
     await wrapper.get('#e-summary').setValue('快捷保存')
     const plainSave = new KeyboardEvent('keydown', {
       key: 's',
@@ -283,11 +286,14 @@ describe('EntryEditor autosave integration', () => {
 
     await wrapper.get('#e-title').setValue('发布前标题')
     await wrapper.findAll('button').find((button) => button.text() === '发布')!.trigger('click')
+    for (const checkbox of wrapper.findAll('input[type="checkbox"]')) await checkbox.setValue(true)
+    await wrapper.get('[data-publish-confirm]').trigger('click')
     await flushPromises()
 
     expect(events).toEqual(['save:发布前标题', 'publish:2'])
     expect(api.publishEntry).toHaveBeenCalledWith(server.current.id, 2)
 
+    await openSettings(wrapper)
     await wrapper.get('#e-summary').setValue('发布后的编辑')
     await vi.advanceTimersByTimeAsync(1000)
     expect(api.updateEntry).toHaveBeenLastCalledWith(server.current.id, {
@@ -303,6 +309,8 @@ describe('EntryEditor autosave integration', () => {
     const wrapper = await mountEditor(server.current)
 
     await wrapper.findAll('button').find((button) => button.text() === '发布')!.trigger('click')
+    for (const checkbox of wrapper.findAll('input[type="checkbox"]')) await checkbox.setValue(true)
+    await wrapper.get('[data-publish-confirm]').trigger('click')
     await flushPromises()
 
     expect(wrapper.get('textarea[aria-label="正文编辑器"]').attributes('disabled')).toBeDefined()
@@ -322,6 +330,7 @@ describe('EntryEditor autosave integration', () => {
       events.push('navigate')
     })
     const wrapper = await mountEditor(server.current)
+    await openSettings(wrapper)
     await wrapper.get('#e-summary').setValue('删除前保存')
 
     await wrapper.findAll('button').find((button) => button.text() === '删除')!.trigger('click')
@@ -380,6 +389,7 @@ describe('EntryEditor autosave integration', () => {
     await expect(navigation.leaveGuard?.()).resolves.toBeUndefined()
     expect(api.updateEntry).toHaveBeenCalledOnce()
 
+    await openSettings(wrapper)
     await wrapper.get('#e-summary').setValue('切换前保存')
     await expect(navigation.updateGuard?.()).resolves.toBeUndefined()
     expect(api.updateEntry).toHaveBeenCalledTimes(2)
@@ -404,6 +414,7 @@ describe('EntryEditor autosave integration', () => {
     await flushPromises()
 
     expect(wrapper.get('#e-title').element).toHaveProperty('value', '新路由文章')
+    await openSettings(wrapper)
     await wrapper.get('#e-summary').setValue('仍保存到新文章')
     await vi.advanceTimersByTimeAsync(1000)
     expect(api.updateEntry).toHaveBeenLastCalledWith(51, {
@@ -853,6 +864,19 @@ describe('EntryEditor autosave integration', () => {
    * drop the last keystroke, or the directory would highlight nothing.
    */
   describe('writing shell integration', () => {
+    it('keeps metadata controls in the settings panel instead of the writing canvas', async () => {
+      const wrapper = await mountEditor(entry({ id: 60 }))
+
+      expect(wrapper.getComponent({ name: 'ArticleSettings' })).toBeTruthy()
+      expect(wrapper.find('#e-slug').exists()).toBe(false)
+      expect(wrapper.find('#e-type').exists()).toBe(false)
+      expect(wrapper.find('#e-category').exists()).toBe(false)
+      expect(wrapper.find('#e-summary').exists()).toBe(false)
+      expect(wrapper.find('#e-cover').exists()).toBe(false)
+      expect(wrapper.find('#e-happened').exists()).toBe(false)
+      expect(wrapper.find('fieldset.fieldset').exists()).toBe(false)
+    })
+
     it('publishes the open article id for the directory to highlight', async () => {
       const current = entry({ id: 61 })
       const wrapper = await mountEditor(current)
@@ -970,6 +994,12 @@ async function mountEditorWithProps(
   activeWrappers.push(wrapper)
   await flushPromises()
   return wrapper
+}
+
+async function openSettings(wrapper: VueWrapper): Promise<void> {
+  wrapper.getComponent(WorkspaceHeader).vm.$emit('action', 'settings')
+  await flushPromises()
+  expect(wrapper.getComponent(ArticleSettings).props('open')).toBe(true)
 }
 
 function installMutableServer(onSave?: (body: EntryUpdateRequest) => void): {
