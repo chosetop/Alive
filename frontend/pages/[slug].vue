@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { entryTypeStyle } from '~/composables/useEntryType'
 import { entryDate, formatFullDate, toDateAttribute } from '~/utils/date'
-import { getEntryNeighbors } from '~/utils/entry-navigation'
+import {
+  getEntryNavigationPages,
+  getEntryNeighborTitle,
+  getEntryNeighbors,
+} from '~/utils/entry-navigation'
 import { markdownToText, renderMarkdown } from '~/utils/markdown'
 
 /**
@@ -43,15 +47,28 @@ if (error.value || !entry.value) {
  * The detail request remains authoritative for the article. Navigation is an
  * enhancement, so a list failure leaves the reader on a healthy detail page.
  */
-const { data: navigationPage } = await useAsyncData(
+const { data: navigationPage, error: navigationError } = await useAsyncData(
   () => `entry-navigation-${slug.value}`,
-  () => list({ page_size: 50 }),
+  async () => {
+    const firstPage = await list({ page: 1, page_size: 50 })
+    const pages = getEntryNavigationPages(firstPage.meta.total, firstPage.meta.page_size)
+    const remainingPages = await Promise.all(
+      pages.slice(1).map((page) => list({ page, page_size: firstPage.meta.page_size })),
+    )
+
+    return {
+      data: [firstPage, ...remainingPages].flatMap((page) => page.data),
+      meta: firstPage.meta,
+    }
+  },
   { watch: [slug] },
 )
 
 const neighbors = computed(() =>
   getEntryNeighbors(navigationPage.value?.data ?? [], slug.value),
 )
+
+const navigationAvailable = computed(() => Boolean(navigationPage.value) && !navigationError.value)
 
 const style = computed(() => entryTypeStyle(entry.value!.type))
 const date = computed(() => entryDate(entry.value!))
@@ -143,7 +160,7 @@ useHead({
     <div class="prose" v-html="html" />
 
     <footer class="foot">
-      <nav v-if="neighbors.previous || neighbors.next" class="neighbors" aria-label="文章导航">
+      <nav class="neighbors" aria-label="文章导航">
         <NuxtLink
           v-if="neighbors.previous"
           class="neighbor neighbor--previous"
@@ -151,8 +168,12 @@ useHead({
           rel="prev"
         >
           <span class="neighbor__direction">上一篇</span>
-          <span class="neighbor__title">{{ neighbors.previous.title }}</span>
+          <span class="neighbor__title">{{ getEntryNeighborTitle('previous', neighbors.previous, navigationAvailable) }}</span>
         </NuxtLink>
+        <span v-else class="neighbor neighbor--previous neighbor--unavailable" aria-disabled="true">
+          <span class="neighbor__direction">上一篇</span>
+          <span class="neighbor__title">{{ getEntryNeighborTitle('previous', neighbors.previous, navigationAvailable) }}</span>
+        </span>
         <NuxtLink
           v-if="neighbors.next"
           class="neighbor neighbor--next"
@@ -160,8 +181,12 @@ useHead({
           rel="next"
         >
           <span class="neighbor__direction">下一篇</span>
-          <span class="neighbor__title">{{ neighbors.next.title }}</span>
+          <span class="neighbor__title">{{ getEntryNeighborTitle('next', neighbors.next, navigationAvailable) }}</span>
         </NuxtLink>
+        <span v-else class="neighbor neighbor--next neighbor--unavailable" aria-disabled="true">
+          <span class="neighbor__direction">下一篇</span>
+          <span class="neighbor__title">{{ getEntryNeighborTitle('next', neighbors.next, navigationAvailable) }}</span>
+        </span>
       </nav>
     </footer>
   </article>
@@ -243,15 +268,6 @@ useHead({
   margin-bottom: var(--space-6);
 }
 
-.neighbors > :only-child {
-  grid-column: 1 / -1;
-}
-
-.neighbors > .neighbor--next:only-child {
-  align-items: flex-start;
-  text-align: left;
-}
-
 .neighbor {
   display: flex;
   min-width: 0;
@@ -282,6 +298,19 @@ useHead({
 
 .neighbor:hover .neighbor__title {
   color: var(--c-accent);
+}
+
+.neighbor--unavailable {
+  color: var(--c-ink-faint);
+  cursor: default;
+}
+
+.neighbor--unavailable .neighbor__title {
+  color: var(--c-ink-faint);
+}
+
+.neighbor--unavailable:hover .neighbor__title {
+  color: var(--c-ink-faint);
 }
 
 @media (max-width: 34rem) {

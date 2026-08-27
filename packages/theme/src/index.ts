@@ -1,7 +1,7 @@
 export const THEMES = [
   { name: 'ink', label: '纸墨', colorScheme: 'light' },
   { name: 'lamp', label: '灯下', colorScheme: 'dark' },
-  { name: 'codex-lavender', label: 'Codex Lavender', colorScheme: 'light' },
+  { name: 'codex-lavender', label: '薰衣草', colorScheme: 'light' },
 ] as const
 
 export type ThemeName = (typeof THEMES)[number]['name']

@@ -36,11 +36,11 @@
  * documents scannable.
  */
 .prose > :is(h2, h3, h4) {
-  margin-top: var(--space-8);
+  margin-top: var(--space-6);
 }
 
 .prose > :is(h2, h3, h4) + * {
-  margin-top: var(--space-4);
+  margin-top: var(--space-2);
 }
 
 /*

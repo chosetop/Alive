@@ -9,6 +9,23 @@ export type EntryNeighbors = {
   next: EntryNavigationItem | null
 }
 
+export type EntryNeighborDirection = keyof EntryNeighbors
+
+export function getEntryNeighborTitle(
+  direction: EntryNeighborDirection,
+  neighbor: EntryNavigationItem | null,
+  navigationAvailable = true,
+): string {
+  if (!navigationAvailable) return '暂时无法获取'
+  if (neighbor) return neighbor.title
+  return direction === 'previous' ? '已经是第一篇' : '已经是最后一篇'
+}
+
+export function getEntryNavigationPages(total: number, pageSize: number): number[] {
+  if (total <= 0 || pageSize <= 0) return []
+  return Array.from({ length: Math.ceil(total / pageSize) }, (_, index) => index + 1)
+}
+
 /**
  * The public API orders entries newest first. Keep that order's neighboring
  * items, without sorting locally and risking a mismatch with the index page.
