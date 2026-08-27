@@ -1,20 +1,28 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import AdminLayout from '../layouts/AdminLayout.vue'
+import WritingLayout from '../layouts/WritingLayout.vue'
 import { useAuthStore } from '../stores/auth'
 
 /**
  * `requiresAuth` marks routes that need a live session. `guestOnly` marks the
  * ones a signed-in person should not see, so /login does not sit there behind
  * an account that is already valid.
+ *
+ * `writingWorkspace` marks the routes served by the immersive shell. It is
+ * declared as metadata rather than inferred from the path because the two shells
+ * share the `/entries` prefix, and code outside the router -- anything that needs
+ * to know whether the utility chrome is on screen -- should read the decision
+ * rather than re-derive it from a string.
  */
 declare module 'vue-router' {
   interface RouteMeta {
     requiresAuth?: boolean
     guestOnly?: boolean
+    writingWorkspace?: boolean
   }
 }
 
-const routes: RouteRecordRaw[] = [
+export const routes: RouteRecordRaw[] = [
   {
     path: '/login',
     name: 'login',
@@ -40,22 +48,49 @@ const routes: RouteRecordRaw[] = [
         component: () => import('../views/Entries.vue'),
       },
       {
-        path: 'entries/new',
+        path: 'categories',
+        name: 'categories',
+        component: () => import('../views/Categories.vue'),
+      },
+    ],
+  },
+  {
+    /**
+     * The writing shell, a sibling of the utility shell rather than a child.
+     * Nesting would mount the nav rail and the canvas together, which is the
+     * layout this workspace exists to replace.
+     *
+     * **This record must stay below the utility record.** A parent path gets a
+     * matcher of its own even with no empty-path child, so bare `/entries` is
+     * claimed by both records at an identical score, and Vue Router breaks that
+     * tie by declaration order. Verified, not assumed: listing this one first
+     * makes `/entries` resolve to this unnamed parent and render the writing
+     * shell around an empty canvas instead of the article library. `routes.test.ts`
+     * pins the order for that reason.
+     *
+     * The deeper paths need no such care -- `/entries/new` and `/entries/41` are
+     * unambiguous, since the utility record offers nothing at that depth.
+     *
+     * `requiresAuth` is repeated because it is per-record metadata, not
+     * inherited state -- but the guard reading it is still the single one in this
+     * file. Neither layout checks a session itself.
+     */
+    path: '/entries',
+    component: WritingLayout,
+    meta: { requiresAuth: true, writingWorkspace: true },
+    children: [
+      {
+        path: 'new',
         name: 'entry-new',
         component: () => import('../views/EntryEditor.vue'),
       },
       {
         // `props: true` hands `id` to the component as a prop, so the editor
         // does not reach into the route to find its own subject.
-        path: 'entries/:id',
+        path: ':id',
         name: 'entry-edit',
         component: () => import('../views/EntryEditor.vue'),
         props: true,
-      },
-      {
-        path: 'categories',
-        name: 'categories',
-        component: () => import('../views/Categories.vue'),
       },
     ],
   },

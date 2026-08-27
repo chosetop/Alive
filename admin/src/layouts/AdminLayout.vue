@@ -9,6 +9,15 @@ const router = useRouter()
 const isLoggingOut = ref(false)
 
 /**
+ * A way into the writing shell from the utility shell.
+ *
+ * `entry-new` rather than a link to the article list: the list is already the page
+ * this nav item sits beside, and the reason to leave it is to write. The blank
+ * draft is created by the editor on arrival, so this link has no id to supply.
+ */
+const writeTarget = { name: 'entry-new' } as const
+
+/**
  * Navigation. `available: false` items are placeholders for the stages that
  * build them — shown, because the shape of the tool is useful information, but
  * not clickable, because a link to a page that does not exist is worse than no
@@ -18,6 +27,9 @@ const navItems = [
   { label: 'Dashboard', to: { name: 'dashboard' }, available: true },
   { label: 'Entries', to: { name: 'entries' }, available: true },
   { label: 'Categories', to: { name: 'categories' }, available: true },
+  // Leaves this shell entirely rather than swapping the content pane. That is the
+  // point: the writing workspace is a sibling layout, not a page inside this one.
+  { label: '写作', to: writeTarget, available: true },
 ] as const
 
 async function handleLogout(): Promise<void> {

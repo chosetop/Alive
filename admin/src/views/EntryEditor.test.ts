@@ -1,5 +1,10 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { createPinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ref, type Ref } from 'vue'
+
+import WorkspaceHeader from '../components/writing/WorkspaceHeader.vue'
+import { useWritingStore, writingFlushKey } from '../stores/writing'
 
 import { ApiClientError, NETWORK_ERROR } from '../api/errors'
 import type { EntryDetail, EntryUpdateRequest } from '../types/api'
@@ -840,6 +845,99 @@ describe('EntryEditor autosave integration', () => {
     await flushPromises()
     expect(wrapper.get('[data-save-status]').text()).toContain('保存失败')
   })
+
+  /**
+   * The editor's half of the writing shell contract. The directory cannot flush
+   * for itself and does not know which article is open, so both facts have to
+   * arrive from here -- and a break in either is silent: switching articles would
+   * drop the last keystroke, or the directory would highlight nothing.
+   */
+  describe('writing shell integration', () => {
+    it('publishes the open article id for the directory to highlight', async () => {
+      const current = entry({ id: 61 })
+      const wrapper = await mountEditor(current)
+
+      expect(storeFor(wrapper).activeEntryId).toBe(61)
+    })
+
+    it('publishes the created id on the new-article route', async () => {
+      api.createEntry.mockResolvedValue(entry({ id: 62, revision: 1, title: '' }))
+      const wrapper = await mountEditorWithProps({})
+
+      // The server's id, published as soon as the draft exists. The route replace
+      // happens after, so waiting for it would leave the directory with nothing
+      // highlighted for the length of that round trip.
+      expect(storeFor(wrapper).activeEntryId).toBe(62)
+    })
+
+    it('clears the open article id on unmount', async () => {
+      const wrapper = await mountEditor(entry({ id: 63 }))
+      const store = storeFor(wrapper)
+      expect(store.activeEntryId).toBe(63)
+
+      wrapper.unmount()
+      activeWrappers.splice(activeWrappers.indexOf(wrapper), 1)
+      await flushPromises()
+
+      // Otherwise a row stays highlighted over a canvas showing something else.
+      expect(store.activeEntryId).toBeNull()
+    })
+
+    it('registers a flush gate that drains pending fields', async () => {
+      const gate = ref<(() => Promise<void>) | null>(null)
+      const server = installMutableServer()
+      const wrapper = await mountEditorWithProps({ id: String(server.current.id) }, gate)
+
+      expect(gate.value).not.toBeNull()
+
+      await wrapper.get('#e-title').setValue('目录切换前的标题')
+      // Called before the debounce elapses, which is the case that matters: the
+      // directory clicks while the timer still holds the last keystroke.
+      await gate.value?.()
+      await flushPromises()
+
+      expect(api.updateEntry).toHaveBeenCalledWith(server.current.id, {
+        revision: 1,
+        title: '目录切换前的标题',
+      })
+    })
+
+    it('leaves a successor editor gate in place when it unmounts', async () => {
+      const gate = ref<(() => Promise<void>) | null>(null)
+      api.getEntry.mockImplementation(async (id: number) => entry({ id }))
+      const outgoing = await mountEditorWithProps({ id: '64' }, gate)
+      const first = gate.value
+
+      const incoming = await mountEditorWithProps({ id: '65' }, gate)
+      expect(gate.value).not.toBe(first)
+      const second = gate.value
+
+      // Vue mounts the incoming editor before unmounting the outgoing one, so an
+      // unconditional clear here would erase a live gate and make the next article
+      // switch skip its flush entirely.
+      outgoing.unmount()
+      activeWrappers.splice(activeWrappers.indexOf(outgoing), 1)
+      await flushPromises()
+
+      expect(gate.value).toBe(second)
+      incoming.unmount()
+      activeWrappers.splice(activeWrappers.indexOf(incoming), 1)
+    })
+
+    it('routes the header menu into the status transitions', async () => {
+      const current = entry({ id: 66, status: 'published' })
+      api.getEntry.mockResolvedValue(current)
+      api.unpublishEntry.mockResolvedValue(entry({ ...current, revision: 2, status: 'draft' }))
+      const wrapper = await mountEditor(current)
+
+      // Dispatched by id from the header component, not by clicking through the
+      // portal: the wiring under test is the id-to-endpoint mapping.
+      wrapper.getComponent(WorkspaceHeader).vm.$emit('action', 'unpublish')
+      await flushPromises()
+
+      expect(api.unpublishEntry).toHaveBeenCalledWith(66, 1)
+    })
+  })
 })
 
 async function mountEditor(current: EntryDetail | undefined): Promise<VueWrapper> {
@@ -847,10 +945,23 @@ async function mountEditor(current: EntryDetail | undefined): Promise<VueWrapper
   return mountEditorWithProps(current === undefined ? {} : { id: String(current.id) })
 }
 
-async function mountEditorWithProps(props: { id?: string }): Promise<VueWrapper> {
+function storeFor(wrapper: VueWrapper) {
+  return useWritingStore(wrapper.vm.$.appContext.config.globalProperties.$pinia)
+}
+
+async function mountEditorWithProps(
+  props: { id?: string },
+  flushGate?: Ref<(() => Promise<void>) | null>,
+): Promise<VueWrapper> {
   const wrapper = mount(EntryEditor, {
     props,
     global: {
+      provide: flushGate === undefined ? {} : { [writingFlushKey as symbol]: flushGate },
+      // A fresh Pinia per mount. The editor publishes the open article's id into
+      // the writing store for the directory to highlight, and a shared instance
+      // would leak that id between tests -- which would make the unmount-clears-it
+      // behaviour untestable.
+      plugins: [createPinia()],
       stubs: {
         RouterLink: { template: '<a><slot /></a>' },
       },

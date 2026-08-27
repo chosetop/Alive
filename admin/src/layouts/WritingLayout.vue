@@ -1,0 +1,146 @@
+<script setup lang="ts">
+import { onBeforeUnmount, onMounted, provide, ref } from 'vue'
+
+import ArticleDirectory from '../components/writing/ArticleDirectory.vue'
+import { UiDialog } from '../components/ui'
+import { useWritingStore, writingFlushKey, type WritingFlushGate } from '../stores/writing'
+
+/**
+ * The writing shell: directory, canvas, and nothing between them.
+ *
+ * This is a sibling of `AdminLayout`, not a child. The utility shell's header and
+ * nav sidebar are the form-first chrome this workspace exists to get out of the
+ * way; nesting would put both on screen and leave the canvas competing with a
+ * navigation rail for the same attention. Authentication is not repeated here --
+ * both top-level records carry `requiresAuth` and the router's single guard is the
+ * only place that decision is made.
+ *
+ * Below the drawer breakpoint the directory becomes a modal dialog rather than a
+ * narrower column. A 14rem pane beside a canvas at 375px leaves neither usable,
+ * and a modal is the one presentation where the canvas keeps its full width and
+ * the pane keeps its full content.
+ */
+
+/**
+ * 48rem, matching the plan. Read once through `matchMedia` rather than by
+ * watching resize: a resize listener fires on every scroll-driven viewport change
+ * on iOS Safari, and this only needs the two states.
+ */
+const DRAWER_QUERY = '(max-width: 48rem)'
+
+const writing = useWritingStore()
+
+const isNarrow = ref(false)
+let mediaQuery: MediaQueryList | null = null
+
+/**
+ * The gate the directory pulls before it navigates. The editor registers itself
+ * here on mount; it is null whenever no editor is mounted, which is a real state
+ * -- the drawer can be open over a canvas that has not loaded an article yet.
+ */
+const flushGate: WritingFlushGate = ref(null)
+provide(writingFlushKey, flushGate)
+
+function applyMatch(matches: boolean): void {
+  isNarrow.value = matches
+  // Entering the narrow range with the directory open would leave a modal over
+  // the canvas nobody asked to open. Leaving it re-opens the column, because at
+  // desktop width the pane is the default and a collapse taken to dodge a
+  // cramped layout should not persist past the reason for it.
+  writing.setDirectoryOpen(!matches)
+}
+
+onMounted(() => {
+  // jsdom has no matchMedia unless a test installs one. Absent, the workspace
+  // stays in its desktop layout, which is the correct fallback: a two-column
+  // grid degrades to a wide directory, while assuming narrow would hide the
+  // directory behind a modal on a desktop that never asked for one.
+  if (typeof window.matchMedia !== 'function') return
+
+  mediaQuery = window.matchMedia(DRAWER_QUERY)
+  applyMatch(mediaQuery.matches)
+  mediaQuery.addEventListener('change', handleMediaChange)
+})
+
+onBeforeUnmount(() => {
+  mediaQuery?.removeEventListener('change', handleMediaChange)
+  mediaQuery = null
+})
+
+function handleMediaChange(event: MediaQueryListEvent): void {
+  applyMatch(event.matches)
+}
+</script>
+
+<template>
+  <div
+    class="workspace"
+    data-writing-workspace
+    :data-directory-open="writing.directoryOpen && !isNarrow ? 'true' : 'false'"
+  >
+    <!--
+      Two mount points, one component, and only ever one mounted. Rendering the
+      column and the drawer at once would put two copies of every article row in
+      the accessibility tree and two identical ids on the search input.
+    -->
+    <div v-if="!isNarrow" class="rail" :data-collapsed="writing.directoryOpen ? 'false' : 'true'">
+      <ArticleDirectory v-if="writing.directoryOpen" />
+    </div>
+
+    <UiDialog
+      v-else
+      title="文章目录"
+      hide-title
+      :open="writing.directoryOpen"
+      @update:open="writing.setDirectoryOpen($event)"
+    >
+      <ArticleDirectory drawer />
+    </UiDialog>
+
+    <main class="canvas">
+      <RouterView />
+    </main>
+  </div>
+</template>
+
+<style scoped>
+.workspace {
+  display: grid;
+  /* The directory column is a grid track rather than a flex sibling so that
+     collapsing it to 0 lets the canvas recentre in the same layout pass. A flex
+     child animating to width:0 keeps its padding and its border in the flow. */
+  grid-template-columns: 14rem minmax(0, 1fr);
+  height: 100vh;
+  background: var(--c-paper);
+}
+
+.workspace[data-directory-open='false'] {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.rail {
+  min-width: 0;
+  border-right: 1px solid var(--c-line);
+  overflow: hidden;
+}
+
+/* Border and all: a collapsed rail that kept its 1px line would leave a stripe
+   down the left of a canvas that is meant to be uninterrupted. */
+.rail[data-collapsed='true'] {
+  border-right: none;
+}
+
+.canvas {
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+}
+
+@media (max-width: 48rem) {
+  /* The drawer is a modal, so there is no directory track to reserve. */
+  .workspace,
+  .workspace[data-directory-open='false'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+</style>
