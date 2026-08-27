@@ -62,14 +62,14 @@ func TestGetSiteSettingsIsPublicAndReturnsRevision(t *testing.T) {
 func TestPatchSiteSettingsUpdatesTheme(t *testing.T) {
 	engine := newTestEngine(&fakeStore{settings: site.SiteSettings{DefaultTheme: "ink", Revision: 1}})
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/site", strings.NewReader(`{"default_theme":"codex-lavender","revision":1}`))
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/site", strings.NewReader(`{"default_theme":"night-ink","revision":1}`))
 	req.Header.Set("Content-Type", "application/json")
 	engine.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
-	if body := rec.Body.String(); !strings.Contains(body, `"default_theme":"codex-lavender"`) || !strings.Contains(body, `"revision":2`) {
+	if body := rec.Body.String(); !strings.Contains(body, `"default_theme":"night-ink"`) || !strings.Contains(body, `"revision":2`) {
 		t.Fatalf("body = %s, want updated theme and revision", body)
 	}
 }
@@ -99,6 +99,9 @@ func TestPatchSiteSettingsMapsDomainErrorsToFields(t *testing.T) {
 			}
 			if !strings.Contains(rec.Body.String(), `"`+tc.field+`"`) {
 				t.Errorf("body = %s, want field %q", rec.Body.String(), tc.field)
+			}
+			if tc.name == "invalid theme" && !strings.Contains(rec.Body.String(), "night-ink") {
+				t.Errorf("body = %s, want supported theme night-ink", rec.Body.String())
 			}
 		})
 	}

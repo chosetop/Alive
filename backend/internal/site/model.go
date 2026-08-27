@@ -18,7 +18,7 @@ type SiteSettings struct {
 
 func validTheme(theme string) bool {
 	switch theme {
-	case "ink", "lamp", "codex-lavender":
+	case "ink", "lamp", "codex-lavender", "night-ink":
 		return true
 	default:
 		return false
