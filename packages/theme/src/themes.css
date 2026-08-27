@@ -68,8 +68,9 @@
   --c-ink-faint: #765b94;
   --c-line: #ece8ef;
   --c-line-strong: #dcd3e5;
-  --c-accent: #9a6bdc;
-  --c-accent-hover: #8454c9;
+  /* Darkened from the display swatch so normal-size links clear WCAG AA. */
+  --c-accent: #7a45b5;
+  --c-accent-hover: #6f3da5;
   --c-danger: #a53c55;
   --c-danger-surface: #fceff3;
   --c-on-accent: #ffffff;

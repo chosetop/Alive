@@ -59,7 +59,7 @@ summary {
   right: 0;
   z-index: 2;
   display: grid;
-  min-width: 9rem;
+  min-width: 10rem;
   padding: var(--space-2);
   border: 1px solid var(--c-line);
   background: var(--c-surface);

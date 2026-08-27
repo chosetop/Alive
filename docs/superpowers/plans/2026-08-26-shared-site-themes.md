@@ -406,7 +406,7 @@ git commit -m "feat: apply site themes during SSR"
 - Modify: `packages/theme/src/themes.css` only for token corrections
 - Modify: `docs/progress.md`
 
-- [ ] **Step 1: Run all changed-project checks**
+- [x] **Step 1: Run all changed-project checks**
 
 ```bash
 cd backend && make check
@@ -414,19 +414,19 @@ cd ../admin && npm test -- --run && npm run build
 cd ../frontend && npm run typecheck && npm run build
 ```
 
-- [ ] **Step 2: Verify the two-step save behavior**
+- [x] **Step 2: Verify the two-step save behavior**
 
 Preview each theme in admin and confirm the frontend remains unchanged. Save Codex Lavender as default and confirm a fresh browser with no theme cookie receives it in SSR HTML. Set a visitor preference to lamp and confirm it survives site-default changes. Clear the preference and confirm it follows the site again.
 
-- [ ] **Step 3: Capture visual evidence**
+- [x] **Step 3: Capture visual evidence**
 
 For paper, lamp, and Codex Lavender, capture admin desktop, admin 375px, frontend article desktop, and frontend article 375px. Check adjacent surfaces, selected article state, focus ring, body prose, links, code blocks, quotes, table borders, image captions, and error text.
 
-- [ ] **Step 4: Measure contrast**
+- [x] **Step 4: Measure contrast**
 
 Record contrast ratios for body text, muted text, faint readable text, accent links, focus indicators, and danger text on their actual surfaces. All readable text must meet WCAG AA for its rendered size.
 
-- [ ] **Step 5: Update evidence and commit**
+- [x] **Step 5: Update evidence and commit**
 
 ```bash
 git add packages/theme/src/themes.css docs/progress.md

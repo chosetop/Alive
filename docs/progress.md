@@ -1388,3 +1388,8 @@ harness 需要 `VITE_API_BASE_URL`（客户端没有它会抛错），临时写�
 - 前端旧 tokens 中的字体、颜色和主题块已移除，正文改读共享 `--font-prose` 与 `--c-prose` 语义 token；Nuxt 全局 CSS 顺序已调整为共享主题优先。
 - TDD 验证：优先级测试先因 `resolveVisitorTheme` 不存在而失败，实现后 4 tests passed；Node 22 下 frontend typecheck 与 SSR build 通过。构建仍仅提示字体绝对路径运行时解析。
 - Task 5 代码审查：当前环境没有可用的独立审查子进程，因此未将自审称作独立审查；已通过逐文件审阅、失败测试回红、测试、类型检查和 SSR 构建复核。Task 6 尚未开始，Plan 4 媒体上传没有触碰。
+- Task 6 已完成：backend `make check` 通过；admin 全量 183 tests 与 build 通过；frontend typecheck、SSR build 通过。
+- 真实浏览器：frontend SSR 首屏确认 `<html data-theme="ink">`；菜单确认可切换 `灯下`、`Codex Lavender`，并可用“跟随站点”清除访客选择；1440px 与 375px 均无横向溢出，375px 截图确认主题菜单和正文可读。
+- 对比度证据（基于实际共享 hex token 与对应纸面背景计算）：纸墨正文/弱化/淡化/链接为 16.53/6.42/5.10/6.92；灯下为 15.17/8.06/6.96/9.28；Codex Lavender 标题/正文/弱化/淡化/链接为 7.65/5.82/5.56/5.51/6.08，均达到普通文字 AA。Codex Lavender 强调色由原 3.69:1 的 `#9a6bdc` 调整为 `#7a45b5`，保持色相并满足要求。
+- 后台真实浏览器受环境限制：本工作树使用 5183 端口时，运行中的 backend 对 `Origin: http://localhost:5183` 返回 403 CORS；未擅自重启或修改运行中的服务，故未伪造后台主题保存验收。实现与自动化测试已覆盖后台预览/保存路径。
+- Task 6 代码审查：当前环境没有可用的独立审查子进程；已通过逐文件审阅、全仓检查、真实浏览器检查和对比度复核。Plan 3 已完成，Plan 4 媒体上传没有触碰。
