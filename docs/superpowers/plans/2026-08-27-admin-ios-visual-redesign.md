@@ -26,7 +26,7 @@
 ## File structure
 
 - `packages/theme/src/index.ts`: theme manifest and type-safe theme names.
-- `packages/theme/src/themes.css`: complete semantic palettes, fonts, and new surface/status variables for every theme.
+- `packages/theme/src/themes.css`: complete semantic palettes, fonts, surface/status variables, and theme-owned shadow colors for every theme.
 - `packages/theme/src/theme.test.ts`: manifest, label, resolver, and semantic-token contract tests.
 - `backend/internal/site/model.go`, `backend/internal/site/service_test.go`, `backend/internal/sitehttp/handler.go`, `backend/internal/sitehttp/handler_test.go`: accept the new theme as a validated site default without changing the endpoint contract.
 - `backend/migrations/000008_allow_night_ink.*.sql`: update the persisted site-theme check constraint for the new theme.
@@ -110,6 +110,8 @@ git commit -m "feat: extend admin theme tokens"
 - Create: `admin/src/components/ui/UiIcon.vue`
 - Modify: `admin/src/components/ui/index.ts`
 - Modify: `admin/src/components/ui/ui.test.ts`
+- Modify: `packages/theme/src/themes.css` for shadow semantic variables consumed by admin primitives
+- Modify: `admin/src/components/writing/ArticleDirectory.vue`, `admin/src/components/writing/WorkspaceHeader.vue` to consume `UiIcon`
 - Modify: `admin/package.json`, `admin/package-lock.json` only if an icon package is needed
 
 **Interfaces:**
@@ -137,13 +139,13 @@ Run: `cd admin && npm test -- --run src/components/ui/ui.test.ts`
 
 Expected: FAIL because `UiIcon` and the new target/semantic rules do not yet exist.
 
-- [ ] **Step 3: Implement the visual primitives**
+- [ ] **Step 3: Implement the visual primitives and complete the icon boundary**
 
-Add the iOS-style token aliases, translucent surfaces, 12–18px radius scale, quiet layered shadows, 44px coarse-pointer sizing, and focus states. Use one icon implementation: prefer `lucide-vue-next` if the current package lock can install it without changing unrelated dependencies; otherwise use a small inline SVG registry inside `UiIcon.vue`. Do not allow business components to import the library directly.
+Add the iOS-style token aliases, translucent surfaces, 12–18px radius scale, quiet layered shadows, 44px coarse-pointer sizing, and focus states. Define shadow colors in every `@alive/theme` palette and reference those variables from admin CSS. Use one icon implementation: prefer `lucide-vue-next` if the current package lock can install it without changing unrelated dependencies; otherwise use a small inline SVG registry inside `UiIcon.vue`. Replace existing writing-shell Unicode glyph slots with `UiIcon` instances while preserving their button labels; do not allow business components to import the library directly. Add `min-height: 44px` to menu items in the coarse-pointer rule.
 
 - [ ] **Step 4: Run tests and build**
 
-Run: `cd admin && npm test -- --run src/components/ui/ui.test.ts && npm run build`
+Run: `cd admin && npm test -- --run src/components/ui/ui.test.ts src/components/writing/ArticleDirectory.test.ts src/components/writing/WorkspaceHeader.test.ts && npm run build`
 
 Expected: PASS and a successful Vite production build.
 
