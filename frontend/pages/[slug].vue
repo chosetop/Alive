@@ -113,8 +113,6 @@ useHead({
 
 <template>
   <article v-if="entry" class="entry">
-    <NuxtLink to="/" class="back">← 全部文章</NuxtLink>
-
     <header class="head">
       <h1 class="title">{{ entry.title }}</h1>
 
@@ -187,22 +185,6 @@ useHead({
 
 .head {
   margin-bottom: var(--space-7);
-}
-
-.back {
-  display: inline-flex;
-  align-items: center;
-  margin-bottom: var(--space-6);
-  color: var(--c-ink-faint);
-  font-family: var(--font-ui);
-  font-size: var(--text-xs);
-  text-decoration: none;
-  transition: color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
-}
-
-.back:hover {
-  color: var(--c-accent);
-  transform: translateX(-0.125rem);
 }
 
 /*
@@ -311,8 +293,5 @@ useHead({
     gap: var(--space-3);
   }
 
-  .back {
-    margin-bottom: var(--space-5);
-  }
 }
 </style>

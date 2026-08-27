@@ -31,7 +31,7 @@ const year = new Date().getFullYear()
     <a class="skip" href="#content">跳到正文</a>
 
     <header class="masthead">
-      <NuxtLink to="/" class="brand">Alive</NuxtLink>
+      <NuxtLink to="/" class="brand" aria-label="Alive，返回首页" title="返回首页">Alive</NuxtLink>
       <ThemeToggle />
     </header>
 
@@ -97,14 +97,36 @@ const year = new Date().getFullYear()
  * from drifting apart at this size.
  */
 .brand {
+  position: relative;
   font-size: var(--text-xl);
   line-height: var(--leading-none);
   letter-spacing: var(--tracking-display);
   text-decoration: none;
+  transition: color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
-.brand:hover {
+.brand::after {
+  display: inline-block;
+  margin-left: 0.35em;
   color: var(--c-accent);
+  content: '↗';
+  font-family: var(--font-ui);
+  font-size: 0.5em;
+  opacity: 0;
+  transform: translate(-0.2em, 0.2em);
+  transition: opacity var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+
+.brand:hover,
+.brand:focus-visible {
+  color: var(--c-accent);
+  transform: translateX(-0.1rem);
+}
+
+.brand:hover::after,
+.brand:focus-visible::after {
+  opacity: 0.8;
+  transform: translate(0, 0);
 }
 
 .main {
@@ -158,6 +180,13 @@ const year = new Date().getFullYear()
 
   .main {
     padding-bottom: var(--space-7);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand,
+  .brand::after {
+    transition: none;
   }
 }
 </style>
