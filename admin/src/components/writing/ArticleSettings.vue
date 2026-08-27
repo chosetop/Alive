@@ -73,6 +73,9 @@ function confirmDelete(): void {
     </div>
 
     <div class="article-settings__body">
+      <label class="field" for="e-title">标题</label>
+      <input id="e-title" :value="entry.title" :disabled="disabled" @input="update({ title: ($event.target as HTMLInputElement).value })" />
+
       <label class="field" for="e-slug">slug</label>
       <input id="e-slug" :value="entry.slug" :disabled="disabled" @input="update({ slug: ($event.target as HTMLInputElement).value })" />
 

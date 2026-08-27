@@ -150,15 +150,11 @@ describe('WorkspaceHeader', () => {
     expect(wrapper.find('[data-preview]').exists()).toBe(true)
   })
 
-  it('keeps destructive actions out of the header bar', () => {
+  it('places deletion in the header with explicit confirmation', () => {
     const wrapper = mountHeader({ entryStatus: 'draft' })
 
-    // Nothing destructive sits beside publish. The menu is one deliberate open
-    // away, which is the spec's constraint enforced by layout rather than by
-    // hoping nobody mis-clicks.
-    const barLabels = wrapper.findAll('button').map((button) => button.text())
-    expect(barLabels).not.toContain('删除')
-    expect(barLabels).not.toContain('归档')
+    expect(wrapper.get('[data-header-delete]').text()).toBe('删除')
+    expect(wrapper.find('[data-header-delete-confirm]').exists()).toBe(false)
     expect(wrapper.get('[data-publish]').text()).toBe('发布')
   })
 

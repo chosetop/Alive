@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 import type { SaveStatus } from '../../editor/save-coordinator'
 import { useWritingStore } from '../../stores/writing'
@@ -9,10 +9,8 @@ import { UiButton, UiIconButton, UiMenu, type UiMenuItem } from '../ui'
 /**
  * The workspace header.
  *
- * Five things and nothing else: the directory toggle, the save state, preview,
- * more actions, publish. The spec's list, and the omission matters as much as the
- * contents -- there is no bottom save button anywhere in this workspace, because
- * a visible save control invites the belief that not pressing it loses work.
+ * The workspace actions stay in one fixed-height bar: directory toggle, save
+ * state, preview, settings, delete confirmation and publish.
  *
  * The save state sits in a fixed-height slot. Every status string here differs in
  * length ("已保存" against "离线，本地草稿已保留"), and the conflict state adds three
@@ -49,12 +47,14 @@ const props = withDefaults(
 const emit = defineEmits<{
   preview: []
   publish: []
+  delete: []
   retry: []
   /** A `UiMenuItem` id. Ids, never indices -- see UiMenu's own note. */
   action: [string]
 }>()
 
 const writing = useWritingStore()
+const confirmingDelete = ref(false)
 
 const statusText = computed(() => STATUS_TEXT[props.saveStatus])
 
@@ -66,10 +66,8 @@ const statusText = computed(() => STATUS_TEXT[props.saveStatus])
 const canRetry = computed(() => props.saveStatus === 'offline' || props.saveStatus === 'error')
 
 /**
- * Publish is the only primary action, and it is not adjacent to a destructive
- * one: archive and delete live inside the menu, several pixels and one deliberate
- * open away. That is the spec's constraint about destructive neighbours, enforced
- * by layout rather than by hoping nobody mis-clicks.
+ * Publish remains the only primary action. Deletion is visible for discoverability
+ * but requires a second explicit confirmation before emitting to the editor.
  */
 const menuItems = computed<UiMenuItem[]>(() => {
   if (props.entryStatus === null) return []
@@ -82,8 +80,6 @@ const menuItems = computed<UiMenuItem[]>(() => {
   if (props.entryStatus !== 'archived') {
     items.push({ id: 'archive', label: '归档', separated: true })
   }
-  items.push({ id: 'delete', label: '删除', danger: true })
-
   return items
 })
 
@@ -148,6 +144,19 @@ const publishLabel = computed(() =>
           </UiIconButton>
         </template>
       </UiMenu>
+
+      <template v-if="entryStatus !== null && !confirmingDelete">
+        <UiButton variant="quiet" data-header-delete @click="confirmingDelete = true">删除</UiButton>
+      </template>
+      <template v-else-if="entryStatus !== null">
+        <span class="delete-confirm-text">确认删除？</span>
+        <UiButton variant="danger" :disabled="busy" data-header-delete-confirm @click="emit('delete'); confirmingDelete = false">
+          {{ busy ? '删除中…' : '确认删除' }}
+        </UiButton>
+        <UiButton variant="quiet" :disabled="busy" data-header-delete-cancel @click="confirmingDelete = false">
+          取消
+        </UiButton>
+      </template>
 
       <UiButton
         v-if="entryStatus !== null"
@@ -243,6 +252,12 @@ const publishLabel = computed(() =>
 .entry-status {
   color: var(--c-ink-faint);
   font-size: 0.75rem;
+}
+
+.delete-confirm-text {
+  color: var(--c-danger);
+  font-size: 0.75rem;
+  white-space: nowrap;
 }
 
 @media (max-width: 48rem) {

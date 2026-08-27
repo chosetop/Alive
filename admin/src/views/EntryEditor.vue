@@ -60,7 +60,6 @@ const editorSession = ref(0)
 
 const isTransitioning = ref(false)
 const isDeleting = ref(false)
-const confirmingDelete = ref(false)
 const isRecovering = ref(false)
 const settingsOpen = ref(false)
 const previewOpen = ref(false)
@@ -151,6 +150,9 @@ const controlsDisabled = computed(
 
 async function load(targetId: number | null = entryId.value): Promise<void> {
   const generation = ++loadGeneration
+  settingsOpen.value = false
+  previewOpen.value = false
+  publishOpen.value = false
   isLoading.value = true
   loadError.value = null
   categoryError.value = null
@@ -268,16 +270,11 @@ async function flushBeforeRouteChange(): Promise<boolean> {
 /**
  * The header's more-actions menu, dispatched by item id.
  *
- * `settings` and `delete` are acknowledged but not wired here. The settings
- * drawer is Task 5's component, and delete already has its own confirmation
- * further down the page -- routing the menu item into it would put a destructive
- * action one click from the primary one, which is what the menu was meant to keep
- * apart. Unknown ids fall through silently rather than throwing: the menu is data,
- * and a stale id is a display bug, not a reason to break the editor.
+ * The settings action opens the drawer. Destructive deletion is handled by the
+ * header's dedicated two-step control, so it is no longer hidden in the menu.
  */
 function handleHeaderAction(action: string): void {
   if (action === 'settings') settingsOpen.value = true
-  else if (action === 'delete') void handleDelete()
   else if (action === 'unpublish') void transition('unpublish')
   else if (action === 'archive') void transition('archive')
 }
@@ -561,7 +558,8 @@ function createCoordinatorBridge(): CoordinatorBridge {
         :busy="controlsDisabled"
         @retry="flushBeforeAction"
         @preview="handlePreview"
-        @publish="publishOpen = true"
+          @publish="publishOpen = true"
+          @delete="void handleDelete()"
         @action="handleHeaderAction"
       >
         <template #conflict>
@@ -597,35 +595,15 @@ function createCoordinatorBridge(): CoordinatorBridge {
 
       <div class="page">
         <div class="fields">
-          <div class="field">
-            <label class="label" for="e-title">标题</label>
-            <input
-              id="e-title"
-              v-model="form.title"
-              class="input input--title"
-              :class="{ 'input--invalid': fieldErrors.title }"
-              type="text"
-              maxlength="255"
-              :disabled="controlsDisabled"
-              @input="queueUpdate({ title: form.title })"
-            />
-            <p v-if="fieldErrors.title" class="field-error">{{ fieldErrors.title }}</p>
-          </div>
-
-          <div class="field">
-            <label class="label">正文</label>
-            <!-- Mounted only once the content is known, and keyed by id: Milkdown
-                 reads its initial value once, so switching entries must build a
-                 new editor rather than try to swap the document underneath. -->
-            <MarkdownEditor
-              :key="`${original?.id ?? 'new'}:${editorSession}`"
-              :initial-value="form.contentMd"
-              :disabled="controlsDisabled"
-              @update="handleContentUpdate"
-            />
-            <p class="hint">所见即所得，存的是 Markdown 源文本。</p>
-          </div>
-
+          <!-- Mounted only once the content is known, and keyed by id: Milkdown
+               reads its initial value once, so switching entries must build a
+               new editor rather than try to swap the document underneath. -->
+          <MarkdownEditor
+            :key="`${original?.id ?? 'new'}:${editorSession}`"
+            :initial-value="form.contentMd"
+            :disabled="controlsDisabled"
+            @update="handleContentUpdate"
+          />
         </div>
 
         <p v-if="categoryError" class="alert" role="alert">{{ categoryError }}</p>
@@ -634,26 +612,6 @@ function createCoordinatorBridge(): CoordinatorBridge {
         </p>
         <p v-if="saveError" class="alert" role="alert">{{ saveError }}</p>
 
-        <!--
-          No save button. Everything is autosaved, and a visible save control teaches
-          the opposite -- that not pressing it loses work. What remains here is the
-          one action that cannot be undone, kept behind its own confirmation and
-          deliberately far from the header's primary publish button.
-        -->
-        <div v-if="original !== null" class="actions">
-          <template v-if="confirmingDelete">
-            <span class="confirm-text">删除后前台不可达，且没有恢复接口。</span>
-            <button class="btn btn--danger" type="button" :disabled="isDeleting" @click="handleDelete">
-              {{ isDeleting ? '删除中…' : '确认删除' }}
-            </button>
-            <button class="btn" type="button" :disabled="isDeleting" @click="confirmingDelete = false">
-              取消
-            </button>
-          </template>
-          <button v-else class="btn btn--quiet" type="button" @click="confirmingDelete = true">
-            删除
-          </button>
-        </div>
       </div>
 
       <ArticleSettings
@@ -781,13 +739,6 @@ function createCoordinatorBridge(): CoordinatorBridge {
   color: var(--c-ink-faint);
 }
 
-/* The title is the one field that is also the page's subject, so it reads at
-   heading size rather than as one more form row. */
-.input--title {
-  font-size: 1.125rem;
-  font-weight: 500;
-}
-
 .input--mono {
   font-family: var(--font-mono);
 }
@@ -798,12 +749,6 @@ function createCoordinatorBridge(): CoordinatorBridge {
 
 .textarea {
   resize: vertical;
-}
-
-.hint {
-  margin-top: var(--space-1);
-  color: var(--c-ink-faint);
-  font-size: 0.75rem;
 }
 
 .field-error {
@@ -846,15 +791,6 @@ function createCoordinatorBridge(): CoordinatorBridge {
   color: var(--c-ink-muted);
 }
 
-.actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--c-line);
-}
-
 .status-action {
   padding: 0.1875rem 0.5rem;
   border: 1px solid currentColor;
@@ -869,11 +805,6 @@ function createCoordinatorBridge(): CoordinatorBridge {
 .status-action:disabled {
   opacity: 0.55;
   cursor: not-allowed;
-}
-
-.confirm-text {
-  color: var(--c-ink-muted);
-  font-size: 0.8125rem;
 }
 
 .state {

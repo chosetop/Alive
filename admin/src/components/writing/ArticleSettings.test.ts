@@ -38,6 +38,16 @@ const categories: Category[] = [
 ]
 
 describe('ArticleSettings', () => {
+  it('edits the title alongside the other article settings', async () => {
+    const wrapper = mount(ArticleSettings, {
+      props: { open: true, entry, categories },
+    })
+
+    await wrapper.get('#e-title').setValue('设置里的标题')
+
+    expect(wrapper.emitted('update')).toEqual([[{ title: '设置里的标题' }]])
+  })
+
   it('emits one partial update when a setting changes', async () => {
     const wrapper = mount(ArticleSettings, {
       props: { open: true, entry, categories },

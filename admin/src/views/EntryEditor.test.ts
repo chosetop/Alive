@@ -140,7 +140,7 @@ describe('EntryEditor autosave integration', () => {
     const server = installMutableServer()
     const wrapper = await mountEditor(server.current)
 
-    await wrapper.get('#e-title').setValue('新的标题')
+    await (await titleField(wrapper)).setValue('新的标题')
     expect(wrapper.get('[data-save-status]').text()).toContain('待保存')
     await vi.advanceTimersByTimeAsync(999)
     expect(api.updateEntry).not.toHaveBeenCalled()
@@ -161,7 +161,7 @@ describe('EntryEditor autosave integration', () => {
     api.updateEntry.mockReturnValue(save.promise)
     const wrapper = await mountEditor(current)
 
-    await wrapper.get('#e-title').setValue('保存中的标题')
+    await (await titleField(wrapper)).setValue('保存中的标题')
     await vi.advanceTimersByTimeAsync(1000)
     expect(wrapper.get('[data-save-status]').text()).toContain('保存中')
 
@@ -284,7 +284,7 @@ describe('EntryEditor autosave integration', () => {
     })
     const wrapper = await mountEditor(server.current)
 
-    await wrapper.get('#e-title').setValue('发布前标题')
+    await (await titleField(wrapper)).setValue('发布前标题')
     await wrapper.findAll('button').find((button) => button.text() === '发布')!.trigger('click')
     for (const checkbox of wrapper.findAll('input[type="checkbox"]')) await checkbox.setValue(true)
     await wrapper.get('[data-publish-confirm]').trigger('click')
@@ -352,7 +352,7 @@ describe('EntryEditor autosave integration', () => {
     await wrapper.findAll('button').find((button) => button.text() === '确认删除')!.trigger('click')
     await flushPromises()
 
-    const title = wrapper.get('#e-title')
+    const title = await titleField(wrapper)
     expect(title.attributes('disabled')).toBeDefined()
     await title.setValue('删除等待期间输入')
     deletion.resolve(undefined)
@@ -370,7 +370,7 @@ describe('EntryEditor autosave integration', () => {
       new ApiClientError({ code: NETWORK_ERROR, status: 0, message: 'offline' }),
     )
     const wrapper = await mountEditor(current)
-    await wrapper.get('#e-title').setValue('尚未保存')
+    await (await titleField(wrapper)).setValue('尚未保存')
 
     await wrapper.findAll('button').find((button) => button.text() === '删除')!.trigger('click')
     await wrapper.findAll('button').find((button) => button.text() === '确认删除')!.trigger('click')
@@ -384,7 +384,7 @@ describe('EntryEditor autosave integration', () => {
   it('uses the same flush gate before leaving or switching entries', async () => {
     const server = installMutableServer()
     const wrapper = await mountEditor(server.current)
-    await wrapper.get('#e-title').setValue('离开前保存')
+    await (await titleField(wrapper)).setValue('离开前保存')
 
     await expect(navigation.leaveGuard?.()).resolves.toBeUndefined()
     expect(api.updateEntry).toHaveBeenCalledOnce()
@@ -408,12 +408,12 @@ describe('EntryEditor autosave integration', () => {
 
     await wrapper.setProps({ id: '51' })
     await flushPromises()
-    expect(wrapper.get('#e-title').element).toHaveProperty('value', '新路由文章')
+    expect((await titleField(wrapper)).element).toHaveProperty('value', '新路由文章')
 
     firstLoad.resolve(entry({ id: 50, title: '过期慢响应' }))
     await flushPromises()
 
-    expect(wrapper.get('#e-title').element).toHaveProperty('value', '新路由文章')
+    expect((await titleField(wrapper)).element).toHaveProperty('value', '新路由文章')
     await openSettings(wrapper)
     await wrapper.get('#e-summary').setValue('仍保存到新文章')
     await vi.advanceTimersByTimeAsync(1000)
@@ -431,7 +431,7 @@ describe('EntryEditor autosave integration', () => {
     )
     api.updateEntry.mockResolvedValue(entry({ ...previous, revision: 5 }))
     const wrapper = await mountEditorWithProps({ id: String(previous.id) })
-    const previousTitle = wrapper.get('#e-title')
+    const previousTitle = await titleField(wrapper)
 
     await wrapper.setProps({ id: '58' })
     await flushPromises()
@@ -473,10 +473,10 @@ describe('EntryEditor autosave integration', () => {
     await flushPromises()
 
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
-    expect(wrapper.get('#e-title').element).toHaveProperty('value', '可返回的上一篇')
-    expect(wrapper.get('#e-title').attributes('disabled')).toBeUndefined()
+    expect((await titleField(wrapper)).element).toHaveProperty('value', '可返回的上一篇')
+    expect((await titleField(wrapper)).attributes('disabled')).toBeUndefined()
 
-    await wrapper.get('#e-title').setValue('返回后继续写')
+    await (await titleField(wrapper)).setValue('返回后继续写')
     await vi.advanceTimersByTimeAsync(1000)
 
     expect(api.updateEntry).toHaveBeenCalledWith(previous.id, {
@@ -804,7 +804,7 @@ describe('EntryEditor autosave integration', () => {
     })
     expect(wrapper.findAll('button').some((button) => button.text() === '保存')).toBe(false)
 
-    await wrapper.get('#e-title').setValue('新草稿标题')
+    await (await titleField(wrapper)).setValue('新草稿标题')
     await vi.advanceTimersByTimeAsync(1000)
     expect(api.updateEntry).toHaveBeenCalledWith(99, { revision: 1, title: '新草稿标题' })
   })
@@ -828,7 +828,7 @@ describe('EntryEditor autosave integration', () => {
     })
     expect(wrapper.get('[role="alert"]').text()).toContain('无法连接到服务器')
 
-    await wrapper.get('#e-title').setValue('分类失败仍可编辑')
+    await (await titleField(wrapper)).setValue('分类失败仍可编辑')
     await vi.advanceTimersByTimeAsync(1000)
 
     expect(api.updateEntry).toHaveBeenCalledWith(140, {
@@ -845,7 +845,7 @@ describe('EntryEditor autosave integration', () => {
     )
     const wrapper = await mountEditor(current)
 
-    await wrapper.get('#e-title').setValue('离线标题')
+    await (await titleField(wrapper)).setValue('离线标题')
     await vi.advanceTimersByTimeAsync(1000)
     expect(wrapper.get('[data-save-status]').text()).toContain('离线')
 
@@ -914,7 +914,7 @@ describe('EntryEditor autosave integration', () => {
 
       expect(gate.value).not.toBeNull()
 
-      await wrapper.get('#e-title').setValue('目录切换前的标题')
+      await (await titleField(wrapper)).setValue('目录切换前的标题')
       // Called before the debounce elapses, which is the case that matters: the
       // directory clicks while the timer still holds the last keystroke.
       await gate.value?.()
@@ -1000,6 +1000,11 @@ async function openSettings(wrapper: VueWrapper): Promise<void> {
   wrapper.getComponent(WorkspaceHeader).vm.$emit('action', 'settings')
   await flushPromises()
   expect(wrapper.getComponent(ArticleSettings).props('open')).toBe(true)
+}
+
+async function titleField(wrapper: VueWrapper) {
+  if (!wrapper.find('#e-title').exists()) await openSettings(wrapper)
+  return wrapper.get('#e-title')
 }
 
 function installMutableServer(onSave?: (body: EntryUpdateRequest) => void): {
