@@ -27,8 +27,8 @@ import { request, requestPaginated } from './client'
  * `page_size` is clamped server side (100000 comes back as 50), so a caller
  * cannot use it to pull the whole table in one request.
  *
- * `?category=` is **not supported here** and is silently ignored. Filtering the
- * admin list by category would need a backend change.
+ * `q` and `category` may be combined with `status`; the backend intersects all
+ * supplied filters.
  */
 export function listEntriesAdmin(
   query: EntryListQuery = {},
@@ -43,6 +43,7 @@ export function listEntriesAdmin(
       // Same treatment for the same reason: `q=undefined` would be a literal
       // search for the string "undefined" and answer with an empty directory.
       q: query.q,
+      category: query.category,
     },
   })
 }

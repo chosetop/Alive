@@ -47,6 +47,15 @@ describe('listEntriesAdmin', () => {
     expect(params.get('status')).toBe('draft')
   })
 
+  it('sends category alongside q and status, so all filters intersect', async () => {
+    await listEntriesAdmin({ q: 'mountain', status: 'draft', category: 'travel' })
+
+    const params = requestedUrl().searchParams
+    expect(params.get('q')).toBe('mountain')
+    expect(params.get('status')).toBe('draft')
+    expect(params.get('category')).toBe('travel')
+  })
+
   it('omits q entirely when no search term is given', async () => {
     await listEntriesAdmin({ page: 1 })
 
