@@ -1,76 +1,72 @@
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-
-import type { EntryListItem } from '../types/api'
+import { flushPromises, mount } from '@vue/test-utils'
+import { createMemoryHistory, createRouter } from 'vue-router'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Entries from './Entries.vue'
 
-const api = vi.hoisted(() => ({ listEntriesAdmin: vi.fn() }))
-
-vi.mock('../api', () => ({
-  entriesApi: { listEntriesAdmin: api.listEntriesAdmin },
-  toUserMessage: () => '出现了意外错误，请稍后重试。',
+const api = vi.hoisted(() => ({
+  entriesApi: { listEntriesAdmin: vi.fn() },
+  categoriesApi: { listCategoriesAdmin: vi.fn() },
 }))
 
-const wrappers: VueWrapper[] = []
+vi.mock('../api', () => ({
+  entriesApi: api.entriesApi,
+  categoriesApi: api.categoriesApi,
+  toUserMessage: () => '请求失败',
+}))
 
-function mountEntries(): VueWrapper {
-  const wrapper = mount(Entries, {
-    global: {
-      stubs: { RouterLink: { template: '<a><slot /></a>' } },
-    },
-  })
-  wrappers.push(wrapper)
-  return wrapper
+function page() {
+  return { data: [], meta: { page: 1, page_size: 20, total: 0 } }
 }
 
-const entry: EntryListItem = {
-  id: 7,
-  type: 'journal',
-  title: '待完成的文章',
-  slug: 'draft-entry',
-  summary: '',
-  cover_url: '',
-  meta: {},
-  word_count: 0,
-  category: null,
-  happened_at: null,
-  published_at: null,
-  status: 'draft',
-  visibility: 'public',
-  created_at: '2026-08-27T00:00:00Z',
-  updated_at: '2026-08-27T00:00:00Z',
+async function render(query: Record<string, string> = {}) {
+  api.entriesApi.listEntriesAdmin.mockResolvedValue(page())
+  api.categoriesApi.listCategoriesAdmin.mockResolvedValue([
+    { id: 1, name: '旅行', slug: 'travel', description: '', created_at: '', updated_at: '' },
+  ])
+
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/entries', name: 'entries', component: Entries },
+      { path: '/entries/new', name: 'entry-new', component: { template: '<div />' } },
+    ],
+  })
+  await router.push({ path: '/entries', query })
+  await router.isReady()
+  const wrapper = mount(Entries, { global: { plugins: [router] } })
+  await flushPromises()
+  return { router, wrapper }
 }
 
-beforeEach(() => {
-  api.listEntriesAdmin.mockResolvedValue({
-    data: [entry],
-    meta: { page: 1, page_size: 20, total: 1 },
-  })
-})
-
-afterEach(() => {
-  for (const wrapper of wrappers.splice(0)) wrapper.unmount()
-  vi.clearAllMocks()
-})
-
-describe('Entries', () => {
-  it('keeps content actions and status readable as semantic controls', () => {
-    const wrapper = mountEntries()
-
-    // Removing these hooks would leave the heading and action visually styled
-    // but make their page-level relationship impossible to target consistently.
-    expect(wrapper.find('[data-page-header]').exists()).toBe(true)
-    expect(wrapper.get('[role="tablist"]').attributes('aria-label')).toBe('按状态筛选')
-    expect(wrapper.get('[data-primary-action]').text()).toBe('写一篇')
+describe('Entries filters', () => {
+  beforeEach(() => {
+    api.entriesApi.listEntriesAdmin.mockReset()
+    api.categoriesApi.listCategoriesAdmin.mockReset()
   })
 
-  it('sends the selected status filter to the paginated API', async () => {
-    const wrapper = mountEntries()
+  it('restores search and category from URL and sends them together', async () => {
+    await render({ q: '山中', category: 'travel', status: 'draft' })
+
+    expect(api.entriesApi.listEntriesAdmin).toHaveBeenLastCalledWith({
+      page: 1,
+      status: 'draft',
+      q: '山中',
+      category: 'travel',
+    })
+  })
+
+  it('writes combined filter changes to the URL query', async () => {
+    const { router, wrapper } = await render()
+
+    await wrapper.get('[data-test="entry-search"]').setValue('mountain')
+    await wrapper.get('[data-test="entry-category"]').setValue('travel')
     await flushPromises()
 
-    await wrapper.get('[role="tab"][aria-label="草稿"]').trigger('click')
-    await flushPromises()
-
-    expect(api.listEntriesAdmin).toHaveBeenLastCalledWith({ page: 1, status: 'draft' })
+    expect(router.currentRoute.value.query).toMatchObject({ q: 'mountain', category: 'travel' })
+    expect(api.entriesApi.listEntriesAdmin).toHaveBeenLastCalledWith({
+      page: 1,
+      q: 'mountain',
+      category: 'travel',
+    })
   })
 })

@@ -225,6 +225,8 @@ export interface EntryListQuery {
    * keystroke including the one that clears it.
    */
   q?: string
+  /** Category slug filter; combines with status and q. */
+  category?: string
 }
 
 // ---------------------------------------------------------------------------
