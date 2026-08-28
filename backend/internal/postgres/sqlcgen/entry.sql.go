@@ -104,18 +104,20 @@ const countAdminEntries = `-- name: CountAdminEntries :one
 SELECT count(*)
 FROM entries
 WHERE deleted_at IS NULL
-  AND ($1::varchar IS NULL OR status = $1::varchar)
+  AND ($1::bigint IS NULL OR category_id = $1::bigint)
+  AND ($2::varchar IS NULL OR status = $2::varchar)
   AND (
-    $2::text IS NULL
-    OR title ILIKE '%' || $2::text || '%'
-    OR slug ILIKE '%' || $2::text || '%'
-    OR COALESCE(summary, '') ILIKE '%' || $2::text || '%'
+    $3::text IS NULL
+    OR title ILIKE '%' || $3::text || '%'
+    OR slug ILIKE '%' || $3::text || '%'
+    OR COALESCE(summary, '') ILIKE '%' || $3::text || '%'
   )
 `
 
 type CountAdminEntriesParams struct {
-	Status *string
-	Search *string
+	CategoryID *int64
+	Status     *string
+	Search     *string
 }
 
 // The total for the admin list, under the same filter.
@@ -125,7 +127,7 @@ type CountAdminEntriesParams struct {
 // must stay identical: a total computed under a different filter than the page
 // would report a pagination control the page cannot honour.
 func (q *Queries) CountAdminEntries(ctx context.Context, arg CountAdminEntriesParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countAdminEntries, arg.Status, arg.Search)
+	row := q.db.QueryRow(ctx, countAdminEntries, arg.CategoryID, arg.Status, arg.Search)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -309,6 +311,30 @@ func (q *Queries) CreateEntry(ctx context.Context, arg CreateEntryParams) (Creat
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
+	return i, err
+}
+
+const dashboardMetrics = `-- name: DashboardMetrics :one
+SELECT
+    count(*) AS total_entries,
+    count(*) FILTER (WHERE status = 'published') AS published_entries,
+    COALESCE(sum(word_count), 0)::bigint AS total_words
+FROM entries
+WHERE deleted_at IS NULL
+`
+
+type DashboardMetricsRow struct {
+	TotalEntries     int64
+	PublishedEntries int64
+	TotalWords       int64
+}
+
+// Deleted rows are not part of the active writing library. Word counts are
+// persisted on entries, so this aggregate does not load Markdown bodies.
+func (q *Queries) DashboardMetrics(ctx context.Context) (DashboardMetricsRow, error) {
+	row := q.db.QueryRow(ctx, dashboardMetrics)
+	var i DashboardMetricsRow
+	err := row.Scan(&i.TotalEntries, &i.PublishedEntries, &i.TotalWords)
 	return i, err
 }
 
@@ -643,22 +669,24 @@ SELECT
 FROM entries e
 LEFT JOIN categories c ON c.id = e.category_id
 WHERE e.deleted_at IS NULL
-  AND ($1::varchar IS NULL OR e.status = $1::varchar)
+  AND ($1::bigint IS NULL OR e.category_id = $1::bigint)
+  AND ($2::varchar IS NULL OR e.status = $2::varchar)
   AND (
-    $2::text IS NULL
-    OR e.title ILIKE '%' || $2::text || '%'
-    OR e.slug ILIKE '%' || $2::text || '%'
-    OR COALESCE(e.summary, '') ILIKE '%' || $2::text || '%'
+    $3::text IS NULL
+    OR e.title ILIKE '%' || $3::text || '%'
+    OR e.slug ILIKE '%' || $3::text || '%'
+    OR COALESCE(e.summary, '') ILIKE '%' || $3::text || '%'
   )
 ORDER BY e.updated_at DESC, e.id DESC
-LIMIT $4 OFFSET $3
+LIMIT $5 OFFSET $4
 `
 
 type ListAdminEntriesParams struct {
-	Status *string
-	Search *string
-	Offset int32
-	Limit  int32
+	CategoryID *int64
+	Status     *string
+	Search     *string
+	Offset     int32
+	Limit      int32
 }
 
 type ListAdminEntriesRow struct {
@@ -706,6 +734,7 @@ type ListAdminEntriesRow struct {
 // No content_md, for the same reason the public list omits it.
 func (q *Queries) ListAdminEntries(ctx context.Context, arg ListAdminEntriesParams) ([]ListAdminEntriesRow, error) {
 	rows, err := q.db.Query(ctx, listAdminEntries,
+		arg.CategoryID,
 		arg.Status,
 		arg.Search,
 		arg.Offset,

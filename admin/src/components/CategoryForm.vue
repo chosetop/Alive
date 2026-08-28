@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { Category } from '../types/api'
+import { UiButton } from './ui'
 
 /**
  * Create/edit form for one category.
@@ -163,10 +164,10 @@ function handleSubmit(): void {
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
 
     <div class="actions">
-      <button class="btn btn--primary" type="submit" :disabled="!canSubmit">
+      <UiButton type="submit" variant="primary" :disabled="!canSubmit">
         {{ isSaving ? '保存中…' : '保存' }}
-      </button>
-      <button class="btn" type="button" :disabled="isSaving" @click="emit('cancel')">取消</button>
+      </UiButton>
+      <UiButton :disabled="isSaving" @click="emit('cancel')">取消</UiButton>
     </div>
   </form>
 </template>
@@ -175,9 +176,11 @@ function handleSubmit(): void {
 .form {
   margin-bottom: var(--space-6);
   padding: var(--space-5);
-  border: 1px solid var(--c-line-strong);
-  border-radius: var(--radius-md);
-  background: var(--c-surface);
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--radius-surface);
+  background: var(--c-glass);
+  box-shadow: var(--shadow-control);
+  backdrop-filter: blur(18px) saturate(140%);
 }
 
 .form-title {
@@ -211,8 +214,8 @@ function handleSubmit(): void {
   width: 100%;
   padding: 0.375rem var(--space-3);
   border: 1px solid var(--c-line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--c-paper);
+  border-radius: var(--radius-control);
+  background: var(--c-surface);
   color: var(--c-ink);
   font-family: inherit;
   font-size: 0.875rem;
@@ -259,7 +262,7 @@ function handleSubmit(): void {
   margin-bottom: var(--space-4);
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--c-danger);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-surface);
   background: var(--c-danger-surface);
   color: var(--c-danger);
   font-size: 0.875rem;
@@ -275,47 +278,6 @@ function handleSubmit(): void {
 .actions {
   display: flex;
   gap: var(--space-2);
-}
-
-.btn {
-  padding: 0.375rem 0.875rem;
-  border: 1px solid var(--c-line-strong);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--c-ink-muted);
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition:
-    color 0.12s ease,
-    border-color 0.12s ease,
-    background-color 0.12s ease;
-}
-
-.btn:hover:not(:disabled) {
-  border-color: var(--c-ink-muted);
-  color: var(--c-ink);
-}
-
-.btn:disabled {
-  color: var(--c-ink-faint);
-  cursor: not-allowed;
-}
-
-.btn--primary {
-  border-color: var(--c-accent);
-  background: var(--c-accent);
-  color: var(--c-paper);
-}
-
-.btn--primary:hover:not(:disabled) {
-  border-color: var(--c-accent-hover);
-  background: var(--c-accent-hover);
-}
-
-.btn--primary:disabled {
-  border-color: var(--c-line-strong);
-  background: var(--c-surface-sunken);
-  color: var(--c-ink-faint);
 }
 
 @media (max-width: 40rem) {

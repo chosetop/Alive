@@ -168,6 +168,7 @@ function handleMediaChange(event: MediaQueryListEvent): void {
   <div
     class="workspace"
     data-writing-workspace
+    data-visual-mode="writing-desk"
     :style="{ '--directory-width': `${directoryWidth}px` }"
     :data-directory-open="writing.directoryOpen && !isNarrow ? 'true' : 'false'"
   >
@@ -200,7 +201,9 @@ function handleMediaChange(event: MediaQueryListEvent): void {
       :open="writing.directoryOpen"
       @update:open="writing.setDirectoryOpen($event)"
     >
-      <ArticleDirectory drawer />
+      <div class="writing-drawer" data-writing-drawer>
+        <ArticleDirectory drawer />
+      </div>
     </UiDialog>
 
     <main class="canvas">
@@ -217,7 +220,8 @@ function handleMediaChange(event: MediaQueryListEvent): void {
      child animating to width:0 keeps its padding and its border in the flow. */
   grid-template-columns: var(--directory-width, 14rem) minmax(0, 1fr);
   height: 100vh;
-  background: var(--c-paper);
+  overflow: hidden;
+  background: var(--c-surface-sunken);
 }
 
 .workspace[data-directory-open='false'] {
@@ -229,6 +233,8 @@ function handleMediaChange(event: MediaQueryListEvent): void {
   min-width: 0;
   border-right: 1px solid var(--c-line);
   overflow: hidden;
+  background: var(--c-glass);
+  box-shadow: var(--shadow-control);
 }
 
 .rail-resize {
@@ -242,6 +248,7 @@ function handleMediaChange(event: MediaQueryListEvent): void {
   border: 0;
   background: transparent;
   cursor: col-resize;
+  transition: background-color var(--motion-fast) ease;
 }
 
 .rail-resize:hover,
@@ -258,7 +265,48 @@ function handleMediaChange(event: MediaQueryListEvent): void {
 .canvas {
   min-width: 0;
   height: 100%;
+  overflow-x: clip;
   overflow-y: auto;
+  background: var(--c-paper);
+}
+
+.writing-drawer {
+  height: 100%;
+  min-height: 0;
+}
+
+/* UiDialog owns focus trapping and Escape. This selector changes only the
+   writing directory's presentation from a centred modal to a left drawer. */
+:global(.ui-dialog__content:has([data-writing-drawer])) {
+  inset-block: 0;
+  inset-inline: 0 auto;
+  width: min(22rem, calc(100vw - var(--space-5)));
+  max-height: 100dvh;
+  padding: 0;
+  overflow: hidden;
+  transform: none;
+  border-block: 0;
+  border-inline-start: 0;
+  border-radius: 0 var(--radius-surface) var(--radius-surface) 0;
+  overscroll-behavior: contain;
+  animation: writing-drawer-enter var(--motion-fast) cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:global(.ui-dialog__body:has([data-writing-drawer])) {
+  height: 100%;
+  min-height: 0;
+}
+
+@keyframes writing-drawer-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-1rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 @media (pointer: coarse) {
@@ -273,6 +321,29 @@ function handleMediaChange(event: MediaQueryListEvent): void {
   .workspace,
   .workspace[data-directory-open='false'] {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 23.4375rem) {
+  .workspace,
+  .canvas {
+    max-width: 100vw;
+    overflow-x: clip;
+  }
+
+  :global(.ui-dialog__content:has([data-writing-drawer])) {
+    width: calc(100vw - var(--space-4));
+    max-width: 100vw;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail-resize {
+    transition: none;
+  }
+
+  :global(.ui-dialog__content:has([data-writing-drawer])) {
+    animation: none;
   }
 }
 </style>

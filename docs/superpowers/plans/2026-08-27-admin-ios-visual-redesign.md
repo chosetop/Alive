@@ -26,9 +26,10 @@
 ## File structure
 
 - `packages/theme/src/index.ts`: theme manifest and type-safe theme names.
-- `packages/theme/src/themes.css`: complete semantic palettes, fonts, and new surface/status variables for every theme.
+- `packages/theme/src/themes.css`: complete semantic palettes, fonts, surface/status variables, and theme-owned shadow colors for every theme.
 - `packages/theme/src/theme.test.ts`: manifest, label, resolver, and semantic-token contract tests.
 - `backend/internal/site/model.go`, `backend/internal/site/service_test.go`, `backend/internal/sitehttp/handler.go`, `backend/internal/sitehttp/handler_test.go`: accept the new theme as a validated site default without changing the endpoint contract.
+- `backend/migrations/000008_allow_night_ink.*.sql`: update the persisted site-theme check constraint for the new theme.
 - `admin/src/style.css`: admin geometry aliases, global typography, glass surfaces, focus, and motion rules.
 - `admin/src/components/ui/ui.css`: iOS-like primitives and interaction states.
 - `admin/src/components/ui/UiIcon.vue`, `admin/src/components/ui/index.ts`: the only business-facing icon boundary if the current primitives need it.
@@ -54,6 +55,8 @@
 - Modify: `backend/internal/site/service_test.go`
 - Modify: `backend/internal/sitehttp/handler.go`
 - Modify: `backend/internal/sitehttp/handler_test.go`
+- Create: `backend/migrations/000008_allow_night_ink.up.sql`
+- Create: `backend/migrations/000008_allow_night_ink.down.sql`
 
 **Interfaces:**
 - Produces: `ThemeName` including `night-ink`, `THEMES` entry `{ name: 'night-ink', label: '夜航', colorScheme: 'dark' }`, and semantic variables `--c-glass`, `--c-glass-border`, `--c-focus`, `--c-success`, and `--c-success-surface`.
@@ -82,9 +85,9 @@ Run: `cd packages/theme && npm test -- --run src/theme.test.ts && cd ../../backe
 
 Expected: FAIL because `night-ink` is absent from the manifest and backend allow-list.
 
-- [ ] **Step 3: Add the manifest entry and semantic palettes**
+- [ ] **Step 3: Add the manifest entry, semantic palettes, and database constraint migration**
 
-Add `night-ink` to `THEMES`, keep `薰衣草` unchanged, and define every semantic variable under `ink`, `lamp`, `codex-lavender`, and `night-ink`. The new theme must include a deep blue-black paper, translucent slate glass, warm readable ink, a violet-blue Alive accent, green success state, danger state, focus ring, and overlay. Update backend validation and the invalid-theme message to list the supported values.
+Add `night-ink` to `THEMES`, keep `薰衣草` unchanged, and define every semantic variable under `ink`, `lamp`, `codex-lavender`, and `night-ink`. The new theme must include a deep blue-black paper, translucent slate glass, warm readable ink, a violet-blue Alive accent, green success state, danger state, focus ring, and overlay. Update backend validation and the invalid-theme message to list the supported values. Add migration `000008_allow_night_ink` that drops and recreates `site_settings_theme_check` with all four supported keys; do not rewrite migration `000007`.
 
 - [ ] **Step 4: Run focused tests and contrast checks**
 
@@ -107,6 +110,8 @@ git commit -m "feat: extend admin theme tokens"
 - Create: `admin/src/components/ui/UiIcon.vue`
 - Modify: `admin/src/components/ui/index.ts`
 - Modify: `admin/src/components/ui/ui.test.ts`
+- Modify: `packages/theme/src/themes.css` for shadow semantic variables consumed by admin primitives
+- Modify: `admin/src/components/writing/ArticleDirectory.vue`, `admin/src/components/writing/WorkspaceHeader.vue` to consume `UiIcon`
 - Modify: `admin/package.json`, `admin/package-lock.json` only if an icon package is needed
 
 **Interfaces:**
@@ -134,13 +139,13 @@ Run: `cd admin && npm test -- --run src/components/ui/ui.test.ts`
 
 Expected: FAIL because `UiIcon` and the new target/semantic rules do not yet exist.
 
-- [ ] **Step 3: Implement the visual primitives**
+- [ ] **Step 3: Implement the visual primitives and complete the icon boundary**
 
-Add the iOS-style token aliases, translucent surfaces, 12–18px radius scale, quiet layered shadows, 44px coarse-pointer sizing, and focus states. Use one icon implementation: prefer `lucide-vue-next` if the current package lock can install it without changing unrelated dependencies; otherwise use a small inline SVG registry inside `UiIcon.vue`. Do not allow business components to import the library directly.
+Add the iOS-style token aliases, translucent surfaces, 12–18px radius scale, quiet layered shadows, 44px coarse-pointer sizing, and focus states. Define shadow colors in every `@alive/theme` palette and reference those variables from admin CSS. Use one icon implementation: prefer `lucide-vue-next` if the current package lock can install it without changing unrelated dependencies; otherwise use a small inline SVG registry inside `UiIcon.vue`. Replace existing writing-shell Unicode glyph slots with `UiIcon` instances while preserving their button labels; do not allow business components to import the library directly. Add `min-height: 44px` to menu items in the coarse-pointer rule.
 
 - [ ] **Step 4: Run tests and build**
 
-Run: `cd admin && npm test -- --run src/components/ui/ui.test.ts && npm run build`
+Run: `cd admin && npm test -- --run src/components/ui/ui.test.ts src/components/writing/ArticleDirectory.test.ts src/components/writing/WorkspaceHeader.test.ts && npm run build`
 
 Expected: PASS and a successful Vite production build.
 
@@ -238,9 +243,9 @@ Run: `cd admin && npm test -- --run src/views/Entries.test.ts src/views/Categori
 
 Expected: FAIL only for the new data hooks/semantic layout assertions; existing API behavior tests remain passing.
 
-- [ ] **Step 3: Implement the page visual layer**
+- [ ] **Step 3: Implement the page visual layer and keyboard theme selection**
 
-Convert page headers to a consistent title/context/action structure, use the semantic surface and status tokens, preserve all current Chinese copy and API calls, add icon affordances only where they clarify an existing action, and ensure the theme picker renders all manifest entries. Keep empty and error messages as real state messages rather than decorative dashboard content.
+Convert page headers to a consistent title/context/action structure, use the semantic surface and status tokens, preserve all current Chinese copy and API calls, add icon affordances only where they clarify an existing action, and ensure the theme picker renders all manifest entries. For the custom `radiogroup`, implement roving `tabindex`, ArrowLeft/ArrowRight/ArrowUp/ArrowDown, Home, and End so keyboard selection updates preview and `aria-checked`; keep the existing explicit save/cancel flow. Keep empty and error messages as real state messages rather than decorative dashboard content.
 
 - [ ] **Step 4: Run page tests and build**
 

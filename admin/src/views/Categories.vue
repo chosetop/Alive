@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { buildCategoryPatch, categoriesApi, isEmptyPatch, toUserMessage } from '../api'
 import type { Category } from '../types/api'
 import CategoryForm from '../components/CategoryForm.vue'
+import { UiButton, UiIcon } from '../components/ui'
 
 /**
  * Category management: list, create, edit, delete.
@@ -133,14 +134,14 @@ async function handleDelete(id: number): Promise<void> {
 
 <template>
   <div class="page">
-    <header class="head">
-      <div>
+    <header class="head" data-page-header>
+      <div class="head-copy">
         <h1 class="title">分类</h1>
         <p class="subtitle">分类是站点导航，不是内容。超过两层就是你自己都记不住的信号。</p>
       </div>
-      <button class="btn btn--primary" type="button" :disabled="editing !== null" @click="openCreate">
-        新建分类
-      </button>
+      <UiButton variant="primary" data-primary-action :disabled="editing !== null" @click="openCreate">
+        <UiIcon class="button-icon" name="plus" />新建分类
+      </UiButton>
     </header>
 
     <CategoryForm
@@ -179,18 +180,16 @@ async function handleDelete(id: number): Promise<void> {
                  different promise from "entries will be deleted", and the
                  foreign key here is ON DELETE SET NULL. -->
             <span class="confirm-text">删除「{{ item.name }}」？其中的文章会变成未分类，不会被删除。</span>
-            <button class="btn btn--danger" type="button" :disabled="isDeleting" @click="handleDelete(item.id)">
+            <UiButton variant="danger" :disabled="isDeleting" @click="handleDelete(item.id)">
               {{ isDeleting ? '删除中…' : '确认删除' }}
-            </button>
-            <button class="btn" type="button" :disabled="isDeleting" @click="confirmingDelete = null">
+            </UiButton>
+            <UiButton :disabled="isDeleting" @click="confirmingDelete = null">
               取消
-            </button>
+            </UiButton>
           </template>
           <template v-else>
-            <button class="btn" type="button" @click="openEdit(item)">编辑</button>
-            <button class="btn btn--quiet" type="button" @click="confirmingDelete = item.id">
-              删除
-            </button>
+            <UiButton @click="openEdit(item)">编辑</UiButton>
+            <UiButton variant="quiet" @click="confirmingDelete = item.id">删除</UiButton>
           </template>
         </div>
       </li>
@@ -200,7 +199,7 @@ async function handleDelete(id: number): Promise<void> {
 
 <style scoped>
 .page {
-  max-width: 48rem;
+  max-width: 56rem;
 }
 
 .head {
@@ -208,15 +207,22 @@ async function handleDelete(id: number): Promise<void> {
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-7);
 }
 
+.head-copy { min-width: 0; }
+.button-icon { width: 1rem; height: 1rem; }
+
 .title {
-  margin-bottom: var(--space-2);
-  font-size: 1.375rem;
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-heading);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .subtitle {
+  margin: 0;
   color: var(--c-ink-muted);
   font-size: 0.875rem;
 }
@@ -224,8 +230,8 @@ async function handleDelete(id: number): Promise<void> {
 .alert {
   margin-bottom: var(--space-4);
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--c-danger);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--radius-surface);
   background: var(--c-danger-surface);
   color: var(--c-danger);
   font-size: 0.875rem;
@@ -233,20 +239,24 @@ async function handleDelete(id: number): Promise<void> {
 
 .state {
   padding: var(--space-5);
+  border-radius: var(--radius-surface);
+  background: var(--c-surface-sunken);
   color: var(--c-ink-faint);
   font-size: 0.875rem;
 }
 
 .state--empty {
   border: 1px dashed var(--c-line-strong);
-  border-radius: var(--radius-md);
 }
 .list {
   margin: 0;
   padding: 0;
   list-style: none;
-  border: 1px solid var(--c-line);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--radius-surface);
+  background: var(--c-glass);
+  box-shadow: var(--shadow-control);
+  backdrop-filter: blur(18px) saturate(140%);
 }
 
 .row {
@@ -310,63 +320,6 @@ async function handleDelete(id: number): Promise<void> {
 .confirm-text {
   color: var(--c-ink-muted);
   font-size: 0.8125rem;
-}
-
-.btn {
-  padding: 0.25rem 0.625rem;
-  border: 1px solid var(--c-line-strong);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--c-ink-muted);
-  font-size: 0.8125rem;
-  cursor: pointer;
-  transition:
-    color 0.12s ease,
-    border-color 0.12s ease,
-    background-color 0.12s ease;
-}
-
-.btn:hover:not(:disabled) {
-  border-color: var(--c-ink-muted);
-  color: var(--c-ink);
-}
-
-.btn:disabled {
-  color: var(--c-ink-faint);
-  cursor: not-allowed;
-}
-
-.btn--primary {
-  border-color: var(--c-accent);
-  background: var(--c-accent);
-  color: var(--c-paper);
-}
-
-.btn--primary:hover:not(:disabled) {
-  border-color: var(--c-accent-hover);
-  background: var(--c-accent-hover);
-  color: var(--c-paper);
-}
-
-.btn--danger {
-  border-color: var(--c-danger);
-  color: var(--c-danger);
-}
-
-.btn--danger:hover:not(:disabled) {
-  background: var(--c-danger-surface);
-  border-color: var(--c-danger);
-  color: var(--c-danger);
-}
-
-.btn--quiet {
-  border-color: transparent;
-  color: var(--c-ink-faint);
-}
-
-.btn--quiet:hover:not(:disabled) {
-  border-color: var(--c-danger);
-  color: var(--c-danger);
 }
 
 @media (max-width: 40rem) {

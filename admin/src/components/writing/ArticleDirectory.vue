@@ -6,7 +6,7 @@ import { entriesApi, toUserMessage } from '../../api'
 import { EntryRecoveryStore } from '../../editor/recovery-store'
 import { useWritingStore, writingFlushKey } from '../../stores/writing'
 import type { EntryListItem, EntryStatus } from '../../types/api'
-import { UiButton, UiIconButton } from '../ui'
+import { UiButton, UiIcon, UiIconButton } from '../ui'
 import ThemePicker from './ThemePicker.vue'
 
 /**
@@ -294,16 +294,21 @@ function isUnsynced(item: EntryListItem): boolean {
 <template>
   <!-- nav, not aside: this is how you move between articles, and the landmark is
        how a screen reader user reaches it without walking the canvas. -->
-  <nav class="directory" aria-label="文章目录" data-article-directory>
+  <nav
+    class="directory"
+    aria-label="文章目录"
+    data-article-directory
+    data-surface="glass"
+    :data-writing-drawer="drawer ? 'true' : undefined"
+  >
     <div class="brand">
-      <span class="wordmark">Alive</span>
+      <RouterLink class="wordmark" to="/dashboard" aria-label="返回 Dashboard" data-directory-brand>Alive</RouterLink>
       <UiIconButton
         :label="drawer ? '关闭文章目录' : '收起文章目录'"
         data-directory-collapse
         @click="writing.setDirectoryOpen(false)"
       >
-        <!-- The glyph is aria-hidden inside UiIconButton; the label names it. -->
-        <span aria-hidden="true">⟨</span>
+        <UiIcon name="chevron-left" />
       </UiIconButton>
     </div>
 
@@ -318,16 +323,19 @@ function isUnsynced(item: EntryListItem): boolean {
 
     <div class="search">
       <label class="search-label" for="directory-search">搜索文章</label>
-      <input
-        id="directory-search"
-        class="search-input"
-        type="search"
-        autocomplete="off"
-        placeholder="标题、slug 或摘要"
-        data-directory-search
-        :value="writing.searchQuery"
-        @input="writing.setSearchQuery(($event.target as HTMLInputElement).value)"
-      />
+      <div class="search-control">
+        <span class="search-icon" aria-hidden="true"><UiIcon name="search" /></span>
+        <input
+          id="directory-search"
+          class="search-input"
+          type="search"
+          autocomplete="off"
+          placeholder="标题、slug 或摘要"
+          data-directory-search
+          :value="writing.searchQuery"
+          @input="writing.setSearchQuery(($event.target as HTMLInputElement).value)"
+        />
+      </div>
     </div>
 
     <p v-if="error" class="error" role="alert">{{ error }}</p>
@@ -348,6 +356,12 @@ function isUnsynced(item: EntryListItem): boolean {
             :aria-current="item.id === writing.activeEntryId ? 'true' : undefined"
             @click="openEntry(item.id)"
           >
+            <span
+              v-if="item.id === writing.activeEntryId"
+              class="item-cursor"
+              data-alive-cursor
+              aria-hidden="true"
+            />
             <span class="item-title">{{ titleOf(item) }}</span>
             <span class="item-meta">
               <span>{{ STATUS_LABEL[item.status] }}</span>
@@ -377,6 +391,12 @@ function isUnsynced(item: EntryListItem): boolean {
               :aria-current="item.id === writing.activeEntryId ? 'true' : undefined"
               @click="openEntry(item.id)"
             >
+              <span
+                v-if="item.id === writing.activeEntryId"
+                class="item-cursor"
+                data-alive-cursor
+                aria-hidden="true"
+              />
               <span class="item-title">{{ titleOf(item) }}</span>
               <span class="item-meta">
                 <span>{{ STATUS_LABEL[item.status] }}</span>
@@ -416,6 +436,12 @@ function isUnsynced(item: EntryListItem): boolean {
                   :aria-current="item.id === writing.activeEntryId ? 'true' : undefined"
                   @click="openEntry(item.id)"
                 >
+                  <span
+                    v-if="item.id === writing.activeEntryId"
+                    class="item-cursor"
+                    data-alive-cursor
+                    aria-hidden="true"
+                  />
                   <span class="item-title">{{ titleOf(item) }}</span>
                   <span class="item-meta">
                     <span>{{ editedAt(item) }}</span>
@@ -452,7 +478,8 @@ function isUnsynced(item: EntryListItem): boolean {
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--c-line-strong) transparent;
-  background: var(--c-surface-sunken);
+  background: var(--c-glass);
+  backdrop-filter: blur(18px) saturate(140%);
 }
 
 .directory::-webkit-scrollbar {
@@ -494,12 +521,28 @@ function isUnsynced(item: EntryListItem): boolean {
   font-size: 0.75rem;
 }
 
+.search-control {
+  position: relative;
+}
+
+.search-icon {
+  position: absolute;
+  top: 50%;
+  left: var(--space-2);
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--c-ink-faint);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
 .search-input {
   width: 100%;
-  padding: 0.3125rem var(--space-2);
-  border: 1px solid var(--c-line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--c-surface);
+  min-height: 2.25rem;
+  padding: 0.3125rem var(--space-2) 0.3125rem 2rem;
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--radius-control);
+  background: var(--c-paper);
   color: var(--c-ink);
   font: inherit;
   font-size: 0.8125rem;
@@ -524,11 +567,13 @@ function isUnsynced(item: EntryListItem): boolean {
 }
 
 .item {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.125rem;
   width: 100%;
-  padding: 0.3125rem var(--space-2);
+  min-height: 2.75rem;
+  padding: 0.375rem var(--space-2) 0.375rem var(--space-3);
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -550,6 +595,18 @@ function isUnsynced(item: EntryListItem): boolean {
   background: var(--c-surface);
   color: var(--c-ink);
   font-weight: 500;
+  box-shadow: var(--shadow-control);
+}
+
+.item-cursor {
+  position: absolute;
+  top: 50%;
+  left: var(--space-1);
+  width: 0.1875rem;
+  height: 1.25rem;
+  border-radius: var(--radius-control);
+  background: var(--c-alive);
+  transform: translateY(-50%);
 }
 
 .item-title {
@@ -611,6 +668,7 @@ function isUnsynced(item: EntryListItem): boolean {
 
 .footer {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-3);
   /* Pinned to the bottom of the pane, not to the end of the list: the groups
      above scroll, and these two links should stay where they were found. */
@@ -622,5 +680,13 @@ function isUnsynced(item: EntryListItem): boolean {
 .footer-link {
   color: var(--c-ink-faint);
   font-size: 0.75rem;
+}
+
+@media (max-width: 23.4375rem) {
+  .directory {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: clip;
+  }
 }
 </style>

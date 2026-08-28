@@ -115,6 +115,15 @@ describe('ArticleDirectory', () => {
     expect(useWritingStore().directoryEntries.map((entry) => entry.id)).toEqual([1])
   })
 
+  it('makes the sidebar Alive wordmark return to Dashboard', async () => {
+    const wrapper = await mountDirectory()
+
+    const brand = wrapper.get('[data-directory-brand]')
+    expect(brand.text()).toBe('Alive')
+    expect(brand.attributes('to')).toBe('/dashboard')
+    expect(brand.attributes('aria-label')).toBe('返回 Dashboard')
+  })
+
   it('does not request any status group until one is opened', async () => {
     const wrapper = await mountDirectory()
     expect(api.listEntriesAdmin).toHaveBeenCalledOnce()
@@ -437,6 +446,7 @@ describe('ArticleDirectory', () => {
     // icon-only control has nothing else to go on.
     const column = await mountDirectory({ drawer: false })
     expect(column.get('[data-directory-collapse]').attributes('aria-label')).toBe('收起文章目录')
+    expect(column.get('[data-directory-collapse] .ui-icon').attributes('aria-hidden')).toBe('true')
 
     const drawer = await mountDirectory({ drawer: true })
     expect(drawer.get('[data-directory-collapse]').attributes('aria-label')).toBe('关闭文章目录')
@@ -466,5 +476,17 @@ describe('ArticleDirectory', () => {
     // nav, not a bare div: this is how a screen reader user reaches the pane
     // without walking the canvas.
     expect(wrapper.get('nav[aria-label="文章目录"]').element).toBeTruthy()
+  })
+
+  it('identifies its translucent writing-desk surface and current-article cursor', async () => {
+    api.listEntriesAdmin.mockResolvedValue(page([item({ id: 8 }), item({ id: 9 })]))
+    const wrapper = await mountDirectory()
+    useWritingStore().setActiveEntry(9)
+    await flushPromises()
+
+    expect(wrapper.get('[data-article-directory]').attributes('data-surface')).toBe('glass')
+    expect(wrapper.get('[data-entry-id="9"] [data-alive-cursor]').attributes('aria-hidden')).toBe(
+      'true',
+    )
   })
 })

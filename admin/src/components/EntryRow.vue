@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { EntryListItem } from '../types/api'
+import { UiIcon } from './ui'
 
 /**
  * One row of the article list.
@@ -81,9 +82,9 @@ function formatDate(value: string): string {
     <div class="main">
       <div class="head">
         <RouterLink class="title" :to="{ name: 'entry-edit', params: { id: entry.id } }">
-          {{ entry.title }}
+          <span>{{ entry.title }}</span><UiIcon class="title-icon" name="chevron-right" />
         </RouterLink>
-        <span class="badge" :class="`badge--${entry.status}`">{{
+        <span class="badge" :class="`badge--${entry.status}`" :data-status="entry.status">{{
           STATUS_LABEL[entry.status]
         }}</span>
         <span v-if="visibilityLabel" class="badge badge--muted">{{ visibilityLabel }}</span>
@@ -108,6 +109,7 @@ function formatDate(value: string): string {
 <style scoped>
 .row {
   padding: var(--space-4);
+  transition: background-color var(--motion-fast) ease;
 }
 
 .row + .row {
@@ -127,6 +129,9 @@ function formatDate(value: string): string {
 }
 
 .title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   color: var(--c-ink);
   font-size: 0.9375rem;
   font-weight: 500;
@@ -134,12 +139,16 @@ function formatDate(value: string): string {
 
 .title:hover {
   color: var(--c-accent);
+  text-decoration: none;
 }
+
+.title-icon { width: 0.875rem; height: 0.875rem; }
 
 .badge {
   padding: 0.0625rem 0.375rem;
-  border: 1px solid var(--c-line-strong);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--c-glass-border);
+  border-radius: var(--radius-control);
+  background: var(--c-surface-sunken);
   color: var(--c-ink-muted);
   font-size: 0.6875rem;
   white-space: nowrap;
@@ -148,8 +157,9 @@ function formatDate(value: string): string {
 /* A draft is the one state that wants attention, so it is the one that gets
    colour. Published is the resting state and archived is deliberately quiet. */
 .badge--draft {
-  border-color: var(--c-accent);
-  color: var(--c-accent);
+  border-color: var(--c-success);
+  background: var(--c-success-surface);
+  color: var(--c-success);
 }
 
 .badge--archived {

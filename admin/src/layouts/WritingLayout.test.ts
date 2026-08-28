@@ -239,4 +239,25 @@ describe('WritingLayout', () => {
     expect(source).toContain('MIN_DIRECTORY_WIDTH')
     expect(source).toContain('MAX_DIRECTORY_WIDTH')
   })
+
+  it('identifies the writing desk and exposes the real directory resize bounds', async () => {
+    const wrapper = await mountLayout()
+    const workspace = wrapper.get('[data-writing-workspace]')
+    const resize = wrapper.get('[data-directory-resize]')
+
+    expect(workspace.attributes('data-visual-mode')).toBe('writing-desk')
+    expect(resize.attributes('role')).toBe('separator')
+    expect(resize.attributes('aria-valuemin')).toBe('220')
+    expect(resize.attributes('aria-valuemax')).toBe('420')
+  })
+
+  it('defines a 375px no-overflow contract and a reduced-motion fallback', () => {
+    const source = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), 'WritingLayout.vue'),
+      'utf8',
+    )
+
+    expect(source).toMatch(/@media \(max-width:\s*23\.4375rem\)[\s\S]*overflow-x:\s*clip/)
+    expect(source).toMatch(/@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*animation:\s*none/)
+  })
 })

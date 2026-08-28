@@ -472,7 +472,7 @@ func (r *Repository) GetByID(ctx context.Context, id int64) (Entry, error) {
 //
 // No ContentMD: the query does not select it, and the search deliberately does
 // not read it either.
-func (r *Repository) ListAdmin(ctx context.Context, status *Status, search *string, limit, offset int) ([]Entry, int64, error) {
+func (r *Repository) ListAdmin(ctx context.Context, categoryID int64, status *Status, search *string, limit, offset int) ([]Entry, int64, error) {
 	var filter *string
 	if status != nil {
 		s := string(*status)
@@ -486,18 +486,20 @@ func (r *Repository) ListAdmin(ctx context.Context, status *Status, search *stri
 	}
 
 	rows, err := r.q.ListAdminEntries(ctx, sqlcgen.ListAdminEntriesParams{
-		Status: filter,
-		Search: pattern,
-		Limit:  int32(limit),
-		Offset: int32(offset),
+		CategoryID: optionalInt64(categoryID),
+		Status:     filter,
+		Search:     pattern,
+		Limit:      int32(limit),
+		Offset:     int32(offset),
 	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("entry: list admin entries: %w", err)
 	}
 
 	total, err := r.q.CountAdminEntries(ctx, sqlcgen.CountAdminEntriesParams{
-		Status: filter,
-		Search: pattern,
+		CategoryID: optionalInt64(categoryID),
+		Status:     filter,
+		Search:     pattern,
 	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("entry: count admin entries: %w", err)
@@ -517,6 +519,19 @@ func (r *Repository) ListAdmin(ctx context.Context, status *Status, search *stri
 	}
 
 	return entries, total, nil
+}
+
+// DashboardMetrics returns active entry counters without loading content bodies.
+func (r *Repository) DashboardMetrics(ctx context.Context) (DashboardMetrics, error) {
+	row, err := r.q.DashboardMetrics(ctx)
+	if err != nil {
+		return DashboardMetrics{}, fmt.Errorf("entry: dashboard metrics: %w", err)
+	}
+	return DashboardMetrics{
+		TotalEntries:     row.TotalEntries,
+		PublishedEntries: row.PublishedEntries,
+		TotalWords:       row.TotalWords,
+	}, nil
 }
 
 // escapeLikePattern makes text safe to interpolate into a LIKE or ILIKE pattern,

@@ -110,6 +110,9 @@ type Querier interface {
 	// password_hash is written but not returned. A hash has no use above the
 	// repository except during a login comparison, which GetUserByUsername serves.
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
+	// Deleted rows are not part of the active writing library. Word counts are
+	// persisted on entries, so this aggregate does not load Markdown bodies.
+	DashboardMetrics(ctx context.Context) (DashboardMetricsRow, error)
 	// Delete one category, returning its id so the caller can tell a hit from a miss.
 	//
 	// A physical delete, unlike an entry. A category is a name and a slug, so

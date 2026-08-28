@@ -38,6 +38,16 @@ const categories: Category[] = [
 ]
 
 describe('ArticleSettings', () => {
+  it('uses the shared writing-panel action hierarchy', () => {
+    const wrapper = mount(ArticleSettings, {
+      props: { open: true, entry, categories },
+    })
+
+    expect(wrapper.get('[data-writing-panel="settings"]').element).toBeTruthy()
+    expect(wrapper.get('[data-settings-close] .ui-icon').attributes('aria-hidden')).toBe('true')
+    expect(wrapper.get('[data-settings-delete]').attributes('data-variant')).toBe('danger')
+  })
+
   it('edits the title alongside the other article settings', async () => {
     const wrapper = mount(ArticleSettings, {
       props: { open: true, entry, categories },

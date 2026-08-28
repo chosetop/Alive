@@ -474,7 +474,7 @@ func (s *Store) GetByID(ctx context.Context, id int64) (entry.Entry, error) {
 // while strings.ToLower is Unicode's. They agree across ASCII and leave CJK
 // untouched, which covers what these tests assert. A test that turned on
 // case-insensitivity for, say, Turkish dotless i would need the real database.
-func (s *Store) ListAdmin(ctx context.Context, status *entry.Status, search *string, limit, offset int) ([]entry.Entry, int64, error) {
+func (s *Store) ListAdmin(ctx context.Context, categoryID int64, status *entry.Status, search *string, limit, offset int) ([]entry.Entry, int64, error) {
 	if s.FailListAdmin != nil {
 		return nil, 0, s.FailListAdmin
 	}
@@ -487,6 +487,9 @@ func (s *Store) ListAdmin(ctx context.Context, status *entry.Status, search *str
 
 	matching := make([]entry.Entry, 0, len(s.entries))
 	for _, candidate := range s.entries {
+		if categoryID != 0 && candidate.CategoryID != categoryID {
+			continue
+		}
 		if status != nil && candidate.Status != *status {
 			continue
 		}
@@ -518,6 +521,18 @@ func (s *Store) ListAdmin(ctx context.Context, status *entry.Status, search *str
 	copy(page, matching[offset:end])
 
 	return page, total, nil
+}
+
+func (s *Store) DashboardMetrics(ctx context.Context) (entry.DashboardMetrics, error) {
+	var metrics entry.DashboardMetrics
+	for _, candidate := range s.entries {
+		metrics.TotalEntries++
+		metrics.TotalWords += int64(candidate.WordCount)
+		if candidate.Status == entry.StatusPublished {
+			metrics.PublishedEntries++
+		}
+	}
+	return metrics, nil
 }
 
 // containsFold reports whether one entry satisfies the directory search, reading

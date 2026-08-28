@@ -13,6 +13,7 @@
  */
 export { default as UiButton } from './UiButton.vue'
 export { default as UiDialog } from './UiDialog.vue'
+export { default as UiIcon } from './UiIcon.vue'
 export { default as UiIconButton } from './UiIconButton.vue'
 export { default as UiMenu } from './UiMenu.vue'
 export { default as UiPopover } from './UiPopover.vue'
@@ -20,6 +21,7 @@ export { default as UiToastRegion } from './UiToastRegion.vue'
 
 export type { UiButtonProps } from './UiButton.vue'
 export type { UiDialogProps } from './UiDialog.vue'
+export type { UiIconName, UiIconProps } from './UiIcon.vue'
 export type { UiIconButtonProps } from './UiIconButton.vue'
 export type { UiMenuItem, UiMenuProps } from './UiMenu.vue'
 export type { UiPopoverProps } from './UiPopover.vue'

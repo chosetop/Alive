@@ -33,4 +33,13 @@ describe('MarkdownEditor Milkdown controls', () => {
     expect(source).toContain('min-width: 0')
   })
 
+  it('keeps Markdown on a quiet, measured prose surface', () => {
+    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'MarkdownEditor.vue'), 'utf8')
+
+    expect(source).toContain('data-editor-visual-mode="quiet-paper"')
+    expect(source).toMatch(/\.milkdown\)[\s\S]*max-width:\s*42rem/)
+    expect(source).toMatch(/\.ProseMirror\)[\s\S]*font-family:\s*var\(--font-prose\)/)
+    expect(source).toContain('caret-color: var(--c-alive)')
+  })
+
 })

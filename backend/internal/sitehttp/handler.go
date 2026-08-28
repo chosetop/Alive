@@ -67,7 +67,7 @@ func (h *Handler) Update(c *gin.Context) {
 func (h *Handler) writeUpdateError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, site.ErrInvalidTheme):
-		httpx.Error(c, apperr.InvalidInput("the requested theme is not supported").WithField("default_theme", "must be ink, lamp, or codex-lavender").WithCause(err))
+		httpx.Error(c, apperr.InvalidInput("the requested theme is not supported").WithField("default_theme", "must be ink, lamp, codex-lavender, or night-ink").WithCause(err))
 	case errors.Is(err, site.ErrVersionConflict):
 		httpx.Error(c, apperr.Conflict("site settings changed since they were loaded").WithField("revision", "reload the current site settings and try again").WithCause(err))
 	default:

@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+
+import { UiDialog, UiIcon, UiIconButton } from '../components/ui'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
+const route = useRoute()
 const router = useRouter()
 
 const isLoggingOut = ref(false)
+const isMobileNavOpen = ref(false)
 
 /**
  * A way into the writing shell from the utility shell.
@@ -32,6 +36,19 @@ const navItems = [
   { label: '写作', to: writeTarget, available: true },
 ] as const
 
+/** The context bar reads the same route contract as the links; no path parsing. */
+const currentContext = computed(
+  () => navItems.find((item) => item.to.name === route.name)?.label ?? 'Alive Admin',
+)
+
+function handleDrawerNavigate(
+  navigate: (event?: MouseEvent) => unknown,
+  event: MouseEvent,
+): void {
+  navigate(event)
+  isMobileNavOpen.value = false
+}
+
 async function handleLogout(): Promise<void> {
   if (isLoggingOut.value) return
   isLoggingOut.value = true
@@ -48,9 +65,24 @@ async function handleLogout(): Promise<void> {
 
 <template>
   <div class="shell">
-    <header class="header">
-      <span class="wordmark">Alive Admin</span>
-      <div class="user">
+    <header class="topbar">
+      <div class="brand-context">
+        <span class="wordmark">Alive</span>
+        <span class="context-separator" aria-hidden="true">/</span>
+        <span class="page-context" data-page-context>{{ currentContext }}</span>
+      </div>
+
+      <div class="topbar-actions">
+        <UiIconButton
+          class="mobile-nav-trigger"
+          label="打开主导航"
+          :pressed="isMobileNavOpen"
+          data-mobile-nav
+          @click="isMobileNavOpen = true"
+        >
+          <UiIcon name="more-horizontal" />
+        </UiIconButton>
+
         <span class="user-name">{{ auth.displayName }}</span>
         <button class="logout" type="button" :disabled="isLoggingOut" @click="handleLogout">
           {{ isLoggingOut ? '退出中…' : '退出' }}
@@ -64,8 +96,23 @@ async function handleLogout(): Promise<void> {
       <nav class="sidebar" aria-label="主导航">
         <ul class="nav-list">
           <li v-for="item in navItems" :key="item.label">
-            <RouterLink v-if="item.available && item.to" class="nav-link" :to="item.to">
-              {{ item.label }}
+            <RouterLink
+              v-if="item.available && item.to"
+              v-slot="{ href, navigate, isExactActive }"
+              custom
+              :to="item.to"
+            >
+              <a
+                class="nav-link"
+                :class="{ 'nav-link--active': isExactActive }"
+                :href="href"
+                :aria-current="isExactActive ? 'page' : undefined"
+                :data-active="isExactActive ? 'true' : 'false'"
+                @click="navigate"
+              >
+                <span v-if="isExactActive" class="alive-cursor" data-alive-cursor aria-hidden="true" />
+                <span>{{ item.label }}</span>
+              </a>
             </RouterLink>
             <!-- aria-disabled rather than omitting it: the item is announced,
                  and announced as unavailable. -->
@@ -80,6 +127,38 @@ async function handleLogout(): Promise<void> {
         <RouterView />
       </main>
     </div>
+
+    <!-- At the drawer breakpoint the desktop nav is display:none, so the dialog
+         is the only navigation landmark available to assistive technology. -->
+    <UiDialog title="主导航" :open="isMobileNavOpen" @update:open="isMobileNavOpen = $event">
+      <nav class="mobile-drawer" aria-label="主导航">
+        <ul class="nav-list nav-list--drawer">
+          <li v-for="item in navItems" :key="item.label">
+            <RouterLink
+              v-if="item.available && item.to"
+              v-slot="{ href, navigate, isExactActive }"
+              custom
+              :to="item.to"
+            >
+              <a
+                class="nav-link"
+                :class="{ 'nav-link--active': isExactActive }"
+                :href="href"
+                :aria-current="isExactActive ? 'page' : undefined"
+                :data-active="isExactActive ? 'true' : 'false'"
+                @click="handleDrawerNavigate(navigate, $event)"
+              >
+                <span v-if="isExactActive" class="alive-cursor" data-alive-cursor aria-hidden="true" />
+                <span>{{ item.label }}</span>
+              </a>
+            </RouterLink>
+            <span v-else class="nav-link nav-link--disabled" aria-disabled="true">
+              {{ item.label }}
+            </span>
+          </li>
+        </ul>
+      </nav>
+    </UiDialog>
   </div>
 </template>
 
@@ -88,51 +167,80 @@ async function handleLogout(): Promise<void> {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  background: var(--c-paper);
 }
 
-.header {
+.topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: var(--header-height);
-  flex-shrink: 0;
+  min-height: var(--header-height);
   padding: 0 var(--space-5);
   border-bottom: 1px solid var(--c-line);
   background: var(--c-surface);
 }
 
-.wordmark {
-  font-size: 0.9375rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.user {
+.brand-context,
+.topbar-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+}
+
+.brand-context {
+  min-width: 0;
+  gap: var(--space-2);
+}
+
+.wordmark {
+  flex-shrink: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.context-separator,
+.user-name {
+  color: var(--c-ink-faint);
+}
+
+.page-context {
+  overflow: hidden;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-actions {
+  flex-shrink: 0;
+  gap: var(--space-3);
+}
+
+.mobile-nav-trigger {
+  display: none;
 }
 
 .user-name {
-  color: var(--c-ink-muted);
   font-size: 0.8125rem;
 }
 
 .logout {
   padding: 0.25rem 0.5rem;
   border: 1px solid var(--c-line-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--c-ink-muted);
   font-size: 0.8125rem;
   cursor: pointer;
   transition:
-    color 0.12s ease,
-    border-color 0.12s ease;
+    color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease;
 }
 
 .logout:hover:not(:disabled) {
   border-color: var(--c-danger);
+  background: var(--c-danger-surface);
   color: var(--c-danger);
 }
 
@@ -152,6 +260,7 @@ async function handleLogout(): Promise<void> {
   flex-shrink: 0;
   padding: var(--space-5) var(--space-3);
   border-right: 1px solid var(--c-line);
+  background: var(--c-surface);
 }
 
 .nav-list {
@@ -164,14 +273,17 @@ async function handleLogout(): Promise<void> {
 }
 
 .nav-link {
-  display: block;
-  padding: 0.375rem var(--space-3);
-  border-radius: var(--radius-sm);
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 2.5rem;
+  padding: 0.5rem var(--space-3);
+  border-radius: var(--radius-control);
   color: var(--c-ink-muted);
   font-size: 0.875rem;
   transition:
-    background-color 0.12s ease,
-    color 0.12s ease;
+    background-color var(--motion-fast) ease,
+    color var(--motion-fast) ease;
 }
 
 a.nav-link:hover {
@@ -180,13 +292,24 @@ a.nav-link:hover {
   text-decoration: none;
 }
 
-/* router-link-active is added by vue-router to the link matching the current
-   route. The weight shift carries the state; colour alone would not survive
-   being viewed in greyscale. */
-a.nav-link.router-link-active {
+/* The cursor and weight shift survive greyscale, unlike colour-only selection. */
+.nav-link--active {
   background: var(--c-surface-sunken);
   color: var(--c-ink);
-  font-weight: 500;
+  font-weight: 600;
+}
+
+.alive-cursor {
+  position: absolute;
+  left: var(--space-1);
+  width: 0.1875rem;
+  height: 1.25rem;
+  border-radius: var(--radius-control);
+  background: var(--c-alive);
+}
+
+.nav-link--active > span:last-child {
+  margin-left: var(--space-2);
 }
 
 .nav-link--disabled {
@@ -200,23 +323,29 @@ a.nav-link.router-link-active {
   padding: var(--space-8) var(--space-6);
 }
 
+.mobile-drawer {
+  min-width: min(18rem, calc(100vw - var(--space-6)));
+}
+
+.nav-list--drawer {
+  gap: var(--space-2);
+}
+
 @media (max-width: 40rem) {
-  /* Below this width the sidebar and content cannot share a row without both
-     becoming cramped, so they stack. */
-  .body {
-    flex-direction: column;
+  .topbar {
+    padding: 0 var(--space-3);
+  }
+
+  .mobile-nav-trigger {
+    display: inline-flex;
+  }
+
+  .user-name {
+    display: none;
   }
 
   .sidebar {
-    width: 100%;
-    padding: var(--space-3);
-    border-right: none;
-    border-bottom: 1px solid var(--c-line);
-  }
-
-  .nav-list {
-    flex-direction: row;
-    flex-wrap: wrap;
+    display: none;
   }
 
   .content {

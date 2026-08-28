@@ -200,6 +200,19 @@ func stringField(t *testing.T, object map[string]json.RawMessage, name string) s
 	return value
 }
 
+func intField(t *testing.T, object map[string]json.RawMessage, name string) int {
+	t.Helper()
+	raw, ok := object[name]
+	if !ok {
+		t.Fatalf("object has no %q key", name)
+	}
+	var value int
+	if err := json.Unmarshal(raw, &value); err != nil {
+		t.Fatalf("%q is not an integer: %v", name, err)
+	}
+	return value
+}
+
 // visibilityCase is one seeded entry and what the two public endpoints owe it.
 //
 // Two flags rather than one "visible", because the two reads no longer agree. An
@@ -1246,6 +1259,42 @@ func TestAdminListFiltersByStatus(t *testing.T) {
 			t.Errorf("the error does not name the status field: %s", rec.Body.String())
 		}
 	})
+}
+
+func TestAdminListFiltersByCategorySlug(t *testing.T) {
+	handler, store := newTestServer(t, testAuthorID)
+	store.Seed(entry.Entry{ID: 1, Slug: "travel", Title: "Travel", CategoryID: testCategoryID, Status: entry.StatusDraft})
+	store.Seed(entry.Entry{ID: 2, Slug: "work", Title: "Work", CategoryID: 8, Status: entry.StatusDraft})
+
+	rec := do(t, handler, http.MethodGet, "/api/v1/admin/entries?category="+testCategorySlug, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
+	}
+	items := dataArray(t, rec)
+	if len(items) != 1 || stringField(t, items[0], "slug") != "travel" {
+		t.Errorf("items = %v, want only travel", items)
+	}
+}
+
+func TestAdminDashboardReturnsMetrics(t *testing.T) {
+	handler, store := newTestServer(t, testAuthorID)
+	store.Seed(entry.Entry{ID: 1, Slug: "published", Status: entry.StatusPublished, WordCount: 120})
+	store.Seed(entry.Entry{ID: 2, Slug: "draft", Status: entry.StatusDraft, WordCount: 35})
+
+	rec := do(t, handler, http.MethodGet, "/api/v1/admin/dashboard", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
+	}
+	data := dataObject(t, rec)
+	if got := intField(t, data, "total_entries"); got != 2 {
+		t.Errorf("total_entries = %d, want 2", got)
+	}
+	if got := intField(t, data, "published_entries"); got != 1 {
+		t.Errorf("published_entries = %d, want 1", got)
+	}
+	if got := intField(t, data, "total_words"); got != 155 {
+		t.Errorf("total_words = %d, want 155", got)
+	}
 }
 
 // TestStoreFailureIsNotReportedAsNotFound covers the difference between "your

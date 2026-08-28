@@ -73,6 +73,18 @@ describe('WorkspaceHeader', () => {
     }
   })
 
+  it('marks every save state with the Alive cursor without replacing its text', () => {
+    for (const status of ['saved', 'pending', 'saving', 'offline', 'error', 'conflict'] as const) {
+      const wrapper = mountHeader({ saveStatus: status })
+      const cursor = wrapper.get('[data-save-cursor]')
+
+      expect(cursor.attributes('data-status'), status).toBe(status)
+      expect(cursor.attributes('aria-hidden'), status).toBe('true')
+      expect(wrapper.get('[data-save-status]').text(), status).not.toBe('')
+      wrapper.unmount()
+    }
+  })
+
   it('offers retry only for the two states a retry can fix', () => {
     for (const status of ['offline', 'error'] as const) {
       const wrapper = mountHeader({ saveStatus: status })
@@ -134,17 +146,16 @@ describe('WorkspaceHeader', () => {
     const toggle = wrapper.get('[data-directory-expand]')
     // Named, because it is icon-only: an unnamed one is announced as "button".
     expect(toggle.attributes('aria-label')).toBe('展开文章目录')
+    expect(toggle.get('.ui-icon').attributes('aria-hidden')).toBe('true')
 
     await toggle.trigger('click')
     expect(store.directoryOpen).toBe(true)
   })
 
-  it('links the writing brand back to Dashboard', () => {
+  it('does not duplicate the directory brand in the writing header', () => {
     const wrapper = mountHeader()
-    const brand = wrapper.get('[data-writing-brand]')
 
-    expect(brand.attributes('href')).toBe('/dashboard')
-    expect(brand.text()).toBe('Alive')
+    expect(wrapper.find('[data-writing-brand]').exists()).toBe(false)
   })
 
   it('offers no publish or menu before the record exists', () => {
@@ -169,6 +180,7 @@ describe('WorkspaceHeader', () => {
     const wrapper = mountHeader({ entryStatus: 'draft' })
 
     expect(wrapper.get('[data-header-delete]').text()).toBe('删除')
+    expect(wrapper.find('[data-more-actions]').exists()).toBe(false)
     expect(wrapper.find('[data-header-delete-confirm]').exists()).toBe(false)
     expect(wrapper.get('[data-publish]').text()).toBe('发布')
   })

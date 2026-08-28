@@ -4,7 +4,7 @@ import { computed, ref } from 'vue'
 import type { SaveStatus } from '../../editor/save-coordinator'
 import { useWritingStore } from '../../stores/writing'
 import type { EntryStatus } from '../../types/api'
-import { UiButton, UiIconButton } from '../ui'
+import { UiButton, UiIcon, UiIconButton } from '../ui'
 
 /**
  * The workspace header.
@@ -73,9 +73,8 @@ const publishLabel = computed(() =>
 </script>
 
 <template>
-  <header class="header" data-workspace-header>
+  <header class="header" data-workspace-header data-surface="glass">
     <div class="left">
-      <RouterLink class="brand-link" to="/dashboard" aria-label="返回 Dashboard" data-writing-brand>Alive</RouterLink>
       <!-- Rendered only while the directory is hidden. Its counterpart lives in
            the directory's own header, so the control is always beside the thing
            it acts on rather than in a fixed spot the pane may have covered. -->
@@ -85,7 +84,7 @@ const publishLabel = computed(() =>
         data-directory-expand
         @click="writing.setDirectoryOpen(true)"
       >
-        <span aria-hidden="true">⟩</span>
+        <UiIcon name="chevron-right" />
       </UiIconButton>
     </div>
 
@@ -95,6 +94,12 @@ const publishLabel = computed(() =>
       the region has to exist before it has anything to announce.
     -->
     <div class="status" data-save-status aria-live="polite">
+      <span
+        class="save-cursor"
+        :data-status="saveStatus"
+        data-save-cursor
+        aria-hidden="true"
+      />
       <span class="status-text" :data-status="saveStatus">{{ statusText }}</span>
       <button
         v-if="canRetry"

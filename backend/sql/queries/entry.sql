@@ -494,6 +494,7 @@ SELECT
 FROM entries e
 LEFT JOIN categories c ON c.id = e.category_id
 WHERE e.deleted_at IS NULL
+  AND (sqlc.narg(category_id)::bigint IS NULL OR e.category_id = sqlc.narg(category_id)::bigint)
   AND (sqlc.narg(status)::varchar IS NULL OR e.status = sqlc.narg(status)::varchar)
   AND (
     sqlc.narg(search)::text IS NULL
@@ -514,6 +515,7 @@ LIMIT sqlc.arg(limit_) OFFSET sqlc.arg(offset_);
 SELECT count(*)
 FROM entries
 WHERE deleted_at IS NULL
+  AND (sqlc.narg(category_id)::bigint IS NULL OR category_id = sqlc.narg(category_id)::bigint)
   AND (sqlc.narg(status)::varchar IS NULL OR status = sqlc.narg(status)::varchar)
   AND (
     sqlc.narg(search)::text IS NULL
@@ -521,6 +523,16 @@ WHERE deleted_at IS NULL
     OR slug ILIKE '%' || sqlc.narg(search)::text || '%'
     OR COALESCE(summary, '') ILIKE '%' || sqlc.narg(search)::text || '%'
   );
+
+-- name: DashboardMetrics :one
+-- Deleted rows are not part of the active writing library. Word counts are
+-- persisted on entries, so this aggregate does not load Markdown bodies.
+SELECT
+    count(*) AS total_entries,
+    count(*) FILTER (WHERE status = 'published') AS published_entries,
+    COALESCE(sum(word_count), 0)::bigint AS total_words
+FROM entries
+WHERE deleted_at IS NULL;
 
 -- name: GetAdminEntryByID :one
 -- The admin detail read, addressed by id rather than slug.

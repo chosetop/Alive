@@ -39,7 +39,7 @@ func TestServiceGetReturnsStoredDefault(t *testing.T) {
 }
 
 func TestServiceUpdateAcceptsEveryThemeAndIncrementsRevision(t *testing.T) {
-	for _, theme := range []string{"ink", "lamp", "codex-lavender"} {
+	for _, theme := range []string{"ink", "lamp", "codex-lavender", "night-ink"} {
 		t.Run(theme, func(t *testing.T) {
 			store := &fakeStore{settings: SiteSettings{DefaultTheme: "ink", Revision: 1}}
 			service := NewService(store)
