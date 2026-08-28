@@ -1,5 +1,6 @@
 export * as authApi from './auth'
 export * as categoriesApi from './categories'
+export * as dashboardApi from './dashboard'
 export * as entriesApi from './entries'
 export * as siteApi from './site'
 export { request, requestPaginated, setUnauthorizedHandler } from './client'
