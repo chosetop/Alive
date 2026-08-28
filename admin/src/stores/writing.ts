@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, type InjectionKey, type Ref } from 'vue'
+import type { EntryListItem } from '../types/api'
 
 /**
  * How the directory asks the open editor to flush before it navigates away.
@@ -48,6 +49,7 @@ export const useWritingStore = defineStore('writing', () => {
    */
   const activeEntryId = ref<number | null>(null)
   const searchQuery = ref('')
+  const directoryEntries = ref<EntryListItem[]>([])
 
   function toggleDirectory(): void {
     directoryOpen.value = !directoryOpen.value
@@ -65,13 +67,31 @@ export const useWritingStore = defineStore('writing', () => {
     searchQuery.value = query
   }
 
+  function setDirectoryEntries(entries: EntryListItem[]): void {
+    directoryEntries.value = entries
+  }
+
+  function nextEntryAfterDelete(entryId: number): number | null {
+    const index = directoryEntries.value.findIndex((entry) => entry.id === entryId)
+    if (index === -1) return null
+    return directoryEntries.value[index + 1]?.id ?? directoryEntries.value[index - 1]?.id ?? null
+  }
+
+  function removeDirectoryEntry(entryId: number): void {
+    directoryEntries.value = directoryEntries.value.filter((entry) => entry.id !== entryId)
+  }
+
   return {
     directoryOpen,
     activeEntryId,
     searchQuery,
+    directoryEntries,
     toggleDirectory,
     setDirectoryOpen,
     setActiveEntry,
     setSearchQuery,
+    setDirectoryEntries,
+    nextEntryAfterDelete,
+    removeDirectoryEntry,
   }
 })

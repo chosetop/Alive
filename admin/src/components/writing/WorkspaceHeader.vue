@@ -4,7 +4,7 @@ import { computed, ref } from 'vue'
 import type { SaveStatus } from '../../editor/save-coordinator'
 import { useWritingStore } from '../../stores/writing'
 import type { EntryStatus } from '../../types/api'
-import { UiButton, UiIconButton, UiMenu, type UiMenuItem } from '../ui'
+import { UiButton, UiIconButton } from '../ui'
 
 /**
  * The workspace header.
@@ -48,7 +48,6 @@ const emit = defineEmits<{
   publish: []
   delete: []
   retry: []
-  /** A `UiMenuItem` id. Ids, never indices -- see UiMenu's own note. */
   action: [string]
 }>()
 
@@ -68,20 +67,6 @@ const canRetry = computed(() => props.saveStatus === 'offline' || props.saveStat
  * Publish remains the only primary action. Deletion is visible for discoverability
  * but requires a second explicit confirmation before emitting to the editor.
  */
-const menuItems = computed<UiMenuItem[]>(() => {
-  if (props.entryStatus === null) return []
-
-  const items: UiMenuItem[] = [{ id: 'settings', label: '文章设置' }]
-
-  if (props.entryStatus === 'published') {
-    items.push({ id: 'unpublish', label: '撤回为草稿' })
-  }
-  if (props.entryStatus !== 'archived') {
-    items.push({ id: 'archive', label: '归档', separated: true })
-  }
-  return items
-})
-
 const publishLabel = computed(() =>
   props.entryStatus === 'published' ? '已发布' : '发布',
 )
@@ -90,6 +75,7 @@ const publishLabel = computed(() =>
 <template>
   <header class="header" data-workspace-header>
     <div class="left">
+      <RouterLink class="brand-link" to="/dashboard" aria-label="返回 Dashboard" data-writing-brand>Alive</RouterLink>
       <!-- Rendered only while the directory is hidden. Its counterpart lives in
            the directory's own header, so the control is always beside the thing
            it acts on rather than in a fixed spot the pane may have covered. -->
@@ -129,18 +115,15 @@ const publishLabel = computed(() =>
     <div class="right">
       <span v-if="entryStatus" class="entry-status">{{ ENTRY_STATUS_TEXT[entryStatus] }}</span>
 
-      <UiMenu
-        v-if="menuItems.length > 0"
-        :items="menuItems"
-        label="更多操作"
-        @select="emit('action', $event)"
-      >
-        <template #trigger>
-          <UiIconButton label="更多操作" data-more-actions>
-            <span aria-hidden="true">⋯</span>
-          </UiIconButton>
-        </template>
-      </UiMenu>
+      <template v-if="entryStatus !== null">
+        <UiButton variant="quiet" data-header-settings @click="emit('action', 'settings')">设置</UiButton>
+        <UiButton v-if="entryStatus === 'published'" variant="quiet" data-header-unpublish @click="emit('action', 'unpublish')">
+          撤回
+        </UiButton>
+        <UiButton v-if="entryStatus !== 'archived'" variant="quiet" data-header-archive @click="emit('action', 'archive')">
+          归档
+        </UiButton>
+      </template>
 
       <template v-if="entryStatus !== null && !confirmingDelete">
         <UiButton variant="quiet" data-header-delete @click="confirmingDelete = true">删除</UiButton>
@@ -190,6 +173,19 @@ const publishLabel = computed(() =>
   /* Reserved whether or not the toggle is rendered: collapsing this track would
      shift the whole bar sideways the moment the directory opened. */
   min-height: 1.75rem;
+}
+
+.brand-link {
+  color: var(--c-ink);
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+
+.brand-link:hover,
+.brand-link:focus-visible {
+  color: var(--c-accent);
 }
 
 /**

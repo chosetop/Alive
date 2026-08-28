@@ -40,6 +40,7 @@ import type {
 const props = defineProps<{
   /** Absent when creating. From the route, so it arrives as a string. */
   id?: string
+  blank?: boolean
 }>()
 
 const router = useRouter()
@@ -147,6 +148,10 @@ const controlsDisabled = computed(
 // as the same state described two ways on one screen.
 
 async function load(targetId: number | null = entryId.value): Promise<void> {
+  if (props.blank) {
+    resetToBlank()
+    return
+  }
   const generation = ++loadGeneration
   settingsOpen.value = false
   publishOpen.value = false
@@ -426,6 +431,29 @@ function applyEntryToForm(entry: EntryDetail): void {
   }
 }
 
+function resetToBlank(): void {
+  original.value = null
+  form.value = {
+    title: '',
+    slug: '',
+    summary: '',
+    contentMd: '',
+    coverUrl: '',
+    type: 'journal',
+    visibility: 'public',
+    categoryId: 0,
+    happenedAt: '',
+  }
+  loadError.value = null
+  saveError.value = null
+  fieldErrors.value = {}
+  settingsOpen.value = false
+  publishOpen.value = false
+  editorSession.value += 1
+  writing.setActiveEntry(null)
+  isLoading.value = false
+}
+
 async function bindCoordinator(entry: EntryDetail): Promise<void> {
   const coordinator = createSaveCoordinator({
     entryId: entry.id,
@@ -447,11 +475,18 @@ async function handleDelete(): Promise<void> {
   try {
     if (!(await flushBeforeAction())) return
     const id = original.value.id
+    const nextEntryId = writing.nextEntryAfterDelete(id)
     await entriesApi.deleteEntry(id)
+    writing.removeDirectoryEntry(id)
     await coordinatorBridge.dispose()
     bypassRouteFlush = true
     try {
-      await router.replace({ name: 'entries' })
+      if (nextEntryId === null) {
+        resetToBlank()
+        await router.replace({ name: 'entry-blank' })
+      } else {
+        await router.replace({ name: 'entry-edit', params: { id: String(nextEntryId) } })
+      }
     } finally {
       bypassRouteFlush = false
     }
@@ -529,7 +564,7 @@ function createCoordinatorBridge(): CoordinatorBridge {
     are siblings rather than nested for that reason -- a header inside the measured
     column would stop short of the canvas edges and read as a floating toolbar.
   -->
-  <div class="canvas">
+  <div class="canvas" :data-writing-blank="original === null ? 'true' : undefined">
     <p v-if="isLoading" class="state page">载入中…</p>
     <p v-else-if="loadError" class="alert page" role="alert">{{ loadError }}</p>
 

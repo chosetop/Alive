@@ -8,7 +8,7 @@ import ArticleSettings from '../components/writing/ArticleSettings.vue'
 import { useWritingStore, writingFlushKey } from '../stores/writing'
 
 import { ApiClientError, NETWORK_ERROR } from '../api/errors'
-import type { EntryDetail, EntryUpdateRequest } from '../types/api'
+import type { EntryDetail, EntryListItem, EntryUpdateRequest } from '../types/api'
 import EntryEditor from './EntryEditor.vue'
 
 const api = vi.hoisted(() => ({
@@ -105,6 +105,27 @@ vi.mock('../components/MarkdownEditor.vue', async () => {
 })
 
 const activeWrappers: VueWrapper[] = []
+
+function listItem(overrides: Partial<EntryListItem> = {}): EntryListItem {
+  return {
+    id: 1,
+    type: 'journal',
+    title: '文章',
+    slug: 'article',
+    summary: '',
+    cover_url: '',
+    meta: {},
+    word_count: 0,
+    category: null,
+    happened_at: null,
+    published_at: null,
+    status: 'draft',
+    visibility: 'public',
+    created_at: '2026-08-20T00:00:00Z',
+    updated_at: '2026-08-25T10:00:00Z',
+    ...overrides,
+  }
+}
 
 describe('EntryEditor autosave integration', () => {
   beforeEach(() => {
@@ -324,11 +345,7 @@ describe('EntryEditor autosave integration', () => {
     api.deleteEntry.mockImplementation(async () => {
       events.push('delete')
     })
-    navigation.replace.mockImplementationOnce(async () => {
-      const guardResult = await navigation.leaveGuard?.()
-      if (guardResult === false) throw new Error('navigation blocked after deletion')
-      events.push('navigate')
-    })
+    navigation.replace.mockImplementationOnce(async () => events.push('navigate'))
     const wrapper = await mountEditor(server.current)
     await openSettings(wrapper)
     await wrapper.get('#e-summary').setValue('删除前保存')
@@ -340,6 +357,51 @@ describe('EntryEditor autosave integration', () => {
     expect(events).toEqual(['save', 'delete', 'navigate'])
     expect(api.updateEntry).toHaveBeenCalledOnce()
     expect(api.deleteEntry).toHaveBeenCalledWith(server.current.id)
+    expect(navigation.replace).toHaveBeenCalledWith({ name: 'entry-blank' })
+  })
+
+  it('opens the next directory article after deleting the current article', async () => {
+    const server = installMutableServer()
+    navigation.replace.mockResolvedValue(undefined)
+    const wrapper = await mountEditor(server.current)
+    storeFor(wrapper).setDirectoryEntries([
+      listItem({ id: server.current.id }),
+      listItem({ id: 52 }),
+      listItem({ id: 53 }),
+    ])
+
+    await wrapper.findAll('button').find((button) => button.text() === '删除')!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text() === '确认删除')!.trigger('click')
+    await flushPromises()
+
+    expect(navigation.replace).toHaveBeenCalledWith({ name: 'entry-edit', params: { id: '52' } })
+  })
+
+  it('opens the previous directory article after deleting the last article', async () => {
+    const server = installMutableServer()
+    navigation.replace.mockResolvedValue(undefined)
+    const wrapper = await mountEditor(server.current)
+    storeFor(wrapper).setDirectoryEntries([listItem({ id: 51 }), listItem({ id: server.current.id })])
+
+    await wrapper.findAll('button').find((button) => button.text() === '删除')!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text() === '确认删除')!.trigger('click')
+    await flushPromises()
+
+    expect(navigation.replace).toHaveBeenCalledWith({ name: 'entry-edit', params: { id: '51' } })
+  })
+
+  it('keeps a blank writing canvas for an article absent from the directory', async () => {
+    const server = installMutableServer()
+    navigation.replace.mockResolvedValue(undefined)
+    const wrapper = await mountEditor(server.current)
+    storeFor(wrapper).setDirectoryEntries([listItem({ id: 51 })])
+
+    await wrapper.findAll('button').find((button) => button.text() === '删除')!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text() === '确认删除')!.trigger('click')
+    await flushPromises()
+
+    expect(navigation.replace).toHaveBeenCalledWith({ name: 'entry-blank' })
+    expect(wrapper.find('[data-writing-blank]').exists()).toBe(true)
   })
 
   it('blocks edits while deletion is in flight and never patches the deleted entry', async () => {
@@ -360,7 +422,7 @@ describe('EntryEditor autosave integration', () => {
     await vi.advanceTimersByTimeAsync(1000)
 
     expect(api.updateEntry).not.toHaveBeenCalled()
-    expect(navigation.replace).toHaveBeenCalledWith({ name: 'entries' })
+    expect(navigation.replace).toHaveBeenCalledWith({ name: 'entry-blank' })
   })
 
   it('does not delete when the required pre-delete flush fails', async () => {

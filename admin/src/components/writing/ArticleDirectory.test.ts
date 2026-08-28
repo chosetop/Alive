@@ -112,6 +112,7 @@ describe('ArticleDirectory', () => {
     // No status: "recent" spans every status, ordered by last edit. Passing one
     // would quietly turn the top of the pane into a draft list.
     expect(api.listEntriesAdmin).toHaveBeenCalledExactlyOnceWith({ page_size: 20 })
+    expect(useWritingStore().directoryEntries.map((entry) => entry.id)).toEqual([1])
   })
 
   it('does not request any status group until one is opened', async () => {
