@@ -302,7 +302,7 @@ function isUnsynced(item: EntryListItem): boolean {
     :data-writing-drawer="drawer ? 'true' : undefined"
   >
     <div class="brand">
-      <span class="wordmark">Alive</span>
+      <RouterLink class="wordmark" to="/dashboard" aria-label="返回 Dashboard" data-directory-brand>Alive</RouterLink>
       <UiIconButton
         :label="drawer ? '关闭文章目录' : '收起文章目录'"
         data-directory-collapse

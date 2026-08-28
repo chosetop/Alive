@@ -152,12 +152,10 @@ describe('WorkspaceHeader', () => {
     expect(store.directoryOpen).toBe(true)
   })
 
-  it('links the writing brand back to Dashboard', () => {
+  it('does not duplicate the directory brand in the writing header', () => {
     const wrapper = mountHeader()
-    const brand = wrapper.get('[data-writing-brand]')
 
-    expect(brand.attributes('href')).toBe('/dashboard')
-    expect(brand.text()).toBe('Alive')
+    expect(wrapper.find('[data-writing-brand]').exists()).toBe(false)
   })
 
   it('offers no publish or menu before the record exists', () => {

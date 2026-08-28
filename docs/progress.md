@@ -1478,3 +1478,9 @@ harness 需要 `VITE_API_BASE_URL`（客户端没有它会抛错），临时写�
 - Dashboard 移除“编辑器将在下一步接入，目前内容列表是只读的。”，改为真实统计卡片：已写字数、总文章数、已发布篇数；数据来自受保护的 `/api/v1/admin/dashboard`。
 - 后端新增 Dashboard 统计接口和后台文章分类筛选，统计排除软删除文章。
 - 验证：Node 22.17.0 下 admin **210 tests passed**、build 通过；主题包 **5 tests passed**；backend `make check` 通过；`git diff --check` 通过。
+
+## 35. Dashboard 统计运行时修复与写作区品牌收束（2026-08-28）
+
+- 复现并确认 Dashboard 无数据的原因是运行中的 Go 服务仍是旧进程，前端请求 `/api/v1/admin/dashboard` 得到 404；已用当前工作树后端重启本地服务，浏览器实际显示已写字数 1,662、总文章数 31、已发布 10。
+- 写作区顶部 Alive 已移除；侧边栏 Alive 改为可点击返回 Dashboard 的链接，写作区保留其他右上角直出操作。
+- 验证：admin **211 tests passed**、production build 通过；主题包 **5 tests passed**；backend `make check` 通过；浏览器已确认 Dashboard 统计卡片和侧边栏品牌入口。

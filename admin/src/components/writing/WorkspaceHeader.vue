@@ -75,7 +75,6 @@ const publishLabel = computed(() =>
 <template>
   <header class="header" data-workspace-header data-surface="glass">
     <div class="left">
-      <RouterLink class="brand-link" to="/dashboard" aria-label="返回 Dashboard" data-writing-brand>Alive</RouterLink>
       <!-- Rendered only while the directory is hidden. Its counterpart lives in
            the directory's own header, so the control is always beside the thing
            it acts on rather than in a fixed spot the pane may have covered. -->

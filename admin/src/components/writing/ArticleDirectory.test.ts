@@ -115,6 +115,15 @@ describe('ArticleDirectory', () => {
     expect(useWritingStore().directoryEntries.map((entry) => entry.id)).toEqual([1])
   })
 
+  it('makes the sidebar Alive wordmark return to Dashboard', async () => {
+    const wrapper = await mountDirectory()
+
+    const brand = wrapper.get('[data-directory-brand]')
+    expect(brand.text()).toBe('Alive')
+    expect(brand.attributes('to')).toBe('/dashboard')
+    expect(brand.attributes('aria-label')).toBe('返回 Dashboard')
+  })
+
   it('does not request any status group until one is opened', async () => {
     const wrapper = await mountDirectory()
     expect(api.listEntriesAdmin).toHaveBeenCalledOnce()
