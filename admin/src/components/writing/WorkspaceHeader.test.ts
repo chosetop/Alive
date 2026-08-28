@@ -182,7 +182,7 @@ describe('WorkspaceHeader', () => {
     const wrapper = mountHeader({ entryStatus: 'draft' })
 
     expect(wrapper.get('[data-header-delete]').text()).toBe('删除')
-    expect(wrapper.get('[data-more-actions] .ui-icon').attributes('aria-hidden')).toBe('true')
+    expect(wrapper.find('[data-more-actions]').exists()).toBe(false)
     expect(wrapper.find('[data-header-delete-confirm]').exists()).toBe(false)
     expect(wrapper.get('[data-publish]').text()).toBe('发布')
   })
