@@ -405,7 +405,7 @@ func TestListPublicEntriesOrdering(t *testing.T) {
 		// been seen. Counting pages would depend on how many entries other packages
 		// happen to hold.
 		seen := make(map[string]int)
-		for offset := int32(0); offset < 200; offset += 2 {
+		for offset := int32(0); ; offset += 2 {
 			rows, err := q.ListPublicEntries(ctx, sqlcgen.ListPublicEntriesParams{
 				Limit: 2, Offset: offset,
 			})

@@ -282,6 +282,48 @@ func TestMiddlewareSeparatesAddresses(t *testing.T) {
 	}
 }
 
+func TestMiddlewareUsesForwardedClientIPOnlyFromTrustedProxy(t *testing.T) {
+	reached := 0
+	limiter := middleware.NewRateLimiter(1, time.Minute)
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	if err := engine.SetTrustedProxies([]string{"10.0.0.1/32"}); err != nil {
+		t.Fatalf("SetTrustedProxies: %v", err)
+	}
+	engine.POST("/api/v1/auth/login", limiter.Middleware(discardLogger()), func(c *gin.Context) {
+		reached++
+		c.Status(http.StatusOK)
+	})
+
+	postFrom := func(remote, forwarded string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+		req.RemoteAddr = remote + ":54321"
+		req.Header.Set("X-Forwarded-For", forwarded)
+		rec := httptest.NewRecorder()
+		engine.ServeHTTP(rec, req)
+		return rec
+	}
+
+	if rec := postFrom("10.0.0.1", "192.0.2.1"); rec.Code != http.StatusOK {
+		t.Fatalf("first forwarded client: status = %d, want 200", rec.Code)
+	}
+	if rec := postFrom("10.0.0.1", "192.0.2.1"); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("same forwarded client: status = %d, want 429", rec.Code)
+	}
+	if rec := postFrom("10.0.0.1", "192.0.2.2"); rec.Code != http.StatusOK {
+		t.Fatalf("different forwarded client: status = %d, want 200", rec.Code)
+	}
+	if rec := postFrom("198.51.100.7", "192.0.2.3"); rec.Code != http.StatusOK {
+		t.Fatalf("first untrusted proxy request: status = %d, want 200", rec.Code)
+	}
+	if rec := postFrom("198.51.100.7", "192.0.2.4"); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("untrusted proxy must use socket address: status = %d, want 429", rec.Code)
+	}
+	if reached != 3 {
+		t.Errorf("handler reached %d times, want 3", reached)
+	}
+}
+
 // TestLoginRateLimitDisabled covers the switch. Returning nil rather than a
 // pass-through handler is what keeps a disabled limiter out of the chain.
 func TestLoginRateLimitDisabled(t *testing.T) {

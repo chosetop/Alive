@@ -11,6 +11,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -28,12 +29,13 @@ const (
 
 // Config is the fully validated configuration for one process.
 type Config struct {
-	Env       Env
-	Server    ServerConfig
-	Database  DatabaseConfig
-	CORS      CORSConfig
-	Session   SessionConfig
-	RateLimit RateLimitConfig
+	Env            Env
+	Server         ServerConfig
+	Database       DatabaseConfig
+	CORS           CORSConfig
+	Session        SessionConfig
+	RateLimit      RateLimitConfig
+	TrustedProxies []string
 }
 
 // IsDevelopment reports whether verbose, human-oriented behaviour is allowed.
@@ -91,7 +93,8 @@ type SessionConfig struct {
 	// Lifetime is how long a session lives from its last renewal. It is also the
 	// cookie's Max-Age, so the browser stops sending a token at about the moment
 	// the server stops accepting it.
-	Lifetime time.Duration
+	Lifetime         time.Duration
+	AbsoluteLifetime time.Duration
 
 	// CookieName is the name of the session cookie.
 	CookieName string
@@ -191,6 +194,12 @@ func Load() (*Config, error) {
 	sessionLifetime, err := parseDuration("SESSION_LIFETIME", lookup("SESSION_LIFETIME", "168h"))
 	collect(err)
 
+	absoluteSessionLifetime, err := parseDuration("SESSION_ABSOLUTE_LIFETIME", lookup("SESSION_ABSOLUTE_LIFETIME", "720h"))
+	collect(err)
+
+	trustedProxies, err := parseTrustedProxies(lookup("TRUSTED_PROXIES", ""))
+	collect(err)
+
 	// Defaults to on. A deployment has to say so explicitly to send a session
 	// cookie over plain HTTP, and validate() then refuses to let production do it.
 	cookieSecure, err := parseBool("SESSION_COOKIE_SECURE", lookup("SESSION_COOKIE_SECURE", "true"))
@@ -251,16 +260,18 @@ func Load() (*Config, error) {
 			MaxAge:           corsMaxAge,
 		},
 		Session: SessionConfig{
-			Lifetime:     sessionLifetime,
-			CookieName:   cookieName,
-			CookiePath:   cookiePath,
-			CookieSecure: cookieSecure,
+			Lifetime:         sessionLifetime,
+			AbsoluteLifetime: absoluteSessionLifetime,
+			CookieName:       cookieName,
+			CookiePath:       cookiePath,
+			CookieSecure:     cookieSecure,
 		},
 		RateLimit: RateLimitConfig{
 			LoginAttempts: loginAttempts,
 			LoginWindow:   loginWindow,
 			Enabled:       rateLimitEnabled,
 		},
+		TrustedProxies: trustedProxies,
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -304,6 +315,12 @@ func (c *Config) validate() error {
 	if c.Session.Lifetime <= 0 {
 		errs = append(errs, fmt.Errorf("SESSION_LIFETIME must be positive, got %s", c.Session.Lifetime))
 	}
+	if c.Session.AbsoluteLifetime <= 0 {
+		errs = append(errs, fmt.Errorf("SESSION_ABSOLUTE_LIFETIME must be positive, got %s", c.Session.AbsoluteLifetime))
+	}
+	if c.Session.AbsoluteLifetime < c.Session.Lifetime {
+		errs = append(errs, fmt.Errorf("SESSION_ABSOLUTE_LIFETIME (%s) must not be shorter than SESSION_LIFETIME (%s)", c.Session.AbsoluteLifetime, c.Session.Lifetime))
+	}
 	if c.Session.CookieName == "" {
 		errs = append(errs, errors.New("SESSION_COOKIE_NAME must not be empty"))
 	}
@@ -339,8 +356,39 @@ func (c *Config) validate() error {
 				"an unlimited login endpoint can be brute-forced, and each attempt "+
 				"costs the server one password hash"))
 	}
+	if c.Env == EnvProduction && len(c.TrustedProxies) == 0 {
+		errs = append(errs, errors.New(
+			"TRUSTED_PROXIES must list at least one proxy network in production; refusing to trust forwarded client addresses implicitly"))
+	}
 
 	return errors.Join(errs...)
+}
+
+func parseTrustedProxies(raw string) ([]string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+
+	var proxies []string
+	for _, item := range strings.Split(raw, ",") {
+		proxy := strings.TrimSpace(item)
+		if proxy == "" {
+			return nil, errors.New("TRUSTED_PROXIES contains an empty entry")
+		}
+		if ip := net.ParseIP(proxy); ip != nil {
+			if ip.To4() != nil {
+				proxy += "/32"
+			} else {
+				proxy += "/128"
+			}
+		} else if _, network, err := net.ParseCIDR(proxy); err != nil {
+			return nil, fmt.Errorf("TRUSTED_PROXIES entry %q is not an IP or CIDR: %w", proxy, err)
+		} else if ones, _ := network.Mask.Size(); ones == 0 {
+			return nil, fmt.Errorf("TRUSTED_PROXIES entry %q is too broad; use the proxy's IP or private network", proxy)
+		}
+		proxies = append(proxies, proxy)
+	}
+	return proxies, nil
 }
 
 // resolveDSN prefers DATABASE_URL and otherwise assembles a DSN from parts.

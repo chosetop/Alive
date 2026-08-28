@@ -871,8 +871,13 @@ func TestRepositoryAdminReadsSeeEveryStatus(t *testing.T) {
 		// Touching the oldest row moves it to the front, which happened_at ordering
 		// would not do.
 		oldest := rows[0]
+		current, err := repo.GetByID(ctx, oldest.id)
+		if err != nil {
+			t.Fatalf("read oldest entry: %v", err)
+		}
 		if _, err := repo.Update(ctx, entry.UpdateParams{
-			ID: oldest.id, SetTitle: true, Title: "touched last",
+			ID: oldest.id, ExpectedRevision: current.Revision,
+			SetTitle: true, Title: "touched last",
 		}); err != nil {
 			t.Fatalf("update: %v", err)
 		}

@@ -64,8 +64,10 @@ func checkConfig() error {
 	fmt.Printf("  db max conns    %d\n", cfg.Database.MaxOpenConns)
 	fmt.Printf("  cors origins    %v\n", cfg.CORS.AllowedOrigins)
 	fmt.Printf("  session ttl     %s\n", cfg.Session.Lifetime)
+	fmt.Printf("  session max age %s\n", cfg.Session.AbsoluteLifetime)
 	fmt.Printf("  session cookie  %s (path %s, secure %t)\n",
 		cfg.Session.CookieName, cfg.Session.CookiePath, cfg.Session.CookieSecure)
+	fmt.Printf("  trusted proxies %v\n", cfg.TrustedProxies)
 
 	if cfg.RateLimit.Enabled {
 		fmt.Printf("  login limit     %d per %s per ip\n",

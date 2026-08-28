@@ -64,6 +64,7 @@ func run() error {
 	authService := auth.NewService(
 		auth.NewRepository(pool),
 		auth.WithSessionLifetime(cfg.Session.Lifetime),
+		auth.WithSessionAbsoluteLifetime(cfg.Session.AbsoluteLifetime),
 		auth.WithLogger(logger),
 	)
 

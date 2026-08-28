@@ -122,13 +122,14 @@ func (f *Store) CreateSession(_ context.Context, params auth.CreateSessionParams
 	}
 
 	session := auth.Session{
-		ID:        f.nextSessionID,
-		UserID:    params.UserID,
-		TokenHash: params.TokenHash,
-		ExpiresAt: params.ExpiresAt,
-		CreatedAt: time.Now(),
-		UserAgent: params.UserAgent,
-		IP:        params.IP,
+		ID:                f.nextSessionID,
+		UserID:            params.UserID,
+		TokenHash:         params.TokenHash,
+		ExpiresAt:         params.ExpiresAt,
+		AbsoluteExpiresAt: params.AbsoluteExpiresAt,
+		CreatedAt:         time.Now(),
+		UserAgent:         params.UserAgent,
+		IP:                params.IP,
 	}
 	f.sessions[key(params.TokenHash)] = session
 	f.nextSessionID++

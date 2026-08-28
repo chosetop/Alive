@@ -4,6 +4,9 @@ import { defineConfig } from 'vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [vue()],
+  // Production is mounted below the public site's /admin path. Development
+  // keeps the root base so the documented localhost URLs remain unchanged.
+  base: process.env.NODE_ENV === 'production' ? '/admin/' : '/',
   server: {
     // Pinned, not left to Vite's fallback. The backend's CORS_ALLOWED_ORIGINS
     // lists this exact origin, and a credentialed API cannot use "*", so a

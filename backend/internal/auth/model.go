@@ -71,11 +71,12 @@ type Credentials struct {
 // TokenHash is present; the plaintext token is not. The plaintext exists once,
 // in the response that sets the cookie, and is never stored or returned again.
 type Session struct {
-	ID        int64
-	UserID    int64
-	TokenHash []byte
-	ExpiresAt time.Time
-	CreatedAt time.Time
+	ID                int64
+	UserID            int64
+	TokenHash         []byte
+	ExpiresAt         time.Time
+	AbsoluteExpiresAt time.Time
+	CreatedAt         time.Time
 
 	// UserAgent and IP are recorded for review only. Authentication never
 	// compares them: pinning a session to an IP ends the login when a phone
@@ -91,7 +92,7 @@ type Session struct {
 // The clock is a parameter rather than a call to time.Now inside, so tests can
 // check the boundary without sleeping.
 func (s Session) IsExpired(now time.Time) bool {
-	return !s.ExpiresAt.After(now)
+	return !s.ExpiresAt.After(now) || (!s.AbsoluteExpiresAt.IsZero() && !s.AbsoluteExpiresAt.After(now))
 }
 
 // NeedsRenewal reports whether less than half of lifetime remains.

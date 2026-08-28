@@ -20,11 +20,12 @@ func openSession(t *testing.T, repo *auth.Repository, userID int64, expiresAt ti
 	}
 
 	session, err := repo.CreateSession(context.Background(), auth.CreateSessionParams{
-		UserID:    userID,
-		TokenHash: hash,
-		ExpiresAt: expiresAt,
-		UserAgent: "curl/8.4.0",
-		IP:        netip.MustParseAddr("127.0.0.1"),
+		UserID:            userID,
+		TokenHash:         hash,
+		ExpiresAt:         expiresAt,
+		AbsoluteExpiresAt: time.Now().Add(30 * 24 * time.Hour),
+		UserAgent:         "curl/8.4.0",
+		IP:                netip.MustParseAddr("127.0.0.1"),
 	})
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)

@@ -131,34 +131,37 @@ func (r *Repository) GetUserByID(ctx context.Context, id int64) (User, error) {
 // TokenHash is a digest. The plaintext token never reaches this layer, which is
 // enforced by the Token type living outside it.
 type CreateSessionParams struct {
-	UserID    int64
-	TokenHash []byte
-	ExpiresAt time.Time
-	UserAgent string
-	IP        netip.Addr
+	UserID            int64
+	TokenHash         []byte
+	ExpiresAt         time.Time
+	AbsoluteExpiresAt time.Time
+	UserAgent         string
+	IP                netip.Addr
 }
 
 // CreateSession inserts a session and returns it.
 func (r *Repository) CreateSession(ctx context.Context, params CreateSessionParams) (Session, error) {
 	row, err := r.q.CreateSession(ctx, sqlcgen.CreateSessionParams{
-		UserID:    params.UserID,
-		TokenHash: params.TokenHash,
-		ExpiresAt: params.ExpiresAt,
-		UserAgent: optionalString(params.UserAgent),
-		Ip:        optionalAddr(params.IP),
+		UserID:            params.UserID,
+		TokenHash:         params.TokenHash,
+		ExpiresAt:         params.ExpiresAt,
+		AbsoluteExpiresAt: params.AbsoluteExpiresAt,
+		UserAgent:         optionalString(params.UserAgent),
+		Ip:                optionalAddr(params.IP),
 	})
 	if err != nil {
 		return Session{}, fmt.Errorf("auth: create session: %w", err)
 	}
 
 	return Session{
-		ID:        row.ID,
-		UserID:    row.UserID,
-		TokenHash: params.TokenHash,
-		ExpiresAt: row.ExpiresAt,
-		CreatedAt: row.CreatedAt,
-		UserAgent: params.UserAgent,
-		IP:        params.IP,
+		ID:                row.ID,
+		UserID:            row.UserID,
+		TokenHash:         params.TokenHash,
+		ExpiresAt:         row.ExpiresAt,
+		AbsoluteExpiresAt: row.AbsoluteExpiresAt,
+		CreatedAt:         row.CreatedAt,
+		UserAgent:         params.UserAgent,
+		IP:                params.IP,
 	}, nil
 }
 
@@ -186,13 +189,14 @@ func (r *Repository) GetSessionByHash(ctx context.Context, tokenHash []byte) (Au
 			UpdatedAt:   row.UserUpdatedAt,
 		},
 		Session: Session{
-			ID:        row.ID,
-			UserID:    row.UserID,
-			TokenHash: row.TokenHash,
-			ExpiresAt: row.ExpiresAt,
-			CreatedAt: row.CreatedAt,
-			UserAgent: derefString(row.UserAgent),
-			IP:        derefAddr(row.Ip),
+			ID:                row.ID,
+			UserID:            row.UserID,
+			TokenHash:         row.TokenHash,
+			ExpiresAt:         row.ExpiresAt,
+			AbsoluteExpiresAt: row.AbsoluteExpiresAt,
+			CreatedAt:         row.CreatedAt,
+			UserAgent:         derefString(row.UserAgent),
+			IP:                derefAddr(row.Ip),
 		},
 	}, nil
 }

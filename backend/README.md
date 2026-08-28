@@ -1,5 +1,7 @@
 # Alive Backend
 
+生产拓扑、配置、日志、备份恢复和发布 smoke test 见 [`docs/deployment.md`](../docs/deployment.md)。
+
 HTTP API for Alive, a personal record site. Go + Gin + PostgreSQL.
 
 This stage contains infrastructure only: configuration, database pool,
@@ -323,13 +325,11 @@ request buys 200 ms of the server's CPU.
 Set `RATE_LIMIT_ENABLED=false` to turn it off for a script that logs in in a
 loop. Production refuses to start with it off.
 
-**Behind a reverse proxy, read this first.** The limiter keys on
-`c.ClientIP()`, and the router currently trusts no proxy, so that is the socket
-address. Once Caddy is in front, every request appears to come from the proxy's
-own address, all callers land in one bucket, and the limit stops being per-client:
-it becomes a site-wide cap where one attacker locks out the owner. Configure
-`SetTrustedProxies` in `internal/router/router.go` **before** putting a proxy in
-front.
+**Behind a reverse proxy, configure `TRUSTED_PROXIES` first.** The router trusts
+only the configured proxy IPs/CIDRs, so `c.ClientIP()` uses `X-Forwarded-For` only
+when the socket peer is one of those proxies. Direct local development trusts no
+proxy headers. An incomplete or overly broad production list is a deployment
+configuration error; see `docs/deployment.md`.
 
 **8. Expired sessions are refused and can be swept**
 
@@ -346,6 +346,8 @@ refused at authentication.
 A session is extended on use once it is past halfway through its lifetime, and
 the response then carries a fresh `Set-Cookie` with the same token and a new
 `Max-Age`. Renewing on every request would turn each read into a write.
+The session also has a 30-day absolute maximum age (`SESSION_ABSOLUTE_LIFETIME`);
+sliding renewal never crosses that boundary.
 
 ## Layout
 

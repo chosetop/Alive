@@ -33,6 +33,7 @@ var _ Store = (*Repository)(nil)
 
 // DefaultSessionLifetime is how long a session lives from its last renewal.
 const DefaultSessionLifetime = 7 * 24 * time.Hour
+const DefaultSessionAbsoluteLifetime = 30 * 24 * time.Hour
 
 // Password length bounds.
 //
@@ -81,10 +82,11 @@ type Clock func() time.Time
 // Set-Cookie header is the adapter's job. The CLI reaches the same methods
 // without a request in sight.
 type Service struct {
-	store    Store
-	lifetime time.Duration
-	now      Clock
-	log      *slog.Logger
+	store            Store
+	lifetime         time.Duration
+	absoluteLifetime time.Duration
+	now              Clock
+	log              *slog.Logger
 }
 
 // ServiceOption adjusts a Service at construction.
@@ -95,6 +97,15 @@ func WithSessionLifetime(d time.Duration) ServiceOption {
 	return func(s *Service) {
 		if d > 0 {
 			s.lifetime = d
+		}
+	}
+}
+
+// WithSessionAbsoluteLifetime overrides the maximum age from login.
+func WithSessionAbsoluteLifetime(d time.Duration) ServiceOption {
+	return func(s *Service) {
+		if d > 0 {
+			s.absoluteLifetime = d
 		}
 	}
 }
@@ -121,9 +132,10 @@ func WithLogger(l *slog.Logger) ServiceOption {
 // NewService builds a Service over store.
 func NewService(store Store, opts ...ServiceOption) *Service {
 	s := &Service{
-		store:    store,
-		lifetime: DefaultSessionLifetime,
-		now:      time.Now,
+		store:            store,
+		lifetime:         DefaultSessionLifetime,
+		absoluteLifetime: DefaultSessionAbsoluteLifetime,
+		now:              time.Now,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -194,12 +206,19 @@ func (s *Service) Login(ctx context.Context, params LoginParams) (LoginResult, e
 		return LoginResult{}, err
 	}
 
+	now := s.now()
+	absoluteExpiresAt := now.Add(s.absoluteLifetime)
+	expiresAt := now.Add(s.lifetime)
+	if expiresAt.After(absoluteExpiresAt) {
+		expiresAt = absoluteExpiresAt
+	}
 	session, err := s.store.CreateSession(ctx, CreateSessionParams{
-		UserID:    creds.User.ID,
-		TokenHash: tokenHash,
-		ExpiresAt: s.now().Add(s.lifetime),
-		UserAgent: params.UserAgent,
-		IP:        params.IP,
+		UserID:            creds.User.ID,
+		TokenHash:         tokenHash,
+		ExpiresAt:         expiresAt,
+		AbsoluteExpiresAt: absoluteExpiresAt,
+		UserAgent:         params.UserAgent,
+		IP:                params.IP,
 	})
 	if err != nil {
 		return LoginResult{}, err
@@ -240,6 +259,12 @@ func (s *Service) Authenticate(ctx context.Context, token Token) (Authenticated,
 
 	if authenticated.Session.NeedsRenewal(now, s.lifetime) {
 		extended := now.Add(s.lifetime)
+		if !authenticated.Session.AbsoluteExpiresAt.IsZero() && extended.After(authenticated.Session.AbsoluteExpiresAt) {
+			extended = authenticated.Session.AbsoluteExpiresAt
+		}
+		if !extended.After(now) {
+			return Authenticated{}, ErrSessionExpired
+		}
 		if err := s.store.TouchSession(ctx, authenticated.Session.ID, extended); err != nil {
 			s.logger().WarnContext(ctx, "session renewal failed",
 				slog.Int64("session_id", authenticated.Session.ID),

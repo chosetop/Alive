@@ -16,31 +16,35 @@ INSERT INTO sessions (
     user_id,
     token_hash,
     expires_at,
+    absolute_expires_at,
     user_agent,
     ip
 ) VALUES (
-    $1, $2, $3, $4, $5
+    $1, $2, $3, $4, $5, $6
 )
 RETURNING
     id,
     user_id,
     expires_at,
+    absolute_expires_at,
     created_at
 `
 
 type CreateSessionParams struct {
-	UserID    int64
-	TokenHash []byte
-	ExpiresAt time.Time
-	UserAgent *string
-	Ip        *netip.Addr
+	UserID            int64
+	TokenHash         []byte
+	ExpiresAt         time.Time
+	AbsoluteExpiresAt time.Time
+	UserAgent         *string
+	Ip                *netip.Addr
 }
 
 type CreateSessionRow struct {
-	ID        int64
-	UserID    int64
-	ExpiresAt time.Time
-	CreatedAt time.Time
+	ID                int64
+	UserID            int64
+	ExpiresAt         time.Time
+	AbsoluteExpiresAt time.Time
+	CreatedAt         time.Time
 }
 
 // token_hash is supplied by the caller, already hashed. The plaintext token
@@ -50,6 +54,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (C
 		arg.UserID,
 		arg.TokenHash,
 		arg.ExpiresAt,
+		arg.AbsoluteExpiresAt,
 		arg.UserAgent,
 		arg.Ip,
 	)
@@ -58,6 +63,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (C
 		&i.ID,
 		&i.UserID,
 		&i.ExpiresAt,
+		&i.AbsoluteExpiresAt,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -171,6 +177,7 @@ SELECT
     s.user_id,
     s.token_hash,
     s.expires_at,
+    s.absolute_expires_at,
     s.created_at,
     s.user_agent,
     s.ip,
@@ -186,19 +193,20 @@ WHERE s.token_hash = $1
 `
 
 type GetSessionByHashRow struct {
-	ID              int64
-	UserID          int64
-	TokenHash       []byte
-	ExpiresAt       time.Time
-	CreatedAt       time.Time
-	UserAgent       *string
-	Ip              *netip.Addr
-	UserIDRef       int64
-	UserUsername    string
-	UserRole        string
-	UserDisplayName *string
-	UserCreatedAt   time.Time
-	UserUpdatedAt   time.Time
+	ID                int64
+	UserID            int64
+	TokenHash         []byte
+	ExpiresAt         time.Time
+	AbsoluteExpiresAt time.Time
+	CreatedAt         time.Time
+	UserAgent         *string
+	Ip                *netip.Addr
+	UserIDRef         int64
+	UserUsername      string
+	UserRole          string
+	UserDisplayName   *string
+	UserCreatedAt     time.Time
+	UserUpdatedAt     time.Time
 }
 
 // The authentication lookup. One round trip returns the session and its user,
@@ -216,6 +224,7 @@ func (q *Queries) GetSessionByHash(ctx context.Context, tokenHash []byte) (GetSe
 		&i.UserID,
 		&i.TokenHash,
 		&i.ExpiresAt,
+		&i.AbsoluteExpiresAt,
 		&i.CreatedAt,
 		&i.UserAgent,
 		&i.Ip,
@@ -299,7 +308,7 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 
 const touchSession = `-- name: TouchSession :exec
 UPDATE sessions
-SET expires_at = $2
+SET expires_at = LEAST($2, absolute_expires_at)
 WHERE id = $1
 `
 

@@ -123,10 +123,11 @@ func TestSessionQueries(t *testing.T) {
 	expiresAt := time.Now().Add(7 * 24 * time.Hour)
 
 	session, err := q.CreateSession(ctx, sqlcgen.CreateSessionParams{
-		UserID:    user.ID,
-		TokenHash: hash[:],
-		ExpiresAt: expiresAt,
-		UserAgent: &userAgent,
+		UserID:            user.ID,
+		TokenHash:         hash[:],
+		ExpiresAt:         expiresAt,
+		AbsoluteExpiresAt: time.Now().Add(30 * 24 * time.Hour),
+		UserAgent:         &userAgent,
 	})
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
@@ -154,9 +155,10 @@ func TestSessionQueries(t *testing.T) {
 		// would be indistinguishable to the caller.
 		expiredHash := sha256.Sum256([]byte("expired-token"))
 		if _, err := q.CreateSession(ctx, sqlcgen.CreateSessionParams{
-			UserID:    user.ID,
-			TokenHash: expiredHash[:],
-			ExpiresAt: time.Now().Add(-time.Hour),
+			UserID:            user.ID,
+			TokenHash:         expiredHash[:],
+			ExpiresAt:         time.Now().Add(-time.Hour),
+			AbsoluteExpiresAt: time.Now().Add(30 * 24 * time.Hour),
 		}); err != nil {
 			t.Fatalf("CreateSession: %v", err)
 		}

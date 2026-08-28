@@ -96,10 +96,11 @@ func New(deps Dependencies) *gin.Engine {
 		middleware.CORS(deps.Config.CORS),
 	)
 
-	// Trust no proxy headers by default. Without this, a client can spoof
-	// X-Forwarded-For and control what ClientIP reports into the logs. Set this
-	// to the real proxy once one is in front of the service.
-	_ = engine.SetTrustedProxies(nil)
+	// Trust only explicitly configured proxy networks. This keeps direct local
+	// requests safe while allowing production rate limiting to use X-Forwarded-For.
+	if err := engine.SetTrustedProxies(deps.Config.TrustedProxies); err != nil {
+		panic("router: invalid trusted proxy configuration: " + err.Error())
+	}
 
 	// Off by default in gin, which makes a wrong method return 404 and hides a
 	// common client mistake behind a misleading status.

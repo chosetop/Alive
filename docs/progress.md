@@ -1499,3 +1499,16 @@ harness 需要 `VITE_API_BASE_URL`（客户端没有它会抛错），临时写�
 - 原 Aliyun OSS media upload 顺延为 **Plan 6**；媒体资源不是当前核心流程，不阻塞上线。
 - 新计划文件：`docs/superpowers/plans/2026-08-28-deployment-stability.md`。
 - 本轮只更新路线图与计划记录，没有修改代码、数据库或运行中的服务。
+
+## 38. Plan 5：部署与稳定性收口（2026-08-28）
+
+- 后端新增 migration `000009_session_absolute_expiry`，为 session 增加 `absolute_expires_at`；默认从登录起 30 天绝对过期，原 7 天滑动续期保留但不会越过硬上限。续期 SQL 同时用 `LEAST` 做存储层防线。
+- 新增 `SESSION_ABSOLUTE_LIFETIME` 与 `TRUSTED_PROXIES` 配置。开发环境默认不信任代理；生产环境必须显式提供代理 IP/CIDR，拒绝空配置、非法网络和 `0.0.0.0/0` 这类过宽网段。`config:check` 会报告绝对上限和代理列表，但不打印 DSN 内容。
+- router 只把配置的代理网络作为 trusted proxy，限流因此只在可信 socket peer 下读取 `X-Forwarded-For`；直接请求仍按 socket 地址限流。admin 生产构建改为 `/admin/` base path，本地开发仍为根路径。
+- 新增 [`docs/deployment.md`](deployment.md)：生产拓扑、HTTPS/API/静态 admin 路由、PostgreSQL 私网、生产环境变量、启动顺序、JSON 日志、探针、回滚、custom-format 备份、隔离恢复和发布 smoke test。没有写入密码、AccessKey 或 Token；OSS、Tags、SEO、访客校验和批量内容管理未触碰。
+- TDD 证据：绝对过期、边界续期、trusted proxy 与代理配置测试先红后绿；后端无数据库测试与隔离库测试均覆盖这些规则。
+- 数据库验证：`alive` 与重建后的 `alive_test` 均为 schema version `9`；开发库迁移前后 live entries/categories 为 `12/3`，只读 smoke 后仍为 `12/3`，session 数量为 `14`。
+- 隔离恢复验证：流式 `pg_dump --format=custom` 恢复到临时 `alive_plan5_restore_check`，`pg_restore --exit-on-error` 成功；恢复库检查为 version `9`、entries `12`、categories `3`、`absolute_expires_at` 列存在，随后删除临时库。
+- 验证：backend `make check`、隔离 PostgreSQL `go test -p 1 -count=1 ./...` 通过；另外 `go test -race ./...` 通过。admin 在显式 Node `20.19.4` 下 `npm run build` 通过，产物引用 `/admin/assets/...`。完整 admin Vitest 仍受既存 Node 20 + jsdom/undici `markAsUncloneable` 依赖错误影响，未把它误报为通过。
+- 运行时 smoke：新后端二进制启动日志正常，`/health=200`、`/health/ready=200`、未知路由 `404`、公开文章 slug `200`、unlisted slug `200` 且不在公开列表。未执行会修改文章的编辑/发布 smoke；实际开发账号为 `lzx`，未猜测或保存其密码，也未创建替代账号。
+- 修正两处既有集成测试假设：更新 entry 时补齐 Plan 1 的 `ExpectedRevision`，公开列表分页测试遍历至结果耗尽；这些只影响测试可靠性，不改变文章数据或业务行为。

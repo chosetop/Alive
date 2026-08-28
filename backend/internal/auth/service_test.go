@@ -88,6 +88,9 @@ func TestServiceLogin(t *testing.T) {
 		if want := now.Add(auth.DefaultSessionLifetime); !result.Session.ExpiresAt.Equal(want) {
 			t.Errorf("expires_at = %v, want %v", result.Session.ExpiresAt, want)
 		}
+		if want := now.Add(auth.DefaultSessionAbsoluteLifetime); !result.Session.AbsoluteExpiresAt.Equal(want) {
+			t.Errorf("absolute_expires_at = %v, want %v", result.Session.AbsoluteExpiresAt, want)
+		}
 		// Recorded for review, not consulted.
 		if result.Session.UserAgent != "curl/8.4.0" {
 			t.Errorf("user_agent = %q, want %q", result.Session.UserAgent, "curl/8.4.0")
@@ -183,6 +186,33 @@ func TestServiceLogin(t *testing.T) {
 			t.Error("Login returned nil after CreateSession failed")
 		}
 	})
+}
+
+func TestServiceAbsoluteSessionExpiryCapsRenewal(t *testing.T) {
+	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	clock := now
+	svc, _, _ := newTestService(t, now,
+		auth.WithClock(func() time.Time { return clock }),
+		auth.WithSessionAbsoluteLifetime(8*24*time.Hour),
+	)
+	token := loginAt(t, svc)
+
+	clock = now.Add(6*24*time.Hour + time.Hour)
+	got, err := svc.Authenticate(context.Background(), token)
+	if err != nil {
+		t.Fatalf("Authenticate before absolute boundary: %v", err)
+	}
+	if !got.Renewed {
+		t.Fatal("Renewed = false, want sliding renewal before absolute boundary")
+	}
+	if want := now.Add(8 * 24 * time.Hour); !got.Session.ExpiresAt.Equal(want) {
+		t.Errorf("expires_at = %v, want absolute boundary %v", got.Session.ExpiresAt, want)
+	}
+
+	clock = now.Add(8 * 24 * time.Hour)
+	if _, err := svc.Authenticate(context.Background(), token); !errors.Is(err, auth.ErrSessionExpired) {
+		t.Errorf("Authenticate at absolute boundary = %v, want ErrSessionExpired", err)
+	}
 }
 
 func TestServiceLoginTokensAreDistinct(t *testing.T) {

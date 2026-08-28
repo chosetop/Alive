@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -34,6 +35,7 @@ func TestCORSDefaultsPerEnvironment(t *testing.T) {
 	t.Run("production defaults to no origins", func(t *testing.T) {
 		setMinimalEnv(t)
 		t.Setenv("APP_ENV", "production")
+		t.Setenv("TRUSTED_PROXIES", "127.0.0.1/32")
 
 		cfg, err := config.Load()
 		if err != nil {
@@ -155,6 +157,9 @@ func TestSessionDefaults(t *testing.T) {
 	if want := 7 * 24 * time.Hour; cfg.Session.Lifetime != want {
 		t.Errorf("Lifetime = %v, want %v", cfg.Session.Lifetime, want)
 	}
+	if want := 30 * 24 * time.Hour; cfg.Session.AbsoluteLifetime != want {
+		t.Errorf("AbsoluteLifetime = %v, want %v", cfg.Session.AbsoluteLifetime, want)
+	}
 	if cfg.Session.CookieName != "alive_session" {
 		t.Errorf("CookieName = %q, want %q", cfg.Session.CookieName, "alive_session")
 	}
@@ -166,6 +171,40 @@ func TestSessionDefaults(t *testing.T) {
 	if !cfg.Session.CookieSecure {
 		t.Error("CookieSecure = false, want the default to be true")
 	}
+	if len(cfg.TrustedProxies) != 0 {
+		t.Errorf("TrustedProxies = %v, want none in development", cfg.TrustedProxies)
+	}
+}
+
+func TestProductionRequiresTrustedProxyConfiguration(t *testing.T) {
+	t.Run("production rejects an omitted proxy list", func(t *testing.T) {
+		setMinimalEnv(t)
+		t.Setenv("APP_ENV", "production")
+		t.Setenv("SESSION_COOKIE_SECURE", "true")
+
+		_, err := config.Load()
+		if err == nil {
+			t.Fatal("Load() = nil error, want a refusal")
+		}
+		if !strings.Contains(err.Error(), "TRUSTED_PROXIES") {
+			t.Errorf("error = %q, want it to name TRUSTED_PROXIES", err)
+		}
+	})
+
+	t.Run("production accepts explicit proxy CIDRs", func(t *testing.T) {
+		setMinimalEnv(t)
+		t.Setenv("APP_ENV", "production")
+		t.Setenv("SESSION_COOKIE_SECURE", "true")
+		t.Setenv("TRUSTED_PROXIES", "127.0.0.1/32, 10.0.0.0/8")
+
+		cfg, err := config.Load()
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if got, want := cfg.TrustedProxies, []string{"127.0.0.1/32", "10.0.0.0/8"}; !reflect.DeepEqual(got, want) {
+			t.Errorf("TrustedProxies = %v, want %v", got, want)
+		}
+	})
 }
 
 // TestProductionRequiresSecureCookie covers the trap the plan called out: if
@@ -177,6 +216,7 @@ func TestProductionRequiresSecureCookie(t *testing.T) {
 		setMinimalEnv(t)
 		t.Setenv("APP_ENV", "production")
 		t.Setenv("SESSION_COOKIE_SECURE", "false")
+		t.Setenv("TRUSTED_PROXIES", "127.0.0.1/32")
 
 		_, err := config.Load()
 		if err == nil {
@@ -207,6 +247,7 @@ func TestProductionRequiresSecureCookie(t *testing.T) {
 		setMinimalEnv(t)
 		t.Setenv("APP_ENV", "production")
 		t.Setenv("SESSION_COOKIE_SECURE", "true")
+		t.Setenv("TRUSTED_PROXIES", "127.0.0.1/32")
 
 		if _, err := config.Load(); err != nil {
 			t.Errorf("Load: %v", err)
@@ -240,6 +281,21 @@ func TestSessionRejectsInvalidValues(t *testing.T) {
 			name: "negative lifetime",
 			env:  map[string]string{"SESSION_LIFETIME": "-1h"},
 			want: "SESSION_LIFETIME",
+		},
+		{
+			name: "zero absolute lifetime",
+			env:  map[string]string{"SESSION_ABSOLUTE_LIFETIME": "0s"},
+			want: "SESSION_ABSOLUTE_LIFETIME",
+		},
+		{
+			name: "invalid proxy list",
+			env:  map[string]string{"TRUSTED_PROXIES": "not-a-network"},
+			want: "TRUSTED_PROXIES",
+		},
+		{
+			name: "public proxy network",
+			env:  map[string]string{"TRUSTED_PROXIES": "0.0.0.0/0"},
+			want: "TRUSTED_PROXIES",
 		},
 		{
 			name: "empty cookie name",
@@ -312,6 +368,7 @@ func TestProductionRequiresRateLimit(t *testing.T) {
 		t.Setenv("APP_ENV", "production")
 		t.Setenv("SESSION_COOKIE_SECURE", "true")
 		t.Setenv("RATE_LIMIT_ENABLED", "false")
+		t.Setenv("TRUSTED_PROXIES", "127.0.0.1/32")
 
 		_, err := config.Load()
 		if err == nil {

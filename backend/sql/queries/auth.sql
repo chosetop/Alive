@@ -59,15 +59,17 @@ INSERT INTO sessions (
     user_id,
     token_hash,
     expires_at,
+    absolute_expires_at,
     user_agent,
     ip
 ) VALUES (
-    $1, $2, $3, $4, $5
+    $1, $2, $3, $4, $5, $6
 )
 RETURNING
     id,
     user_id,
     expires_at,
+    absolute_expires_at,
     created_at;
 
 -- name: GetSessionByHash :one
@@ -83,6 +85,7 @@ SELECT
     s.user_id,
     s.token_hash,
     s.expires_at,
+    s.absolute_expires_at,
     s.created_at,
     s.user_agent,
     s.ip,
@@ -101,7 +104,7 @@ WHERE s.token_hash = $1;
 -- halfway point of its lifetime, so an active session is not one write per
 -- request.
 UPDATE sessions
-SET expires_at = $2
+SET expires_at = LEAST($2, absolute_expires_at)
 WHERE id = $1;
 
 -- name: DeleteSession :exec

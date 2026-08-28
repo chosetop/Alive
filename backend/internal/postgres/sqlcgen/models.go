@@ -43,13 +43,14 @@ type Entry struct {
 }
 
 type Session struct {
-	ID        int64
-	UserID    int64
-	TokenHash []byte
-	ExpiresAt time.Time
-	CreatedAt time.Time
-	UserAgent *string
-	Ip        *netip.Addr
+	ID                int64
+	UserID            int64
+	TokenHash         []byte
+	ExpiresAt         time.Time
+	CreatedAt         time.Time
+	UserAgent         *string
+	Ip                *netip.Addr
+	AbsoluteExpiresAt time.Time
 }
 
 type SiteSetting struct {
