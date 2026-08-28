@@ -85,6 +85,12 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('../views/EntryEditor.vue'),
       },
       {
+        path: 'blank',
+        name: 'entry-blank',
+        component: () => import('../views/EntryEditor.vue'),
+        props: { blank: true },
+      },
+      {
         // `props: true` hands `id` to the component as a prop, so the editor
         // does not reach into the route to find its own subject.
         path: ':id',

@@ -24,7 +24,7 @@ function mountHeader(
 ): VueWrapper {
   return mount(WorkspaceHeader, {
     props: { saveStatus: 'saved', ...props },
-    global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    global: { stubs: { RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' } } },
   })
 }
 
@@ -152,6 +152,14 @@ describe('WorkspaceHeader', () => {
     expect(store.directoryOpen).toBe(true)
   })
 
+  it('links the writing brand back to Dashboard', () => {
+    const wrapper = mountHeader()
+    const brand = wrapper.get('[data-writing-brand]')
+
+    expect(brand.attributes('href')).toBe('/dashboard')
+    expect(brand.text()).toBe('Alive')
+  })
+
   it('offers no publish or menu before the record exists', () => {
     // Publishing something never created has no meaning, and neither does
     // archiving it.
@@ -160,6 +168,14 @@ describe('WorkspaceHeader', () => {
     expect(wrapper.find('[data-publish]').exists()).toBe(false)
     expect(wrapper.find('[data-more-actions]').exists()).toBe(false)
     expect(wrapper.find('[data-preview]').exists()).toBe(false)
+  })
+
+  it('keeps writing actions directly visible instead of hiding them behind more', () => {
+    const wrapper = mountHeader({ entryStatus: 'draft' })
+
+    expect(wrapper.find('[data-more-actions]').exists()).toBe(false)
+    expect(wrapper.get('[data-header-settings]').text()).toContain('设置')
+    expect(wrapper.get('[data-header-archive]').text()).toContain('归档')
   })
 
   it('places deletion in the header with explicit confirmation', () => {
@@ -195,65 +211,25 @@ describe('WorkspaceHeader', () => {
     expect(wrapper.find('[data-preview]').exists()).toBe(false)
   })
 
-  /**
-   * Menu items live in a portal at the body, so these need a real document to
-   * attach to and two macrotask turns to settle Reka's open sequence -- the same
-   * reasoning as the primitive layer's own tests.
-   */
-  async function openMenu(entryStatus: EntryStatus): Promise<{
-    wrapper: VueWrapper
-    labels: string[]
-  }> {
-    const wrapper = mount(WorkspaceHeader, {
-      props: { saveStatus: 'saved', entryStatus },
-      attachTo: document.body,
-    })
-    await wrapper.get('[data-more-actions]').trigger('click')
-    await nextTick()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await nextTick()
-
-    const labels = [...document.querySelectorAll('[role="menuitem"]')].map(
-      (node) => node.textContent?.trim() ?? '',
-    )
-    return { wrapper, labels }
-  }
-
   it('offers unpublish only for a published article', async () => {
-    const published = await openMenu('published')
-    expect(published.labels).toContain('撤回为草稿')
-    published.wrapper.unmount()
+    const published = mountHeader({ entryStatus: 'published' })
+    expect(published.get('[data-header-unpublish]').text()).toContain('撤回')
 
-    // A draft has nothing to withdraw, and the endpoint would 400.
-    const draft = await openMenu('draft')
-    expect(draft.labels).not.toContain('撤回为草稿')
-    draft.wrapper.unmount()
+    const draft = mountHeader({ entryStatus: 'draft' })
+    expect(draft.find('[data-header-unpublish]').exists()).toBe(false)
   })
 
   it('offers archive only for something not already archived', async () => {
-    const draft = await openMenu('draft')
-    expect(draft.labels).toContain('归档')
-    draft.wrapper.unmount()
-
-    const archived = await openMenu('archived')
-    expect(archived.labels).not.toContain('归档')
-    archived.wrapper.unmount()
+    expect(mountHeader({ entryStatus: 'draft' }).get('[data-header-archive]').text()).toContain('归档')
+    expect(mountHeader({ entryStatus: 'archived' }).find('[data-header-archive]').exists()).toBe(false)
   })
 
-  it('reports the chosen action by id', async () => {
-    const { wrapper } = await openMenu('draft')
-    const archive = [...document.querySelectorAll('[role="menuitem"]')].find(
-      (node) => node.textContent?.trim() === '归档',
-    )
+  it('reports direct action buttons by id', async () => {
+    const wrapper = mountHeader({ entryStatus: 'draft' })
+    await wrapper.get('[data-header-settings]').trigger('click')
+    await wrapper.get('[data-header-archive]').trigger('click')
 
-    ;(archive as HTMLElement).click()
-    await nextTick()
-
-    // The id, never the index: the item list is computed from the entry's status,
-    // so an index would point at a different action for a published article.
-    expect(wrapper.emitted('action')?.[0]).toEqual(['archive'])
-    wrapper.unmount()
+    expect(wrapper.emitted('action')).toEqual([['settings'], ['archive']])
   })
 
   /**

@@ -86,6 +86,9 @@ let disposed = false
 
 const trimmedQuery = computed(() => writing.searchQuery.trim())
 const isSearchMode = computed(() => trimmedQuery.value !== '')
+const visibleRecent = computed(() =>
+  recent.value.filter((item) => writing.directoryEntries.some((entry) => entry.id === item.id)),
+)
 
 onMounted(() => {
   void loadRecent()
@@ -128,6 +131,7 @@ async function loadRecent(): Promise<void> {
     const page = await entriesApi.listEntriesAdmin({ page_size: RECENT_PAGE_SIZE })
     if (disposed) return
     recent.value = page.data
+    writing.setDirectoryEntries(page.data)
     error.value = null
   } catch (loadFailure) {
     if (!disposed) error.value = toUserMessage(loadFailure)
@@ -377,9 +381,9 @@ function isUnsynced(item: EntryListItem): boolean {
       <section class="group" aria-labelledby="directory-recent-heading">
         <h2 id="directory-recent-heading" class="group-title">最近</h2>
         <p v-if="isLoadingRecent" class="state">载入中…</p>
-        <p v-else-if="recent.length === 0" class="state">还没有文章</p>
+        <p v-else-if="visibleRecent.length === 0" class="state">还没有文章</p>
         <ul v-else class="list" data-directory-recent>
-          <li v-for="item in recent" :key="item.id">
+          <li v-for="item in visibleRecent" :key="item.id">
             <button
               class="item"
               type="button"
