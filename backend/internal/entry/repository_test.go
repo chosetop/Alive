@@ -830,7 +830,7 @@ func TestRepositoryAdminReadsSeeEveryStatus(t *testing.T) {
 	t.Run("the list reaches all of them", func(t *testing.T) {
 		// Filtered to this process's rows by prefix, since another package may be
 		// running against the same database.
-		listed, total, err := repo.ListAdmin(ctx, nil, nil, entry.MaxPageSize, 0)
+		listed, total, err := repo.ListAdmin(ctx, 0, nil, nil, entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -856,7 +856,7 @@ func TestRepositoryAdminReadsSeeEveryStatus(t *testing.T) {
 
 	t.Run("filtered by status", func(t *testing.T) {
 		draft := entry.StatusDraft
-		listed, _, err := repo.ListAdmin(ctx, &draft, nil, entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, 0, &draft, nil, entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -877,7 +877,7 @@ func TestRepositoryAdminReadsSeeEveryStatus(t *testing.T) {
 			t.Fatalf("update: %v", err)
 		}
 
-		listed, _, err := repo.ListAdmin(ctx, nil, nil, entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, 0, nil, nil, entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -900,7 +900,7 @@ func TestRepositoryAdminReadsSeeEveryStatus(t *testing.T) {
 			t.Errorf("GetByID = %v, want ErrEntryNotFound", err)
 		}
 
-		listed, _, err := repo.ListAdmin(ctx, nil, nil, entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, 0, nil, nil, entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -957,7 +957,7 @@ func TestRepositoryAdminListSearches(t *testing.T) {
 	}
 
 	t.Run("matches title, summary, and slug", func(t *testing.T) {
-		listed, total, err := repo.ListAdmin(ctx, nil, &token, entry.MaxPageSize, 0)
+		listed, total, err := repo.ListAdmin(ctx, 0, nil, &token, entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -972,7 +972,7 @@ func TestRepositoryAdminListSearches(t *testing.T) {
 	})
 
 	t.Run("ILIKE is case-insensitive", func(t *testing.T) {
-		listed, _, err := repo.ListAdmin(ctx, nil, ptr(strings.ToUpper(token)), entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, 0, nil, ptr(strings.ToUpper(token)), entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -983,7 +983,7 @@ func TestRepositoryAdminListSearches(t *testing.T) {
 
 	t.Run("intersects with the status filter", func(t *testing.T) {
 		draft := entry.StatusDraft
-		listed, total, err := repo.ListAdmin(ctx, &draft, &token, entry.MaxPageSize, 0)
+		listed, total, err := repo.ListAdmin(ctx, 0, &draft, &token, entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -999,7 +999,7 @@ func TestRepositoryAdminListSearches(t *testing.T) {
 	})
 
 	t.Run("a nil search is not a filter", func(t *testing.T) {
-		_, total, err := repo.ListAdmin(ctx, nil, nil, entry.MaxPageSize, 0)
+		_, total, err := repo.ListAdmin(ctx, 0, nil, nil, entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1010,7 +1010,7 @@ func TestRepositoryAdminListSearches(t *testing.T) {
 	})
 
 	t.Run("no match is an empty page, not an error", func(t *testing.T) {
-		listed, total, err := repo.ListAdmin(ctx, nil, ptr(token+"-absent"), entry.MaxPageSize, 0)
+		listed, total, err := repo.ListAdmin(ctx, 0, nil, ptr(token+"-absent"), entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1056,7 +1056,7 @@ func TestRepositoryAdminListSearchTreatsQueryAsLiteralText(t *testing.T) {
 	}
 
 	t.Run("underscore is a literal underscore, not any character", func(t *testing.T) {
-		listed, _, err := repo.ListAdmin(ctx, nil, ptr("read_me"), entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, 0, nil, ptr("read_me"), entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1070,7 +1070,7 @@ func TestRepositoryAdminListSearchTreatsQueryAsLiteralText(t *testing.T) {
 
 	t.Run("a bare underscore does not match everything", func(t *testing.T) {
 		// The worst case: one keystroke returning the whole directory unfiltered.
-		listed, _, err := repo.ListAdmin(ctx, nil, ptr("_"), entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, 0, nil, ptr("_"), entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1083,7 +1083,7 @@ func TestRepositoryAdminListSearchTreatsQueryAsLiteralText(t *testing.T) {
 	})
 
 	t.Run("percent is a literal percent sign", func(t *testing.T) {
-		listed, _, err := repo.ListAdmin(ctx, nil, ptr("80%"), entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, 0, nil, ptr("80%"), entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1098,7 +1098,7 @@ func TestRepositoryAdminListSearchTreatsQueryAsLiteralText(t *testing.T) {
 	t.Run("a lone backslash matches nothing rather than erroring", func(t *testing.T) {
 		// An escape character with nothing to escape is a malformed pattern in some
 		// engines. It must be ordinary text here.
-		listed, _, err := repo.ListAdmin(ctx, nil, ptr(`\`), entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, 0, nil, ptr(`\`), entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1130,7 +1130,7 @@ func TestRepositoryAdminListSearchIgnoresTheBody(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	listed, total, err := repo.ListAdmin(ctx, nil, &bodyOnly, entry.MaxPageSize, 0)
+	listed, total, err := repo.ListAdmin(ctx, 0, nil, &bodyOnly, entry.MaxPageSize, 0)
 	if err != nil {
 		t.Fatalf("ListAdmin: %v", err)
 	}

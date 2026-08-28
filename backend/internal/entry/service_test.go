@@ -923,7 +923,7 @@ func TestListAdminIsAWorkQueue(t *testing.T) {
 		})
 	}
 
-	page, err := service.ListAdmin(context.Background(), nil, "", 0, 0)
+	page, err := service.ListAdmin(context.Background(), 0, nil, "", 0, 0)
 	if err != nil {
 		t.Fatalf("ListAdmin: %v", err)
 	}
@@ -951,7 +951,7 @@ func TestListAdminIsAWorkQueue(t *testing.T) {
 
 	t.Run("filtered by status", func(t *testing.T) {
 		draft := entry.StatusDraft
-		page, err := service.ListAdmin(context.Background(), &draft, "", 0, 0)
+		page, err := service.ListAdmin(context.Background(), 0, &draft, "", 0, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -965,13 +965,13 @@ func TestListAdminIsAWorkQueue(t *testing.T) {
 
 	t.Run("an unknown status is refused", func(t *testing.T) {
 		unknown := entry.Status("stauts")
-		if _, err := service.ListAdmin(context.Background(), &unknown, "", 0, 0); !errors.Is(err, entry.ErrInvalidStatus) {
+		if _, err := service.ListAdmin(context.Background(), 0, &unknown, "", 0, 0); !errors.Is(err, entry.ErrInvalidStatus) {
 			t.Errorf("ListAdmin = %v, want ErrInvalidStatus", err)
 		}
 	})
 
 	t.Run("pagination is clamped like the public list", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), nil, "", -5, 10_000)
+		page, err := service.ListAdmin(context.Background(), 0, nil, "", -5, 10_000)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -984,7 +984,7 @@ func TestListAdminIsAWorkQueue(t *testing.T) {
 	})
 
 	t.Run("past the end is an empty page, not an error", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), nil, "", 99, 20)
+		page, err := service.ListAdmin(context.Background(), 0, nil, "", 99, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1082,7 +1082,7 @@ func TestListAdminSearchesTheDirectory(t *testing.T) {
 	}
 
 	t.Run("matches the title", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), nil, "Mountain", 1, 20)
+		page, err := service.ListAdmin(context.Background(), 0, nil, "Mountain", 1, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1093,7 +1093,7 @@ func TestListAdminSearchesTheDirectory(t *testing.T) {
 	})
 
 	t.Run("is case-insensitive", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), nil, "MOUNTAIN", 1, 20)
+		page, err := service.ListAdmin(context.Background(), 0, nil, "MOUNTAIN", 1, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1103,7 +1103,7 @@ func TestListAdminSearchesTheDirectory(t *testing.T) {
 	})
 
 	t.Run("matches the slug", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), nil, "kyoto", 1, 20)
+		page, err := service.ListAdmin(context.Background(), 0, nil, "kyoto", 1, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1114,7 +1114,7 @@ func TestListAdminSearchesTheDirectory(t *testing.T) {
 
 	t.Run("intersects with the status filter", func(t *testing.T) {
 		draft := entry.StatusDraft
-		page, err := service.ListAdmin(context.Background(), &draft, "mountain", 1, 20)
+		page, err := service.ListAdmin(context.Background(), 0, &draft, "mountain", 1, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1126,7 +1126,7 @@ func TestListAdminSearchesTheDirectory(t *testing.T) {
 	})
 
 	t.Run("the total counts the filtered set", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), nil, "mountain", 1, 20)
+		page, err := service.ListAdmin(context.Background(), 0, nil, "mountain", 1, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1136,7 +1136,7 @@ func TestListAdminSearchesTheDirectory(t *testing.T) {
 	})
 
 	t.Run("a whitespace-only query behaves as absent", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), nil, "   ", 1, 20)
+		page, err := service.ListAdmin(context.Background(), 0, nil, "   ", 1, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1146,7 +1146,7 @@ func TestListAdminSearchesTheDirectory(t *testing.T) {
 	})
 
 	t.Run("surrounding whitespace is trimmed", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), nil, "  kyoto  ", 1, 20)
+		page, err := service.ListAdmin(context.Background(), 0, nil, "  kyoto  ", 1, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1156,7 +1156,7 @@ func TestListAdminSearchesTheDirectory(t *testing.T) {
 	})
 
 	t.Run("no match is an empty page, not an error", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), nil, "nothing-here", 1, 20)
+		page, err := service.ListAdmin(context.Background(), 0, nil, "nothing-here", 1, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1164,6 +1164,42 @@ func TestListAdminSearchesTheDirectory(t *testing.T) {
 			t.Errorf("entries = %d, total = %d, want both zero", len(page.Entries), page.Total)
 		}
 	})
+}
+
+func TestListAdminFiltersByCategory(t *testing.T) {
+	service, store := newTestService(t)
+	store.Seed(entry.Entry{ID: 1, Slug: "travel", Title: "Travel", CategoryID: 7, Status: entry.StatusDraft})
+	store.Seed(entry.Entry{ID: 2, Slug: "work", Title: "Work", CategoryID: 8, Status: entry.StatusDraft})
+
+	page, err := service.ListAdmin(context.Background(), 7, nil, "", 1, 20)
+	if err != nil {
+		t.Fatalf("ListAdmin: %v", err)
+	}
+	if got := slugsOf(page.Entries); !slices.Equal(got, []string{"travel"}) {
+		t.Errorf("slugs = %v, want only category 7", got)
+	}
+	if page.Total != 1 {
+		t.Errorf("total = %d, want 1", page.Total)
+	}
+}
+
+func TestDashboardMetricsCountLiveEntriesAndWords(t *testing.T) {
+	service, store := newTestService(t)
+	store.Seed(entry.Entry{ID: 1, Slug: "published", Status: entry.StatusPublished, WordCount: 120})
+	store.Seed(entry.Entry{ID: 2, Slug: "draft", Status: entry.StatusDraft, WordCount: 35})
+	store.Seed(entry.Entry{ID: 3, Slug: "archived", Status: entry.StatusArchived, WordCount: 10})
+	store.Seed(entry.Entry{ID: 4, Slug: "deleted", Status: entry.StatusDraft, WordCount: 999})
+	if _, err := store.SoftDelete(context.Background(), 4, fixedTime); err != nil {
+		t.Fatalf("SoftDelete: %v", err)
+	}
+
+	metrics, err := service.DashboardMetrics(context.Background())
+	if err != nil {
+		t.Fatalf("DashboardMetrics: %v", err)
+	}
+	if metrics.TotalEntries != 3 || metrics.PublishedEntries != 1 || metrics.TotalWords != 165 {
+		t.Errorf("metrics = %+v, want total=3 published=1 words=165", metrics)
+	}
 }
 
 // slugsOf reads the slugs out of a page in order, so a test can assert on the

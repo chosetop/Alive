@@ -128,6 +128,7 @@ func (h *Handler) RegisterAdmin(api *gin.RouterGroup, requireAuth gin.HandlerFun
 
 	group.GET("", h.ListAdmin)
 	group.GET("/:id", h.GetByID)
+	api.GET("/admin/dashboard", requireAuth, h.Dashboard)
 }
 
 // Create stores a new entry owned by the authenticated account.
@@ -418,7 +419,13 @@ func (h *Handler) ListAdmin(c *gin.Context) {
 	// filter"; the service trims and drops it, so the zero value needs no special
 	// case here. Not validated: unlike status, a query that matches nothing is a
 	// real answer rather than a malformed request.
-	result, err := h.service.ListAdmin(c.Request.Context(), status, c.Query("q"), page, pageSize)
+	categoryID, err := h.resolveCategory(c)
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	result, err := h.service.ListAdmin(c.Request.Context(), categoryID, status, c.Query("q"), page, pageSize)
 	if err != nil {
 		if errors.Is(err, entry.ErrInvalidStatus) {
 			httpx.Error(c, invalidField("status",
@@ -437,6 +444,21 @@ func (h *Handler) ListAdmin(c *gin.Context) {
 		Page:     result.Page,
 		PageSize: result.PageSize,
 		Total:    result.Total,
+	})
+}
+
+// Dashboard returns complete writing counters for the authenticated owner.
+func (h *Handler) Dashboard(c *gin.Context) {
+	metrics, err := h.service.DashboardMetrics(c.Request.Context())
+	if err != nil {
+		h.logger.ErrorContext(c.Request.Context(), "read dashboard metrics failed", slog.String("error", err.Error()))
+		httpx.Error(c, apperr.From(err))
+		return
+	}
+	httpx.OK(c, dashboardMetrics{
+		TotalEntries:     metrics.TotalEntries,
+		PublishedEntries: metrics.PublishedEntries,
+		TotalWords:       metrics.TotalWords,
 	})
 }
 

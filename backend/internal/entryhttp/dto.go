@@ -7,6 +7,12 @@ import (
 	"github.com/p30huiwei/alive/backend/internal/entry"
 )
 
+type dashboardMetrics struct {
+	TotalEntries     int64 `json:"total_entries"`
+	PublishedEntries int64 `json:"published_entries"`
+	TotalWords       int64 `json:"total_words"`
+}
+
 // createEntryRequest is the create body.
 //
 // All fields are optional because creation starts an incomplete draft. type and

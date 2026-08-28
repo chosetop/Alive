@@ -54,12 +54,20 @@ type Store interface {
 	// ListAdmin returns one page of live entries, any status, newest edit first,
 	// optionally narrowed to a text search. A nil search is no text filter.
 	// A nil status means every status.
-	ListAdmin(ctx context.Context, status *Status, search *string, limit, offset int) ([]Entry, int64, error)
+	ListAdmin(ctx context.Context, categoryID int64, status *Status, search *string, limit, offset int) ([]Entry, int64, error)
+	DashboardMetrics(ctx context.Context) (DashboardMetrics, error)
 
 	// SlugExistsExcluding reports whether a live entry other than excludedID holds
 	// the slug. Separate from SlugExists because an entry keeping its own slug
 	// through an update is not a conflict with itself.
 	SlugExistsExcluding(ctx context.Context, slug string, excludedID int64) (bool, error)
+}
+
+// DashboardMetrics is the complete set of counters shown on the writing dashboard.
+type DashboardMetrics struct {
+	TotalEntries     int64
+	PublishedEntries int64
+	TotalWords       int64
 }
 
 // Checked at compile time so the repository cannot drift from the interface.
@@ -517,7 +525,7 @@ func (s *Service) GetByID(ctx context.Context, id int64) (Entry, error) {
 // at exactly the moment the editor expects it back. Unlike status, an unmatched
 // query is not an error: no match is a legitimate answer about the collection,
 // where an unknown status is a malformed request.
-func (s *Service) ListAdmin(ctx context.Context, status *Status, query string, page, pageSize int) (Page, error) {
+func (s *Service) ListAdmin(ctx context.Context, categoryID int64, status *Status, query string, page, pageSize int) (Page, error) {
 	if status != nil && !status.Valid() {
 		return Page{}, fmt.Errorf("%w: %s", ErrInvalidStatus, *status)
 	}
@@ -529,7 +537,7 @@ func (s *Service) ListAdmin(ctx context.Context, status *Status, query string, p
 
 	page, pageSize = normalisePagination(page, pageSize)
 
-	entries, total, err := s.store.ListAdmin(ctx, status, search, pageSize, (page-1)*pageSize)
+	entries, total, err := s.store.ListAdmin(ctx, categoryID, status, search, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return Page{}, err
 	}
@@ -540,6 +548,11 @@ func (s *Service) ListAdmin(ctx context.Context, status *Status, query string, p
 		PageSize: pageSize,
 		Total:    total,
 	}, nil
+}
+
+// DashboardMetrics reads the complete active-library counters from storage.
+func (s *Service) DashboardMetrics(ctx context.Context) (DashboardMetrics, error) {
+	return s.store.DashboardMetrics(ctx)
 }
 
 // validateCreate checks the input and fills in defaults, mutating in place.

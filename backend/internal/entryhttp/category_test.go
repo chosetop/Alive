@@ -459,17 +459,16 @@ func TestAdminReadsCarryTheCategory(t *testing.T) {
 	})
 }
 
-// TestTheAdminListIgnoresTheCategoryFilter records a limit rather than a rule. The
-// admin list has no category filter yet, and an unknown ?category= there is not an
-// error: it is a parameter nothing reads. Asserted so that adding the filter later
-// is a deliberate change to this test rather than a surprise.
-func TestTheAdminListIgnoresTheCategoryFilter(t *testing.T) {
+// TestTheAdminListRejectsUnknownCategoryFilter keeps the admin directory's
+// category semantics aligned with the public list: a typo is a 404, not an
+// apparently empty or unfiltered result.
+func TestTheAdminListRejectsUnknownCategoryFilter(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 	store.Seed(categorised(1, "in-travel"))
 	store.Seed(uncategorised(2, "no-category"))
 
-	items := dataArray(t, do(t, handler, http.MethodGet, "/api/v1/admin/entries?category=nope", ""))
-	if len(items) != 2 {
-		t.Errorf("got %d entries, want both: the admin list does not filter by category", len(items))
+	rec := do(t, handler, http.MethodGet, "/api/v1/admin/entries?category=nope", "")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404\nbody: %s", rec.Code, rec.Body.String())
 	}
 }
