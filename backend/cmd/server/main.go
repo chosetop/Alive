@@ -69,9 +69,12 @@ func run() error {
 		auth.WithLogger(logger),
 	)
 
+	worldService := contentworld.NewService(contentworld.NewRepository(pool))
+
 	entryService := entry.NewService(
 		entry.NewRepository(pool),
 		entry.WithLogger(logger),
+		entry.WithWorldService(worldService),
 	)
 
 	// No WithClock, unlike entry: nothing in taxonomy stamps a time. created_at
@@ -82,7 +85,6 @@ func run() error {
 	)
 
 	siteService := site.NewService(site.NewRepository(pool))
-	worldService := contentworld.NewService(contentworld.NewRepository(pool))
 
 	handler := router.New(router.Dependencies{
 		Config:          cfg,
