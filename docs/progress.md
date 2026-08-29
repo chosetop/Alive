@@ -1,6 +1,6 @@
 # Alive 施工进度
 
-最后更新：2026-08-27（后台 iOS 风格视觉重构设计规格已完成，待审阅）
+最后更新：2026-08-30（内容世界基础与 Journal 路由切换已完成，Foundation 收尾中）
 
 本文档记录已完成的内容、当前状态和待办项。设计依据见 `architecture.md`，认证方案见 `stage-auth-plan.md`。
 
@@ -31,6 +31,10 @@
 | 3B | `admin/` 内容管理（分类 + 文章列表 + Milkdown 编辑器） | 完成 |
 | 4A-0 | `frontend/` 工程初始化 + SSR 认证骨架 | 完成 |
 | 4A | `frontend/` 前台页面（列表 / 详情 / 分类）+ 设计系统 | 完成 |
+| 5A | 内容世界基础（world registry、生命周期、按世界隔离） | 完成 |
+| 5B | 管理端 Journal-first 新建与世界设置 | 完成 |
+| 5C | 公开端 Journal 路由与 API 切换 | 完成 |
+| 5D | mixed home、sitemap、片语/影像公共页面 | 待实现 |
 
 **Stage 1（users + auth）与 Stage 2（Entry + Categories）的后端 API 均已完成**，共 19 个业务端点加 2 个探针。
 
@@ -151,7 +155,9 @@ GET /api/v1/categories →  500
 
 **接口契约见 `docs/api.md`**，那份是按当前实现逐条核对过的。`architecture.md` 写的是设计意图与理由，两份的路径已于 2026-08-25 统一为 `/api/v1/*`，但只有 `api.md` 对着运行中的服务核对过字段与状态码，冲突以它为准。
 
-前台还没有的东西：`sitemap.xml`、`feed.xml`、按类型的页面（书架、影单）、归档页。都不阻塞已有页面。
+前台还没有的东西：`sitemap.xml`、`feed.xml`、按类型的页面（书架、影单）、归档页、mixed home。Journal 已切换到 `/journal` 与 `/journal/:slug`，其余世界仍未开放给公开端。
+
+内容世界基础已完成：后端 migration 000010、`site_worlds` 生命周期接口、文章与分类的 world 隔离、管理端 Journal-first 创建，以及公开端 Journal API/路由切换。管理端发布拦截恢复、目录 world filter、mixed home 与 sitemap 仍待补齐。
 
 后端还剩的三件事：session 绝对过期、Argon2id 参数、trusted proxy，各自在 3.3 到 3.5。**其中 trusted proxy 是部署前必须做的**，见 3.5。
 
