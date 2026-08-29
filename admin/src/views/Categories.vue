@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { buildCategoryPatch, categoriesApi, isEmptyPatch, toUserMessage } from '../api'
-import type { Category } from '../types/api'
+import type { Category, WorldKey } from '../types/api'
 import CategoryForm from '../components/CategoryForm.vue'
 import { UiButton, UiIcon } from '../components/ui'
 
@@ -15,6 +15,7 @@ import { UiButton, UiIcon } from '../components/ui'
  */
 
 const items = ref<Category[]>([])
+const selectedWorld = ref<WorldKey>('journal')
 const isLoading = ref(true)
 /** Load failure. Kept apart from `formError` so a failed save cannot blank the list. */
 const loadError = ref<string | null>(null)
@@ -36,9 +37,7 @@ async function load(): Promise<void> {
   isLoading.value = true
   loadError.value = null
   try {
-    // Admin shape: timestamps, no entry_count. Not paginated, so this is
-    // `request` under the hood, not `requestPaginated`.
-    items.value = await categoriesApi.listCategoriesAdmin()
+    items.value = await categoriesApi.listCategoriesAdmin({ world: selectedWorld.value })
   } catch (error) {
     loadError.value = toUserMessage(error)
   } finally {
@@ -89,6 +88,7 @@ async function handleSubmit(form: {
   try {
     if (editing.value === 'new') {
       await categoriesApi.createCategory({
+        world: selectedWorld.value,
         name: form.name,
         slug: form.slug,
         description: form.description,
@@ -143,6 +143,13 @@ async function handleDelete(id: number): Promise<void> {
         <UiIcon class="button-icon" name="plus" />新建分类
       </UiButton>
     </header>
+
+    <label class="world-field">
+      <span class="world-field__label">世界</span>
+      <select class="world-field__input" :value="selectedWorld" @change="selectedWorld = ($event.target as HTMLSelectElement).value as WorldKey; void load()">
+        <option value="journal">日志</option>
+      </select>
+    </label>
 
     <CategoryForm
       v-if="editing !== null"

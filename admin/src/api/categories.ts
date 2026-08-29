@@ -3,6 +3,7 @@ import type {
   CategoryCreateRequest,
   CategoryUpdateRequest,
   CategoryWithCount,
+  WorldKey,
 } from '../types/api'
 import { request } from './client'
 
@@ -27,8 +28,8 @@ import { request } from './client'
  * Returns `entry_count` but no timestamps. The admin list uses
  * `listCategoriesAdmin` instead; this one exists for the counts.
  */
-export function listCategoriesPublic(): Promise<CategoryWithCount[]> {
-  return request<CategoryWithCount[]>('/categories')
+export function listCategoriesPublic(query: { world: WorldKey }): Promise<CategoryWithCount[]> {
+  return request<CategoryWithCount[]>('/categories', { query })
 }
 
 /**
@@ -36,8 +37,8 @@ export function listCategoriesPublic(): Promise<CategoryWithCount[]> {
  *
  * Also not paginated, for the same reason. Returns timestamps, no counts.
  */
-export function listCategoriesAdmin(): Promise<Category[]> {
-  return request<Category[]>('/admin/categories')
+export function listCategoriesAdmin(query: { world: WorldKey }): Promise<Category[]> {
+  return request<Category[]>('/admin/categories', { query })
 }
 
 /** GET /api/v1/admin/categories/:id */

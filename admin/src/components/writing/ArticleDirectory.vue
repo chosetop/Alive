@@ -235,10 +235,7 @@ async function createArticle(): Promise<void> {
   error.value = null
   try {
     await flushActiveEntry()
-    // `createEntry({})` on purpose: an incomplete draft is a legitimate record
-    // server-side, and asking for a title before the canvas opens is the
-    // form-first flow this workspace exists to remove.
-    const created = await entriesApi.createEntry({})
+    const created = await entriesApi.createEntry({ world: 'journal' })
     if (disposed) return
     recent.value = [created, ...recent.value.filter((item) => item.id !== created.id)]
     await router.push({ name: 'entry-edit', params: { id: String(created.id) } })

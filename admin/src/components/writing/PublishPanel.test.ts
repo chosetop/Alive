@@ -7,6 +7,8 @@ import PublishPanel from './PublishPanel.vue'
 const entry: EntryDetail = {
   id: 42,
   revision: 4,
+  world: 'journal',
+  kind: '',
   type: 'journal',
   title: '一篇文章',
   slug: 'an-article',

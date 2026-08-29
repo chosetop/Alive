@@ -9,6 +9,7 @@ import {
   toUserMessage,
   type EntryFormState,
 } from '../api'
+import { resolveAdminWorld } from '../content-worlds/registry'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
 import WorkspaceHeader from '../components/writing/WorkspaceHeader.vue'
 import ArticleSettings from '../components/writing/ArticleSettings.vue'
@@ -27,6 +28,7 @@ import type {
   EntryDetail,
   EntryPatchFields,
   EntryStatus,
+  WorldKey,
 } from '../types/api'
 
 /**
@@ -41,11 +43,13 @@ const props = defineProps<{
   /** Absent when creating. From the route, so it arrives as a string. */
   id?: string
   blank?: boolean
+  world?: string
 }>()
 
 const router = useRouter()
 
 const entryId = computed(() => (props.id === undefined ? null : Number(props.id)))
+const draftWorld = computed<WorldKey>(() => resolveAdminWorld(props.world)?.key ?? 'journal')
 
 /** The record as loaded, kept to diff against. Null while creating. */
 const original = ref<EntryDetail | null>(null)
@@ -101,7 +105,6 @@ const form = ref<EntryFormState>({
   summary: '',
   contentMd: '',
   coverUrl: '',
-  type: 'journal',
   visibility: 'public',
   categoryId: 0,
   happenedAt: '',
@@ -130,7 +133,6 @@ const editorEntry = computed<EntryDetail | null>(() => {
     summary: form.value.summary,
     content_md: form.value.contentMd,
     cover_url: form.value.coverUrl,
-    type: form.value.type,
     visibility: form.value.visibility,
     category_id: form.value.categoryId,
     happened_at: form.value.happenedAt === '' ? null : fromFormDateTime(form.value.happenedAt),
@@ -160,7 +162,9 @@ async function load(targetId: number | null = entryId.value): Promise<void> {
   categoryError.value = null
   try {
     const entry =
-      targetId === null ? await entriesApi.createEntry({}) : await entriesApi.getEntry(targetId)
+      targetId === null
+        ? await entriesApi.createEntry({ world: draftWorld.value })
+        : await entriesApi.getEntry(targetId)
     if (!isCurrentLoad(generation)) return
     recoveryDraft = null
 
@@ -186,7 +190,9 @@ async function load(targetId: number | null = entryId.value): Promise<void> {
     isLoading.value = false
 
     try {
-      const cats = await categoriesApi.listCategoriesAdmin()
+      const cats = await categoriesApi.listCategoriesAdmin({
+        world: entry.world ?? draftWorld.value,
+      })
       if (isCurrentLoad(generation)) categories.value = cats
     } catch (error) {
       if (isCurrentLoad(generation)) categoryError.value = toUserMessage(error)
@@ -286,7 +292,6 @@ function handleSettingsUpdate(fields: EntryPatchFields): void {
   if ('slug' in fields && fields.slug !== undefined) form.value.slug = fields.slug
   if ('summary' in fields && fields.summary !== undefined) form.value.summary = fields.summary
   if ('cover_url' in fields && fields.cover_url !== undefined) form.value.coverUrl = fields.cover_url
-  if ('type' in fields && fields.type !== undefined) form.value.type = fields.type
   if ('visibility' in fields && fields.visibility !== undefined) form.value.visibility = fields.visibility
   if ('category_id' in fields && fields.category_id !== undefined) form.value.categoryId = fields.category_id
   if ('happened_at' in fields && fields.happened_at !== undefined) {
@@ -389,7 +394,9 @@ async function recoverAsDraft(): Promise<void> {
     if (recovery === null) throw new Error('Recovery record is unavailable')
 
     if (recoveryDraft === null || recoveryDraft.sourceEntryId !== conflictedId) {
-      const created = await entriesApi.createEntry({})
+      const created = await entriesApi.createEntry({
+        world: original.value.world ?? draftWorld.value,
+      })
       recoveryDraft = {
         sourceEntryId: conflictedId,
         entryId: created.id,
@@ -424,7 +431,6 @@ function applyEntryToForm(entry: EntryDetail): void {
     summary: entry.summary,
     contentMd: entry.content_md,
     coverUrl: entry.cover_url,
-    type: entry.type,
     visibility: entry.visibility,
     categoryId: entry.category_id,
     happenedAt: toFormDateTime(entry.happened_at),
@@ -439,7 +445,6 @@ function resetToBlank(): void {
     summary: '',
     contentMd: '',
     coverUrl: '',
-    type: 'journal',
     visibility: 'public',
     categoryId: 0,
     happenedAt: '',

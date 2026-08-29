@@ -3,7 +3,6 @@ import type {
   CategoryUpdateRequest,
   EntryDetail,
   EntryPatchFields,
-  EntryType,
   EntryUpdateRequest,
   EntryVisibility,
 } from '../types/api'
@@ -62,7 +61,6 @@ export interface EntryFormState {
   summary: string
   contentMd: string
   coverUrl: string
-  type: EntryType
   visibility: EntryVisibility
   /** `0` = uncategorised. */
   categoryId: number
@@ -104,7 +102,6 @@ export function buildEntryPatch(
   if (form.summary !== original.summary) patch.summary = form.summary
   if (form.contentMd !== original.content_md) patch.content_md = form.contentMd
   if (form.coverUrl !== original.cover_url) patch.cover_url = form.coverUrl
-  if (form.type !== original.type) patch.type = form.type
   if (form.visibility !== original.visibility) patch.visibility = form.visibility
   if (form.categoryId !== original.category_id) patch.category_id = form.categoryId
 

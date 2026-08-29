@@ -2,7 +2,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 
 import { fromFormDateTime, toFormDateTime } from '../../api'
-import type { Category, EntryDetail, EntryPatchFields, EntryType, EntryVisibility } from '../../types/api'
+import type { Category, EntryDetail, EntryPatchFields, EntryVisibility } from '../../types/api'
 import { UiButton, UiIcon, UiIconButton } from '../ui'
 
 const props = withDefaults(
@@ -23,15 +23,6 @@ const emit = defineEmits<{
 
 const confirmingDelete = ref(false)
 const returnFocus = shallowRef<HTMLElement | null>(null)
-
-const TYPES: ReadonlyArray<{ value: EntryType; label: string }> = [
-  { value: 'journal', label: '日志' },
-  { value: 'book', label: '书' },
-  { value: 'movie', label: '影' },
-  { value: 'music', label: '乐' },
-  { value: 'travel', label: '行' },
-  { value: 'photo', label: '影像' },
-]
 
 const VISIBILITIES: ReadonlyArray<{ value: EntryVisibility; label: string }> = [
   { value: 'public', label: '公开' },
@@ -88,12 +79,6 @@ function confirmDelete(): void {
 
       <label class="field" for="e-slug">slug</label>
       <input id="e-slug" :value="entry.slug" :disabled="disabled" @input="update({ slug: ($event.target as HTMLInputElement).value })" />
-
-      <label class="field" for="e-type">类型</label>
-      <select id="e-type" :value="entry.type" :disabled="disabled" @change="update({ type: ($event.target as HTMLSelectElement).value as EntryType })">
-        <option v-for="type in TYPES" :key="type.value" :value="type.value">{{ type.label }}</option>
-      </select>
-
       <label class="field" for="e-category">分类</label>
       <select id="e-category" :value="entry.category_id" :disabled="disabled" @change="update({ category_id: Number(($event.target as HTMLSelectElement).value) })">
         <option value="0">未分类</option>

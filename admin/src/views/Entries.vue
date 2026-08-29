@@ -58,6 +58,7 @@ async function load(): Promise<void> {
   try {
     const response = await entriesApi.listEntriesAdmin({
       page: page.value,
+      world: 'journal',
       // `status: null` means "no filter", and the API client drops undefined
       // rather than serialising it, so null becomes absent here.
       status: activeStatus.value ?? undefined,
@@ -80,7 +81,7 @@ async function load(): Promise<void> {
 onMounted(load)
 onMounted(async () => {
   try {
-    categories.value = await categoriesApi.listCategoriesAdmin()
+    categories.value = await categoriesApi.listCategoriesAdmin({ world: 'journal' })
   } catch (error) {
     categoriesError.value = toUserMessage(error)
   }
