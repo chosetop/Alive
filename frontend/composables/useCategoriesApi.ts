@@ -1,4 +1,11 @@
-import type { AdminCategory, Category, CategoryCreateBody, CategoryUpdateBody } from '~/types'
+import type {
+  AdminCategory,
+  Category,
+  CategoryCreateBody,
+  CategoryListQuery,
+  CategoryUpdateBody,
+} from '~/types'
+import { useApi } from './useApi'
 
 /**
  * Category endpoints. Source of truth: docs/api.md section 5.
@@ -16,8 +23,8 @@ export function useCategoriesApi() {
      *
      * Empty categories are included with `entry_count: 0` rather than omitted.
      */
-    async list(): Promise<Category[]> {
-      const response = await api.getList<Category>('/categories')
+    async list(query: CategoryListQuery = { world: 'journal' }): Promise<Category[]> {
+      const response = await api.getList<Category>('/categories', query)
       return response.data
     },
 

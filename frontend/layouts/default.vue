@@ -41,7 +41,12 @@ const year = new Date().getFullYear()
 
     <footer class="footer">
       <nav v-if="navCategories.length > 0" class="cats" aria-label="分类">
-        <NuxtLink v-for="c in navCategories" :key="c.slug" :to="`/categories/${c.slug}`" class="cat">
+        <NuxtLink
+          v-for="c in navCategories"
+          :key="c.slug"
+          :to="`/journal/categories/${c.slug}`"
+          class="cat"
+        >
           {{ c.name }}
           <span class="count">{{ c.entry_count }}</span>
         </NuxtLink>
