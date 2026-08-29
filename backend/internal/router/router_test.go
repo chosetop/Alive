@@ -294,9 +294,8 @@ func TestEntryRoutesAreMountedWithTheRightGuards(t *testing.T) {
 		})
 	}
 
-	// Both reads are public. An anonymous request must get past the guard, which is
-	// the whole point of a site with a front page.
-	for _, path := range []string{"/api/v1/entries", "/api/v1/entries/kyoto-spring"} {
+	// Journal reads are public under their world-scoped paths.
+	for _, path := range []string{"/api/v1/journals", "/api/v1/journals/kyoto-spring"} {
 		t.Run("public read: "+path, func(t *testing.T) {
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
@@ -306,6 +305,20 @@ func TestEntryRoutesAreMountedWithTheRightGuards(t *testing.T) {
 			}
 			if rec.Code == http.StatusNotFound {
 				t.Fatalf("%s answered 404; the route is not registered", path)
+			}
+		})
+	}
+
+	for _, path := range []string{"/api/v1/entries", "/api/v1/entries/kyoto-spring"} {
+		t.Run("legacy public read removed: "+path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+
+			if rec.Code == http.StatusUnauthorized {
+				t.Fatalf("%s answered 401; GET should not be an authenticated read route", path)
+			}
+			if rec.Code != http.StatusMethodNotAllowed {
+				t.Fatalf("%s status = %d, want 405 once public GET is removed", path, rec.Code)
 			}
 		})
 	}
@@ -384,7 +397,7 @@ func TestTheCategoryFilterIsWired(t *testing.T) {
 
 	t.Run("a malformed slug is refused by the resolver", func(t *testing.T) {
 		// "Not A Slug" cannot match a row, and taxonomy answers that without a query.
-		rec := get("/api/v1/entries?category=Not%20A%20Slug")
+		rec := get("/api/v1/journals?category=Not%20A%20Slug")
 
 		if rec.Code != http.StatusNotFound {
 			t.Fatalf("status = %d, want 404\nbody: %s", rec.Code, rec.Body.String())
@@ -399,7 +412,7 @@ func TestTheCategoryFilterIsWired(t *testing.T) {
 	})
 
 	t.Run("a well-formed slug reaches storage", func(t *testing.T) {
-		rec := get("/api/v1/entries?category=travel")
+		rec := get("/api/v1/journals?category=travel")
 
 		// 200 would mean the filter was dropped and the unfiltered list served, which
 		// hands a client every entry on the site with no way to tell.
@@ -412,7 +425,7 @@ func TestTheCategoryFilterIsWired(t *testing.T) {
 	t.Run("no filter still serves the list", func(t *testing.T) {
 		// The unfiltered list must not resolve anything, or the front page would need a
 		// working categories table to render at all.
-		if rec := get("/api/v1/entries"); rec.Code == http.StatusNotFound {
+		if rec := get("/api/v1/journals"); rec.Code == http.StatusNotFound {
 			t.Fatalf("the unfiltered list answered 404: %s", rec.Body.String())
 		}
 	})

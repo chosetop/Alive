@@ -169,8 +169,8 @@ revision 过期统一返回 409：
 | POST | `/api/v1/auth/login` | 公开 | 200 / 400 / 401 / 429 |
 | POST | `/api/v1/auth/logout` | 公开 | 204 |
 | GET | `/api/v1/me` | 需登录 | 200 / 401 |
-| GET | `/api/v1/entries` | 公开 | 200 / 400 / 404 |
-| GET | `/api/v1/entries/:slug` | 公开 | 200 / 404 |
+| GET | `/api/v1/journals` | 公开 | 200 / 400 / 404 |
+| GET | `/api/v1/journals/:slug` | 公开 | 200 / 404 |
 | POST | `/api/v1/entries` | 需登录 | 201 / 400 / 401 / 409 |
 | PATCH | `/api/v1/entries/:id` | 需登录 | 200 / 400 / 401 / 404 / 409 |
 | DELETE | `/api/v1/entries/:id` | 需登录 | 204 / 400 / 401 / 404 |
@@ -245,9 +245,9 @@ revision 过期统一返回 409：
 
 ### 4.1 三个枚举
 
-**`type`**（六值，数据库 CHECK 约束限定）：`journal` `book` `movie` `music` `travel` `photo`
+**`world`**（三值，数据库 CHECK 约束限定）：`journal` `saying` `video`
 
-目前只实现了 `journal` 的 `meta` 结构。加第七种类型需要一个 migration，这个成本是有意的：它强制新类型经过一次显式决策，而不是随手写一个字符串。
+`world` 是内容所在的世界；`kind` 是展示类型，当前对外响应里保留，但还没有独立的公开枚举说明。
 
 **`status`**：
 
@@ -273,7 +273,7 @@ revision 过期统一返回 409：
 
 ### 4.2 前台读取
 
-#### `GET /api/v1/entries`
+#### `GET /api/v1/journals`
 
 公开，分页。只返回 `status=published AND visibility=public AND deleted_at IS NULL`。
 
@@ -300,7 +300,8 @@ revision 过期统一返回 409：
 
 ```jsonc
 {
-  "type": "travel",
+  "world": "journal",
+  "kind": "",
   "title": "京都的春天",
   "slug": "kyoto-spring",
   "summary": "在鸭川边坐了一整个下午",
@@ -317,11 +318,11 @@ revision 过期统一返回 409：
 
 **不含 `id`**：读者靠 slug 认内容，而 id 是跨草稿连号的，公开它等于报告有多少未发布的东西。
 
-`category` 未分类时是 `null`，不是空对象。未分类是正常状态，不是数据缺失。嵌套对象而不是裸 id，因为读者对分类做的每件事都需要标签和链接：渲染「in 旅行」并指向 `/entries?category=travel`。它来自 `LEFT JOIN`，不额外花一次查询。
+`category` 未分类时是 `null`，不是空对象。未分类是正常状态，不是数据缺失。嵌套对象而不是裸 id，因为读者对分类做的每件事都需要标签和链接：渲染「in 旅行」并指向 `/journals?category=travel`。它来自 `LEFT JOIN`，不额外花一次查询。
 
 `meta` 是 `{}` 而不是 `null`：列是 NOT NULL，每个消费者都预期能在里面查键。
 
-#### `GET /api/v1/entries/:slug`
+#### `GET /api/v1/journals/:slug`
 
 公开。字段是列表形状加上 `content_md` 和 `updated_at`。
 
@@ -344,7 +345,7 @@ revision 过期统一返回 409：
   "title": "京都的春天",          // 可选，最长 255 字符（按字符数，非字节）
   "slug": "kyoto-spring",        // 可选，非空时格式见下
   "content_md": "在鸭川边...",     // 可选
-  "type": "travel",              // 可选，默认 journal
+  "world": "journal",            // 必填，content world
   "visibility": "public",        // 可选，默认 public
   "summary": "",                 // 可选
   "cover_url": "",               // 可选
@@ -370,7 +371,7 @@ slug 由客户端提供，**不从标题派生**：从中文标题派生需要�
 {
   "id": 42,
   "revision": 1,
-  "type": "travel", "title": "京都的春天", "slug": "kyoto-spring",
+  "world": "journal", "kind": "", "title": "京都的春天", "slug": "kyoto-spring",
   "summary": "", "content_md": "在鸭川边...", "cover_url": "",
   "status": "draft", "visibility": "public",
   "meta": {}, "word_count": 1200,
@@ -392,7 +393,7 @@ slug 由客户端提供，**不从标题派生**：从中文标题派生需要�
 | JSON 不合法 | 400 | |
 | slug 格式错 / 过长 | 400 | `fields.slug` |
 | 标题过长 | 400 | `fields.title` |
-| `type` / `visibility` 不在枚举内 | 400 | 对应 `fields` |
+| `world` / `visibility` 不在枚举内 | 400 | 对应 `fields` |
 | 非空 slug 已被占用 | 409 | `fields.slug` |
 | `category_id` 指向不存在的分类 | 400 | `fields.category_id` |
 
@@ -408,7 +409,7 @@ slug 由客户端提供，**不从标题派生**：从中文标题派生需要�
 
 缺少 revision 或小于 1 返回 400；revision 已过期返回 409，响应见 1.8。成功响应中的 revision 已加一，下一次写入必须使用新值。`revision` 本身不算可编辑字段，所以只发 `{"revision": 3}` 仍是 400「没有改任何字段」。
 
-可改：`title` `slug` `summary` `content_md` `cover_url` `type` `visibility` `category_id` `meta` `happened_at`
+可改：`title` `slug` `summary` `content_md` `cover_url` `visibility` `category_id` `meta` `happened_at`
 
 **不做 `PUT`**。`PUT` 要求客户端回传整篇内容。两个标签页同时开一篇文章时，后保存的那个会覆盖前一个改过却没提及的字段，而且悄无声息。
 

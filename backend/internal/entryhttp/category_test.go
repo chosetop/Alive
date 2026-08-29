@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/entry"
 )
 
@@ -14,7 +15,7 @@ import (
 // joined name and slug filled as a read would fill them.
 func categorised(id int64, slug string) entry.Entry {
 	return entry.Entry{
-		ID: id, Slug: slug, Title: slug,
+		ID: id, World: contentworld.Journal, Slug: slug, Title: slug,
 		Status: entry.StatusPublished, Visibility: entry.VisibilityPublic,
 		CategoryID: testCategoryID, CategoryName: "旅行", CategorySlug: testCategorySlug,
 	}
@@ -23,7 +24,7 @@ func categorised(id int64, slug string) entry.Entry {
 // uncategorised is the same entry with no category, which is a normal state.
 func uncategorised(id int64, slug string) entry.Entry {
 	return entry.Entry{
-		ID: id, Slug: slug, Title: slug,
+		ID: id, World: contentworld.Journal, Slug: slug, Title: slug,
 		Status: entry.StatusPublished, Visibility: entry.VisibilityPublic,
 	}
 }
@@ -58,7 +59,7 @@ func TestListFiltersByCategory(t *testing.T) {
 	store.Seed(categorised(2, "also-travel"))
 	store.Seed(uncategorised(3, "no-category"))
 
-	rec := do(t, handler, http.MethodGet, "/api/v1/entries?category="+testCategorySlug, "")
+	rec := do(t, handler, http.MethodGet, "/api/v1/journals?category="+testCategorySlug, "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
 	}
@@ -88,14 +89,14 @@ func TestListFiltersByCategory(t *testing.T) {
 
 // TestAnUnknownCategoryIs404NotAnEmptyList is the reason the filter resolves a
 // slug through the taxonomy service instead of being passed straight to SQL.
-// /entries?category=nope and a category with nothing in it are different
+// /journals?category=nope and a category with nothing in it are different
 // situations, and a client that cannot tell them apart shows "no posts here" for a
 // typo.
 func TestAnUnknownCategoryIs404NotAnEmptyList(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 	store.Seed(categorised(1, "in-travel"))
 
-	rec := do(t, handler, http.MethodGet, "/api/v1/entries?category=nope", "")
+	rec := do(t, handler, http.MethodGet, "/api/v1/journals?category=nope", "")
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404\nbody: %s", rec.Code, rec.Body.String())
 	}
@@ -112,7 +113,7 @@ func TestAnEmptyCategoryParamIsTreatedAsAbsent(t *testing.T) {
 	store.Seed(categorised(1, "in-travel"))
 	store.Seed(uncategorised(2, "no-category"))
 
-	rec := do(t, handler, http.MethodGet, "/api/v1/entries?category=", "")
+	rec := do(t, handler, http.MethodGet, "/api/v1/journals?category=", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
 	}
@@ -143,7 +144,7 @@ func TestTheFilterStillHidesUnpublishedEntries(t *testing.T) {
 	store.Seed(private)
 
 	items := dataArray(t, do(t, handler, http.MethodGet,
-		"/api/v1/entries?category="+testCategorySlug, ""))
+		"/api/v1/journals?category="+testCategorySlug, ""))
 
 	if len(items) != 1 {
 		t.Fatalf("got %d entries, want only the published public one\nbody: %v", len(items), items)
@@ -167,7 +168,7 @@ func TestPublicReadsCarryTheNestedCategory(t *testing.T) {
 		object func(*testing.T, *httptest.ResponseRecorder) map[string]json.RawMessage
 	}{
 		{
-			"list", "/api/v1/entries",
+			"list", "/api/v1/journals",
 			func(t *testing.T, rec *httptest.ResponseRecorder) map[string]json.RawMessage {
 				items := dataArray(t, rec)
 				if len(items) != 1 {
@@ -176,7 +177,7 @@ func TestPublicReadsCarryTheNestedCategory(t *testing.T) {
 				return items[0]
 			},
 		},
-		{"detail", "/api/v1/entries/in-travel", dataObject},
+		{"detail", "/api/v1/journals/in-travel", dataObject},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := do(t, handler, http.MethodGet, tc.target, "")
@@ -219,7 +220,7 @@ func TestAnUncategorisedEntryReportsNullNotAnEmptyObject(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 	store.Seed(uncategorised(1, "no-category"))
 
-	items := dataArray(t, do(t, handler, http.MethodGet, "/api/v1/entries", ""))
+	items := dataArray(t, do(t, handler, http.MethodGet, "/api/v1/journals", ""))
 	if len(items) != 1 {
 		t.Fatalf("got %d entries, want 1", len(items))
 	}
@@ -235,7 +236,7 @@ func TestAWriteReportsTheCategoryIDAndANullCategory(t *testing.T) {
 	handler, _ := newTestServer(t, testAuthorID)
 
 	rec := do(t, handler, http.MethodPost, "/api/v1/entries", `{
-		"title":"a trip","slug":"a-trip","content_md":"went somewhere","category_id":7
+		"world":"journal","title":"a trip","slug":"a-trip","content_md":"went somewhere","category_id":7
 	}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201\nbody: %s", rec.Code, rec.Body.String())
@@ -346,7 +347,7 @@ func TestAnUnknownCategoryOnAWriteIs400NamingTheField(t *testing.T) {
 	store.FailCreate = entry.ErrUnknownCategory
 
 	rec := do(t, handler, http.MethodPost, "/api/v1/entries", `{
-		"title":"a trip","slug":"a-trip","content_md":"went somewhere","category_id":999
+		"world":"journal","title":"a trip","slug":"a-trip","content_md":"went somewhere","category_id":999
 	}`)
 
 	if rec.Code != http.StatusBadRequest {
@@ -373,7 +374,7 @@ func TestUnlistedIsReachableByLinkAndAbsentFromTheList(t *testing.T) {
 	store.Seed(unlisted)
 
 	t.Run("the link opens", func(t *testing.T) {
-		rec := do(t, handler, http.MethodGet, "/api/v1/entries/quiet-one", "")
+		rec := do(t, handler, http.MethodGet, "/api/v1/journals/quiet-one", "")
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
 		}
@@ -384,7 +385,7 @@ func TestUnlistedIsReachableByLinkAndAbsentFromTheList(t *testing.T) {
 	})
 
 	t.Run("the list omits it", func(t *testing.T) {
-		items := dataArray(t, do(t, handler, http.MethodGet, "/api/v1/entries", ""))
+		items := dataArray(t, do(t, handler, http.MethodGet, "/api/v1/journals", ""))
 		if len(items) != 0 {
 			t.Errorf("the public list carries %d entries, want none", len(items))
 		}
@@ -398,7 +399,7 @@ func TestUnlistedIsReachableByLinkAndAbsentFromTheList(t *testing.T) {
 		store.Seed(filtered)
 
 		items := dataArray(t, do(t, handler, http.MethodGet,
-			"/api/v1/entries?category="+testCategorySlug, ""))
+			"/api/v1/journals?category="+testCategorySlug, ""))
 		if len(items) != 0 {
 			t.Errorf("the filtered list carries %d entries, want none", len(items))
 		}
@@ -416,7 +417,7 @@ func TestAPrivateEntryStaysHiddenFromItsLink(t *testing.T) {
 	private.ContentMD = "the body of private-one"
 	store.Seed(private)
 
-	rec := do(t, handler, http.MethodGet, "/api/v1/entries/private-one", "")
+	rec := do(t, handler, http.MethodGet, "/api/v1/journals/private-one", "")
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404\nbody: %s", rec.Code, rec.Body.String())
 	}
@@ -467,7 +468,7 @@ func TestTheAdminListRejectsUnknownCategoryFilter(t *testing.T) {
 	store.Seed(categorised(1, "in-travel"))
 	store.Seed(uncategorised(2, "no-category"))
 
-	rec := do(t, handler, http.MethodGet, "/api/v1/admin/entries?category=nope", "")
+	rec := do(t, handler, http.MethodGet, "/api/v1/admin/entries?world=journal&category=nope", "")
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404\nbody: %s", rec.Code, rec.Body.String())
 	}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/p30huiwei/alive/backend/internal/auth"
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/dbtest"
 	"github.com/p30huiwei/alive/backend/internal/entry"
 	"github.com/p30huiwei/alive/backend/internal/postgres"
@@ -35,8 +36,9 @@ func storedCategory(t *testing.T, repo *taxonomy.Repository, label string) taxon
 	t.Helper()
 
 	created, err := repo.Create(context.Background(), taxonomy.CreateParams{
-		Name: label,
-		Slug: dbtest.Slug(t, label),
+		World: contentworld.Journal,
+		Name:  label,
+		Slug:  dbtest.Slug(t, label),
 	})
 	if err != nil {
 		t.Fatalf("create category %q: %v", label, err)
@@ -50,6 +52,7 @@ func TestRepositoryCreateStoresEveryColumn(t *testing.T) {
 
 	slug := dbtest.Slug(t, "travel")
 	created, err := repo.Create(ctx, taxonomy.CreateParams{
+		World:       contentworld.Journal,
 		Name:        "旅行",
 		Slug:        slug,
 		Description: "places and the getting there",
@@ -93,8 +96,9 @@ func TestRepositoryCreateMapsAnEmptyDescriptionToNULL(t *testing.T) {
 	ctx := context.Background()
 
 	created, err := repo.Create(ctx, taxonomy.CreateParams{
-		Name: "杂记",
-		Slug: dbtest.Slug(t, "notes"),
+		World: contentworld.Journal,
+		Name:  "杂记",
+		Slug:  dbtest.Slug(t, "notes"),
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -125,12 +129,12 @@ func TestRepositoryCreateTranslatesTheUniqueIndex(t *testing.T) {
 	ctx := context.Background()
 
 	slug := dbtest.Slug(t, "travel")
-	first := taxonomy.CreateParams{Name: "旅行", Slug: slug}
+	first := taxonomy.CreateParams{World: contentworld.Journal, Name: "旅行", Slug: slug}
 	if _, err := repo.Create(ctx, first); err != nil {
 		t.Fatalf("first Create: %v", err)
 	}
 
-	_, err := repo.Create(ctx, taxonomy.CreateParams{Name: "另一个", Slug: slug})
+	_, err := repo.Create(ctx, taxonomy.CreateParams{World: contentworld.Journal, Name: "另一个", Slug: slug})
 	if !errors.Is(err, taxonomy.ErrSlugTaken) {
 		t.Fatalf("error = %v, want ErrSlugTaken", err)
 	}
@@ -152,7 +156,7 @@ func TestRepositoryReadsFindTheSameRow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
 	}
-	bySlug, err := repo.GetBySlug(ctx, created.Slug)
+	bySlug, err := repo.GetBySlug(ctx, contentworld.Journal, created.Slug)
 	if err != nil {
 		t.Fatalf("GetBySlug: %v", err)
 	}
@@ -176,7 +180,7 @@ func TestRepositoryMissingRowsBecomeADomainError(t *testing.T) {
 		}
 	})
 	t.Run("by slug", func(t *testing.T) {
-		if _, err := repo.GetBySlug(ctx, dbtest.Slug(t, "absent")); !errors.Is(err, taxonomy.ErrCategoryNotFound) {
+		if _, err := repo.GetBySlug(ctx, contentworld.Journal, dbtest.Slug(t, "absent")); !errors.Is(err, taxonomy.ErrCategoryNotFound) {
 			t.Errorf("error = %v, want ErrCategoryNotFound", err)
 		}
 	})
@@ -209,7 +213,8 @@ func TestRepositoryUpdateWritesOnlyFlaggedColumns(t *testing.T) {
 
 	slug := dbtest.Slug(t, "travel")
 	created, err := repo.Create(ctx, taxonomy.CreateParams{
-		Name: "旅行", Slug: slug,
+		World: contentworld.Journal,
+		Name:  "旅行", Slug: slug,
 		Description: "keep me", SortOrder: 10,
 	})
 	if err != nil {
@@ -250,7 +255,8 @@ func TestRepositoryUpdateClearsADescription(t *testing.T) {
 	ctx := context.Background()
 
 	created, err := repo.Create(ctx, taxonomy.CreateParams{
-		Name: "旅行", Slug: dbtest.Slug(t, "travel"), Description: "remove me",
+		World: contentworld.Journal,
+		Name:  "旅行", Slug: dbtest.Slug(t, "travel"), Description: "remove me",
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -303,7 +309,7 @@ func TestRepositorySlugChecksAreScopedCorrectly(t *testing.T) {
 	created := storedCategory(t, repo, "travel")
 
 	t.Run("SlugExists finds a taken slug", func(t *testing.T) {
-		taken, err := repo.SlugExists(ctx, created.Slug)
+		taken, err := repo.SlugExists(ctx, contentworld.Journal, created.Slug)
 		if err != nil {
 			t.Fatalf("SlugExists: %v", err)
 		}
@@ -313,7 +319,7 @@ func TestRepositorySlugChecksAreScopedCorrectly(t *testing.T) {
 	})
 
 	t.Run("SlugExists reports a free slug", func(t *testing.T) {
-		taken, err := repo.SlugExists(ctx, dbtest.Slug(t, "unused"))
+		taken, err := repo.SlugExists(ctx, contentworld.Journal, dbtest.Slug(t, "unused"))
 		if err != nil {
 			t.Fatalf("SlugExists: %v", err)
 		}
@@ -323,7 +329,7 @@ func TestRepositorySlugChecksAreScopedCorrectly(t *testing.T) {
 	})
 
 	t.Run("SlugExistsExcluding ignores the category itself", func(t *testing.T) {
-		taken, err := repo.SlugExistsExcluding(ctx, created.Slug, created.ID)
+		taken, err := repo.SlugExistsExcluding(ctx, contentworld.Journal, created.Slug, created.ID)
 		if err != nil {
 			t.Fatalf("SlugExistsExcluding: %v", err)
 		}
@@ -334,7 +340,7 @@ func TestRepositorySlugChecksAreScopedCorrectly(t *testing.T) {
 
 	t.Run("SlugExistsExcluding still finds another category", func(t *testing.T) {
 		other := storedCategory(t, repo, "notes")
-		taken, err := repo.SlugExistsExcluding(ctx, created.Slug, other.ID)
+		taken, err := repo.SlugExistsExcluding(ctx, contentworld.Journal, created.Slug, other.ID)
 		if err != nil {
 			t.Fatalf("SlugExistsExcluding: %v", err)
 		}
@@ -353,19 +359,22 @@ func TestRepositoryListsOrderBySortOrderThenID(t *testing.T) {
 
 	// sort_order 20 first, then two at 10 whose tie the id has to break.
 	last, err := repo.Create(ctx, taxonomy.CreateParams{
-		Name: "last", Slug: dbtest.Slug(t, "last"), SortOrder: 20,
+		World: contentworld.Journal,
+		Name:  "last", Slug: dbtest.Slug(t, "last"), SortOrder: 20,
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	firstAt10, err := repo.Create(ctx, taxonomy.CreateParams{
-		Name: "first at ten", Slug: dbtest.Slug(t, "firstten"), SortOrder: 10,
+		World: contentworld.Journal,
+		Name:  "first at ten", Slug: dbtest.Slug(t, "firstten"), SortOrder: 10,
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	secondAt10, err := repo.Create(ctx, taxonomy.CreateParams{
-		Name: "second at ten", Slug: dbtest.Slug(t, "secondten"), SortOrder: 10,
+		World: contentworld.Journal,
+		Name:  "second at ten", Slug: dbtest.Slug(t, "secondten"), SortOrder: 10,
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -374,7 +383,7 @@ func TestRepositoryListsOrderBySortOrderThenID(t *testing.T) {
 	want := []int64{firstAt10.ID, secondAt10.ID, last.ID}
 
 	t.Run("List", func(t *testing.T) {
-		categories, err := repo.List(ctx)
+		categories, err := repo.List(ctx, contentworld.Journal)
 		if err != nil {
 			t.Fatalf("List: %v", err)
 		}
@@ -382,7 +391,7 @@ func TestRepositoryListsOrderBySortOrderThenID(t *testing.T) {
 	})
 
 	t.Run("ListWithCounts", func(t *testing.T) {
-		counted, err := repo.ListWithCounts(ctx)
+		counted, err := repo.ListWithCounts(ctx, contentworld.Journal)
 		if err != nil {
 			t.Fatalf("ListWithCounts: %v", err)
 		}
@@ -454,7 +463,8 @@ func TestRepositoryEntryCountsMatchWhatAReaderCanSee(t *testing.T) {
 		params := entry.CreateParams{
 			AuthorID:   owner.ID,
 			CategoryID: category.ID,
-			Type:       entry.TypeJournal,
+			World:      contentworld.Journal,
+			Kind:       "",
 			Title:      label,
 			Slug:       dbtest.Slug(t, label),
 			ContentMD:  "x",
@@ -481,7 +491,7 @@ func TestRepositoryEntryCountsMatchWhatAReaderCanSee(t *testing.T) {
 	// category shows rather than exceeding it by the number of unlisted entries.
 	seed("unlisted", entry.StatusPublished, entry.VisibilityUnlisted)
 
-	counted, err := repo.ListWithCounts(ctx)
+	counted, err := repo.ListWithCounts(ctx, contentworld.Journal)
 	if err != nil {
 		t.Fatalf("ListWithCounts: %v", err)
 	}
@@ -530,7 +540,8 @@ func TestRepositoryDeleteUncategorisesItsEntries(t *testing.T) {
 	filed, err := entries.Create(ctx, entry.CreateParams{
 		AuthorID:   owner.ID,
 		CategoryID: category.ID,
-		Type:       entry.TypeJournal,
+		World:      contentworld.Journal,
+		Kind:       "",
 		Title:      "survives its category",
 		Slug:       dbtest.Slug(t, "survivor"),
 		ContentMD:  "x",
@@ -587,7 +598,8 @@ func TestRepositoryRejectsAnUnknownCategoryOnAnEntry(t *testing.T) {
 	_, err = entry.NewRepository(pool).Create(ctx, entry.CreateParams{
 		AuthorID:   owner.ID,
 		CategoryID: 2147483000,
-		Type:       entry.TypeJournal,
+		World:      contentworld.Journal,
+		Kind:       "",
 		Title:      "filed under nothing",
 		Slug:       dbtest.Slug(t, "nocategory"),
 		ContentMD:  "x",

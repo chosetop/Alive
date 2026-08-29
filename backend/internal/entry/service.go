@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 )
 
 // Store is the storage the service needs.
@@ -16,20 +18,20 @@ import (
 // service can be tested against a fake without a database.
 type Store interface {
 	Create(ctx context.Context, params CreateParams) (Entry, error)
-	GetPublicBySlug(ctx context.Context, slug string) (Entry, error)
+	GetPublicByWorldSlug(ctx context.Context, world contentworld.Key, slug string) (Entry, error)
 
-	// GetLinkBySlug reads a published entry that is public or unlisted.
+	// GetLinkByWorldSlug reads a published entry that is public or unlisted.
 	//
-	// Separate from GetPublicBySlug rather than a flag on it. The lists below stay
+	// Separate from GetPublicByWorldSlug rather than a flag on it. The lists below stay
 	// public-only, and a boolean deciding whether unlisted counts would put that
 	// guarantee in the hands of whoever passes the argument.
-	GetLinkBySlug(ctx context.Context, slug string) (Entry, error)
+	GetLinkByWorldSlug(ctx context.Context, world contentworld.Key, slug string) (Entry, error)
 
 	// ListPublic returns one page of public entries. categoryID 0 means every
 	// category; it is an id because the service resolves a slug before calling.
-	ListPublic(ctx context.Context, categoryID int64, limit, offset int) ([]Entry, int64, error)
+	ListPublic(ctx context.Context, world contentworld.Key, categoryID int64, limit, offset int) ([]Entry, int64, error)
 
-	SlugExists(ctx context.Context, slug string) (bool, error)
+	SlugExists(ctx context.Context, world contentworld.Key, slug string) (bool, error)
 
 	// Update applies a partial change. Which fields to write is decided by the
 	// service and carried in the params, not inferred here.
@@ -54,13 +56,13 @@ type Store interface {
 	// ListAdmin returns one page of live entries, any status, newest edit first,
 	// optionally narrowed to a text search. A nil search is no text filter.
 	// A nil status means every status.
-	ListAdmin(ctx context.Context, categoryID int64, status *Status, search *string, limit, offset int) ([]Entry, int64, error)
+	ListAdmin(ctx context.Context, world *contentworld.Key, categoryID int64, status *Status, search *string, limit, offset int) ([]Entry, int64, error)
 	DashboardMetrics(ctx context.Context) (DashboardMetrics, error)
 
 	// SlugExistsExcluding reports whether a live entry other than excludedID holds
 	// the slug. Separate from SlugExists because an entry keeping its own slug
 	// through an update is not a conflict with itself.
-	SlugExistsExcluding(ctx context.Context, slug string, excludedID int64) (bool, error)
+	SlugExistsExcluding(ctx context.Context, world contentworld.Key, slug string, excludedID int64) (bool, error)
 }
 
 // DashboardMetrics is the complete set of counters shown on the writing dashboard.
@@ -86,14 +88,20 @@ const (
 // can assert exactly which timestamp was written.
 type Clock func() time.Time
 
+// WorldService is the publish lifecycle dependency this package needs.
+type WorldService interface {
+	AllowsPublicPublish(ctx context.Context, key contentworld.Key) (bool, error)
+}
+
 // Service holds the rules about entries.
 //
 // No HTTP here: no status code, no request, no query string. The same methods
 // back a future CLI import command.
 type Service struct {
-	store Store
-	now   Clock
-	log   *slog.Logger
+	store  Store
+	worlds WorldService
+	now    Clock
+	log    *slog.Logger
 }
 
 // ServiceOption adjusts a Service at construction.
@@ -114,6 +122,13 @@ func WithLogger(l *slog.Logger) ServiceOption {
 		if l != nil {
 			s.log = l
 		}
+	}
+}
+
+// WithWorldService sets the lifecycle policy used during public publication.
+func WithWorldService(worlds WorldService) ServiceOption {
+	return func(s *Service) {
+		s.worlds = worlds
 	}
 }
 
@@ -141,7 +156,7 @@ type CreateInput struct {
 	// repository translates the violation to ErrUnknownCategory.
 	CategoryID int64
 
-	Type       Type
+	World      contentworld.Key
 	Title      string
 	Slug       string
 	Summary    string
@@ -168,7 +183,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Entry, error) {
 	// false, and the partial unique index settles it. The repository translates
 	// that violation to the same ErrSlugTaken, so both paths agree.
 	if in.Slug != "" {
-		taken, err := s.store.SlugExists(ctx, in.Slug)
+		taken, err := s.store.SlugExists(ctx, in.World, in.Slug)
 		if err != nil {
 			return Entry{}, err
 		}
@@ -180,7 +195,8 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Entry, error) {
 	created, err := s.store.Create(ctx, CreateParams{
 		AuthorID:   in.AuthorID,
 		CategoryID: in.CategoryID,
-		Type:       in.Type,
+		World:      in.World,
+		Kind:       "",
 		Title:      in.Title,
 		Slug:       in.Slug,
 		Summary:    in.Summary,
@@ -230,7 +246,6 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Entry, error) {
 type UpdateInput struct {
 	ExpectedRevision int64
 
-	Type       *Type
 	Title      *string
 	Slug       *string
 	Summary    *string
@@ -248,8 +263,7 @@ type UpdateInput struct {
 
 // IsEmpty reports whether the input asks for no change at all.
 func (in UpdateInput) IsEmpty() bool {
-	return in.Type == nil &&
-		in.Title == nil &&
+	return in.Title == nil &&
 		in.Slug == nil &&
 		in.Summary == nil &&
 		in.ContentMD == nil &&
@@ -282,12 +296,12 @@ func (s *Service) Update(ctx context.Context, id int64, in UpdateInput) (Entry, 
 	if err := s.validateUpdate(in); err != nil {
 		return Entry{}, err
 	}
+	current, err := s.store.GetByID(ctx, id)
+	if err != nil {
+		return Entry{}, err
+	}
 
 	params := UpdateParams{ID: id, ExpectedRevision: in.ExpectedRevision}
-
-	if in.Type != nil {
-		params.SetType, params.Type = true, *in.Type
-	}
 	if in.Title != nil {
 		params.SetTitle, params.Title = true, *in.Title
 	}
@@ -297,7 +311,7 @@ func (s *Service) Update(ctx context.Context, id int64, in UpdateInput) (Entry, 
 		// this is not the guarantee, only the clear error; the partial unique index
 		// settles a race and the repository reports it as the same ErrSlugTaken.
 		if *in.Slug != "" {
-			taken, err := s.store.SlugExistsExcluding(ctx, *in.Slug, id)
+			taken, err := s.store.SlugExistsExcluding(ctx, current.World, *in.Slug, id)
 			if err != nil {
 				return Entry{}, err
 			}
@@ -353,9 +367,6 @@ func (s *Service) Update(ctx context.Context, id int64, in UpdateInput) (Entry, 
 // here an absent field means "unchanged", so filling one in would rewrite a value
 // the client did not mention.
 func (s *Service) validateUpdate(in UpdateInput) error {
-	if in.Type != nil && !in.Type.Valid() {
-		return fmt.Errorf("%w: %s", ErrInvalidType, *in.Type)
-	}
 	if in.Visibility != nil && !in.Visibility.Valid() {
 		return fmt.Errorf("%w: %s", ErrInvalidVisibility, *in.Visibility)
 	}
@@ -432,6 +443,15 @@ func (s *Service) Publish(ctx context.Context, id, expectedRevision int64) (Entr
 	if err := ValidateForPublish(current); err != nil {
 		return Entry{}, err
 	}
+	if current.Visibility == VisibilityPublic && s.worlds != nil {
+		allowed, err := s.worlds.AllowsPublicPublish(ctx, current.World)
+		if err != nil {
+			return Entry{}, err
+		}
+		if !allowed {
+			return Entry{}, fmt.Errorf("%w: %s", ErrWorldNotOpen, current.World)
+		}
+	}
 
 	published, err := s.store.Publish(ctx, id, expectedRevision, s.now())
 	if err != nil {
@@ -504,7 +524,7 @@ func (s *Service) Archive(ctx context.Context, id, expectedRevision int64) (Entr
 // GetByID returns one live entry whatever its status.
 //
 // The admin read. Its caller is behind authentication, which is why this may
-// answer with a draft where GetPublicBySlug may not.
+// answer with a draft where GetPublicByWorldSlug may not.
 func (s *Service) GetByID(ctx context.Context, id int64) (Entry, error) {
 	if id <= 0 {
 		return Entry{}, fmt.Errorf("%w: id %d", ErrEntryNotFound, id)
@@ -525,9 +545,14 @@ func (s *Service) GetByID(ctx context.Context, id int64) (Entry, error) {
 // at exactly the moment the editor expects it back. Unlike status, an unmatched
 // query is not an error: no match is a legitimate answer about the collection,
 // where an unknown status is a malformed request.
-func (s *Service) ListAdmin(ctx context.Context, categoryID int64, status *Status, query string, page, pageSize int) (Page, error) {
+func (s *Service) ListAdmin(ctx context.Context, world *contentworld.Key, categoryID int64, status *Status, query string, page, pageSize int) (Page, error) {
 	if status != nil && !status.Valid() {
 		return Page{}, fmt.Errorf("%w: %s", ErrInvalidStatus, *status)
+	}
+	if world != nil {
+		if err := ValidateWorld(*world); err != nil {
+			return Page{}, fmt.Errorf("%w: %s", err, *world)
+		}
 	}
 
 	var search *string
@@ -537,7 +562,7 @@ func (s *Service) ListAdmin(ctx context.Context, categoryID int64, status *Statu
 
 	page, pageSize = normalisePagination(page, pageSize)
 
-	entries, total, err := s.store.ListAdmin(ctx, categoryID, status, search, pageSize, (page-1)*pageSize)
+	entries, total, err := s.store.ListAdmin(ctx, world, categoryID, status, search, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return Page{}, err
 	}
@@ -568,11 +593,8 @@ func (s *Service) validateCreate(in *CreateInput) error {
 		return errors.New("entry: create requires an author")
 	}
 
-	if in.Type == "" {
-		in.Type = TypeJournal
-	}
-	if !in.Type.Valid() {
-		return fmt.Errorf("%w: %s", ErrInvalidType, in.Type)
+	if err := ValidateWorld(in.World); err != nil {
+		return fmt.Errorf("%w: %s", err, in.World)
 	}
 
 	if in.Visibility == "" {
@@ -598,12 +620,15 @@ func (s *Service) validateCreate(in *CreateInput) error {
 	return nil
 }
 
-// GetPublicBySlug returns one published, public entry.
+// GetPublicByWorldSlug returns one published, public entry.
 //
 // ErrEntryNotFound covers both "no such slug" and "exists but not readable". The
 // two must be indistinguishable, or the endpoint becomes a way to discover which
 // drafts exist.
-func (s *Service) GetPublicBySlug(ctx context.Context, slug string) (Entry, error) {
+func (s *Service) GetPublicByWorldSlug(ctx context.Context, world contentworld.Key, slug string) (Entry, error) {
+	if err := ValidateWorld(world); err != nil {
+		return Entry{}, fmt.Errorf("%w: %s", err, world)
+	}
 	// A slug that cannot be valid cannot match a row, so this is answered without
 	// a query. The error is the same as for a well-formed slug that is absent: a
 	// different one would let a client tell "malformed" from "not here", which is
@@ -612,23 +637,26 @@ func (s *Service) GetPublicBySlug(ctx context.Context, slug string) (Entry, erro
 		return Entry{}, fmt.Errorf("%w: %s", ErrEntryNotFound, slug)
 	}
 
-	return s.store.GetPublicBySlug(ctx, slug)
+	return s.store.GetPublicByWorldSlug(ctx, world, slug)
 }
 
-// GetLinkBySlug returns one published entry that is public or unlisted.
+// GetLinkByWorldSlug returns one published entry that is public or unlisted.
 //
 // What the detail endpoint calls, so that a shared link to an unlisted entry
 // opens. Private and draft entries are still ErrEntryNotFound, for the reason on
-// GetPublicBySlug: telling those apart from an unused slug reveals what exists.
+// GetPublicByWorldSlug: telling those apart from an unused slug reveals what exists.
 //
 // Unlisted is reachable by anyone who has the slug, including anyone who guesses
 // it. See VisibilityUnlisted: this hides an entry from lists, not from readers.
-func (s *Service) GetLinkBySlug(ctx context.Context, slug string) (Entry, error) {
+func (s *Service) GetLinkByWorldSlug(ctx context.Context, world contentworld.Key, slug string) (Entry, error) {
+	if err := ValidateWorld(world); err != nil {
+		return Entry{}, fmt.Errorf("%w: %s", err, world)
+	}
 	if err := ValidateSlug(slug); err != nil {
 		return Entry{}, fmt.Errorf("%w: %s", ErrEntryNotFound, slug)
 	}
 
-	return s.store.GetLinkBySlug(ctx, slug)
+	return s.store.GetLinkByWorldSlug(ctx, world, slug)
 }
 
 // Page is one page of entries plus what a client needs to walk the rest.
@@ -655,7 +683,10 @@ type Page struct {
 // yields an empty page, which is the honest answer: the collection shrinks as
 // entries are unpublished, so a page that existed a moment ago legitimately may
 // not now, and 400 would be wrong for a client that did nothing incorrect.
-func (s *Service) ListPublic(ctx context.Context, categoryID int64, page, pageSize int) (Page, error) {
+func (s *Service) ListPublic(ctx context.Context, world contentworld.Key, categoryID int64, page, pageSize int) (Page, error) {
+	if err := ValidateWorld(world); err != nil {
+		return Page{}, fmt.Errorf("%w: %s", err, world)
+	}
 	page, pageSize = normalisePagination(page, pageSize)
 
 	// A negative id is treated as no filter rather than refused: no category has
@@ -664,7 +695,7 @@ func (s *Service) ListPublic(ctx context.Context, categoryID int64, page, pageSi
 		categoryID = 0
 	}
 
-	entries, total, err := s.store.ListPublic(ctx, categoryID, pageSize, (page-1)*pageSize)
+	entries, total, err := s.store.ListPublic(ctx, world, categoryID, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return Page{}, err
 	}

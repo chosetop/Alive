@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/p30huiwei/alive/backend/internal/apperr"
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/httpx"
 	"github.com/p30huiwei/alive/backend/internal/taxonomy"
 )
@@ -114,7 +115,13 @@ func (h *Handler) Create(c *gin.Context) {
 // oversight: a site with 200 categories has a different problem than a missing
 // page parameter.
 func (h *Handler) List(c *gin.Context) {
-	categories, err := h.service.ListWithCounts(c.Request.Context())
+	world, err := worldQuery(c)
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	categories, err := h.service.ListWithCounts(c.Request.Context(), world)
 	if err != nil {
 		h.logger.ErrorContext(c.Request.Context(), "list categories failed",
 			slog.String("error", err.Error()),
@@ -131,7 +138,13 @@ func (h *Handler) List(c *gin.Context) {
 
 // ListAdmin returns every category with its timestamps, without counts.
 func (h *Handler) ListAdmin(c *gin.Context) {
-	categories, err := h.service.List(c.Request.Context())
+	world, err := worldQuery(c)
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	categories, err := h.service.List(c.Request.Context(), world)
 	if err != nil {
 		h.logger.ErrorContext(c.Request.Context(), "list categories failed",
 			slog.String("error", err.Error()),
@@ -251,12 +264,30 @@ func (h *Handler) writeCategoryError(c *gin.Context, op string, err error) {
 		httpx.Error(c, invalidField("name",
 			"must be present and at most 64 characters", err))
 
+	case errors.Is(err, taxonomy.ErrInvalidWorld):
+		httpx.Error(c, invalidField("world",
+			"must be one of journal, saying, video", err))
+
 	default:
 		h.logger.ErrorContext(c.Request.Context(), op+" failed",
 			slog.String("error", err.Error()),
 		)
 		httpx.Error(c, apperr.From(err))
 	}
+}
+
+func worldQuery(c *gin.Context) (contentworld.Key, error) {
+	raw := c.Query("world")
+	if raw == "" {
+		return "", apperr.InvalidInput("this request needs a world filter").
+			WithField("world", "must be one of journal, saying, video")
+	}
+	world := contentworld.Key(raw)
+	if _, ok := contentworld.Lookup(world); !ok {
+		return "", apperr.InvalidInput("this request needs a world filter").
+			WithField("world", "must be one of journal, saying, video")
+	}
+	return world, nil
 }
 
 // categoryID reads the :id path parameter.

@@ -72,7 +72,8 @@ func insertEntry(t *testing.T, q *sqlcgen.Queries, pool *postgres.Pool, authorID
 
 	row, err := q.CreateEntry(ctx, sqlcgen.CreateEntryParams{
 		AuthorID:    authorID,
-		Type:        "journal",
+		World:       "journal",
+		Kind:        "",
 		Title:       "Title for " + seed.slug,
 		Slug:        seed.slug,
 		ContentMd:   "# body",
@@ -173,7 +174,8 @@ func TestCreateEntry(t *testing.T) {
 
 	created, err := q.CreateEntry(ctx, sqlcgen.CreateEntryParams{
 		AuthorID:   authorID,
-		Type:       "journal",
+		World:      "journal",
+		Kind:       "",
 		Title:      "京都的春天",
 		Slug:       dbtest.Slug(t, "kyoto-spring"),
 		Summary:    &summary,
@@ -213,7 +215,8 @@ func TestCreateEntry(t *testing.T) {
 	t.Run("defaults apply when meta is empty", func(t *testing.T) {
 		row, err := q.CreateEntry(ctx, sqlcgen.CreateEntryParams{
 			AuthorID:   authorID,
-			Type:       "journal",
+			World:      "journal",
+			Kind:       "",
 			Title:      "minimal",
 			Slug:       dbtest.Slug(t, "minimal"),
 			Status:     "draft",
@@ -352,8 +355,11 @@ func TestSiteWorldSeedsDefaultViews(t *testing.T) {
 func createEntry(t *testing.T, q *sqlcgen.Queries, params sqlcgen.CreateEntryParams) sqlcgen.CreateEntryRow {
 	t.Helper()
 
-	if params.Type == "" {
-		params.Type = "journal"
+	if params.World == "" {
+		params.World = "journal"
+	}
+	if params.Kind == "" {
+		params.Kind = ""
 	}
 	if params.Visibility == "" {
 		params.Visibility = "public"
@@ -445,7 +451,10 @@ func TestPublicEntryVisibility(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				slug := slugs[tc.name]
 
-				got, err := q.GetPublicEntryBySlug(ctx, slug)
+				got, err := q.GetPublicEntryBySlug(ctx, sqlcgen.GetPublicEntryBySlugParams{
+					World: "journal",
+					Slug:  slug,
+				})
 				switch {
 				case tc.visible && err != nil:
 					t.Fatalf("want the row, got error: %v", err)
@@ -459,7 +468,7 @@ func TestPublicEntryVisibility(t *testing.T) {
 	})
 
 	t.Run("ListPublicEntries shows the published public row and none of the others", func(t *testing.T) {
-		rows, err := q.ListPublicEntries(ctx, sqlcgen.ListPublicEntriesParams{Limit: 200, Offset: 0})
+		rows, err := q.ListPublicEntries(ctx, sqlcgen.ListPublicEntriesParams{World: "journal", Limit: 200, Offset: 0})
 		if err != nil {
 			t.Fatalf("ListPublicEntries: %v", err)
 		}
@@ -486,12 +495,12 @@ func TestPublicEntryVisibility(t *testing.T) {
 		// Both read the whole table, so this compares them with each other rather
 		// than against a fixed number: the count must equal the rows the list
 		// returns when the page is large enough to hold them all.
-		rows, err := q.ListPublicEntries(ctx, sqlcgen.ListPublicEntriesParams{Limit: 1000, Offset: 0})
+		rows, err := q.ListPublicEntries(ctx, sqlcgen.ListPublicEntriesParams{World: "journal", Limit: 1000, Offset: 0})
 		if err != nil {
 			t.Fatalf("ListPublicEntries: %v", err)
 		}
 		// nil category: count every category, matching the unfiltered list above.
-		total, err := q.CountPublicEntries(ctx, nil)
+		total, err := q.CountPublicEntries(ctx, sqlcgen.CountPublicEntriesParams{World: "journal"})
 		if err != nil {
 			t.Fatalf("CountPublicEntries: %v", err)
 		}
@@ -555,7 +564,7 @@ func TestListPublicEntriesOrdering(t *testing.T) {
 	}
 
 	t.Run("orders by happened_at, falling back to published_at", func(t *testing.T) {
-		rows, err := q.ListPublicEntries(ctx, sqlcgen.ListPublicEntriesParams{Limit: 200, Offset: 0})
+		rows, err := q.ListPublicEntries(ctx, sqlcgen.ListPublicEntriesParams{World: "journal", Limit: 200, Offset: 0})
 		if err != nil {
 			t.Fatalf("ListPublicEntries: %v", err)
 		}
@@ -589,6 +598,7 @@ func TestListPublicEntriesOrdering(t *testing.T) {
 		seen := make(map[string]int)
 		for offset := int32(0); ; offset += 2 {
 			rows, err := q.ListPublicEntries(ctx, sqlcgen.ListPublicEntriesParams{
+				World: "journal",
 				Limit: 2, Offset: offset,
 			})
 			if err != nil {
@@ -619,7 +629,10 @@ func TestListPublicEntriesOrdering(t *testing.T) {
 		// Asserted by type rather than by value: ListPublicEntriesRow has no such
 		// field, so a query that started selecting it would break this build.
 		//   _ = rows[0].ContentMd
-		detail, err := q.GetPublicEntryBySlug(ctx, recentSlug)
+		detail, err := q.GetPublicEntryBySlug(ctx, sqlcgen.GetPublicEntryBySlugParams{
+			World: "journal",
+			Slug:  recentSlug,
+		})
 		if err != nil {
 			t.Fatalf("GetPublicEntryBySlug: %v", err)
 		}
@@ -654,7 +667,10 @@ func TestEntrySlugExists(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := q.EntrySlugExists(ctx, tc.slug)
+			got, err := q.EntrySlugExists(ctx, sqlcgen.EntrySlugExistsParams{
+				World: "journal",
+				Slug:  tc.slug,
+			})
 			if err != nil {
 				t.Fatalf("EntrySlugExists: %v", err)
 			}

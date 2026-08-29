@@ -15,11 +15,12 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/p30huiwei/alive/backend/internal/apperr"
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/entry"
 	"github.com/p30huiwei/alive/backend/internal/httpx"
 )
 
-// CategoryResolver turns a category slug into its id.
+// CategoryResolver turns a category slug into its id within one world.
 //
 // Declared here, at the consumer, rather than importing the taxonomy adapter or
 // the taxonomy service. The two adapters then have no dependency between them, and
@@ -34,7 +35,7 @@ import (
 // Nil is allowed: the ?category= filter is then refused rather than silently
 // ignored, because ignoring it would answer a filtered request with the unfiltered
 // list.
-type CategoryResolver func(c *gin.Context, slug string) (int64, error)
+type CategoryResolver func(c *gin.Context, world contentworld.Key, slug string) (int64, error)
 
 // AuthorResolver reports which account a request is acting as.
 //
@@ -102,11 +103,8 @@ func (h *Handler) Register(api *gin.RouterGroup, requireAuth gin.HandlerFunc) {
 	// two routes above write only 'published' and 'draft'.
 	group.POST("/:id/archive", requireAuth, h.Archive)
 
-	// Registered after the id routes purely for readability; gin's tree resolves
-	// static and parameter segments regardless of order. These two are last because
-	// they are the only public ones.
-	group.GET("", h.List)
-	group.GET("/:slug", h.GetBySlug)
+	api.GET("/journals", h.List)
+	api.GET("/journals/:slug", h.GetBySlug)
 }
 
 // RegisterAdmin adds the authenticated read routes under the admin group.
@@ -170,6 +168,7 @@ func (h *Handler) Create(c *gin.Context) {
 
 // List returns one page of published public entries, newest happening first.
 func (h *Handler) List(c *gin.Context) {
+	world := contentworld.Journal
 	page, err := intQuery(c, "page")
 	if err != nil {
 		httpx.Error(c, err)
@@ -185,7 +184,7 @@ func (h *Handler) List(c *gin.Context) {
 	// empty page. Those are different answers: one says the URL is wrong, the other
 	// says the category is empty, and a reader cannot act on the first if it is
 	// reported as the second.
-	categoryID, err := h.resolveCategory(c)
+	categoryID, err := h.resolveCategory(c, world)
 	if err != nil {
 		httpx.Error(c, err)
 		return
@@ -195,7 +194,7 @@ func (h *Handler) List(c *gin.Context) {
 	// past the end is an empty page, because the collection shrinks when an entry
 	// is unpublished and a client that asked for page 4 a moment ago did nothing
 	// wrong.
-	result, err := h.service.ListPublic(c.Request.Context(), categoryID, page, pageSize)
+	result, err := h.service.ListPublic(c.Request.Context(), world, categoryID, page, pageSize)
 	if err != nil {
 		h.logger.ErrorContext(c.Request.Context(), "list entries failed",
 			slog.String("error", err.Error()),
@@ -220,7 +219,7 @@ func (h *Handler) List(c *gin.Context) {
 
 // GetBySlug returns one published entry that is public or unlisted, body included.
 //
-// GetLinkBySlug rather than GetPublicBySlug, which is what makes an unlisted entry
+// GetLinkByWorldSlug rather than GetPublicByWorldSlug, which is what makes an unlisted entry
 // reachable: a link to one opens, while the list this sits beside still excludes it.
 //
 // Unlisted is not access control. A slug is human readable and therefore guessable,
@@ -228,7 +227,8 @@ func (h *Handler) List(c *gin.Context) {
 // nobody who has the URL. An entry a stranger must not read is private, and private
 // is absent from both reads.
 func (h *Handler) GetBySlug(c *gin.Context) {
-	found, err := h.service.GetLinkBySlug(c.Request.Context(), c.Param("slug"))
+	world := contentworld.Journal
+	found, err := h.service.GetLinkByWorldSlug(c.Request.Context(), world, c.Param("slug"))
 	if err != nil {
 		if errors.Is(err, entry.ErrEntryNotFound) {
 			// 404 for a draft, a private entry, a deleted one and a slug that never
@@ -273,6 +273,11 @@ func (h *Handler) Update(c *gin.Context) {
 	if req.Status != nil {
 		httpx.Error(c, apperr.InvalidInput("status cannot be changed here").
 			WithField("status", "use POST /entries/:id/publish or /unpublish"))
+		return
+	}
+	if req.World != nil {
+		httpx.Error(c, apperr.InvalidInput("world cannot be changed after creation").
+			WithField("world", "cannot be changed after creation"))
 		return
 	}
 
@@ -415,17 +420,36 @@ func (h *Handler) ListAdmin(c *gin.Context) {
 		status = &s
 	}
 
+	var world *contentworld.Key
+	if raw := c.Query("world"); raw != "" {
+		w := contentworld.Key(raw)
+		if _, ok := contentworld.Lookup(w); !ok {
+			httpx.Error(c, apperr.InvalidInput("this request needs a valid world filter").
+				WithField("world", "must be one of journal, saying, video"))
+			return
+		}
+		world = &w
+	}
+
 	// The directory search. Absent, blank, and whitespace-only all mean "no text
 	// filter"; the service trims and drops it, so the zero value needs no special
 	// case here. Not validated: unlike status, a query that matches nothing is a
 	// real answer rather than a malformed request.
-	categoryID, err := h.resolveCategory(c)
-	if err != nil {
-		httpx.Error(c, err)
-		return
+	var categoryID int64
+	if c.Query("category") != "" {
+		if world == nil {
+			httpx.Error(c, apperr.InvalidInput("this request needs a world filter").
+				WithField("world", "must be one of journal, saying, video"))
+			return
+		}
+		categoryID, err = h.resolveCategory(c, *world)
+		if err != nil {
+			httpx.Error(c, err)
+			return
+		}
 	}
 
-	result, err := h.service.ListAdmin(c.Request.Context(), categoryID, status, c.Query("q"), page, pageSize)
+	result, err := h.service.ListAdmin(c.Request.Context(), world, categoryID, status, c.Query("q"), page, pageSize)
 	if err != nil {
 		if errors.Is(err, entry.ErrInvalidStatus) {
 			httpx.Error(c, invalidField("status",
@@ -551,9 +575,14 @@ func (h *Handler) writeEntryError(c *gin.Context, op string, err error) {
 		httpx.Error(c, invalidField("content_md",
 			"must be present before publishing", err))
 
-	case errors.Is(err, entry.ErrInvalidType):
-		httpx.Error(c, invalidField("type",
-			"must be one of journal, book, movie, music, travel, photo", err))
+	case errors.Is(err, entry.ErrInvalidWorld):
+		httpx.Error(c, invalidField("world",
+			"must be one of journal, saying, video", err))
+
+	case errors.Is(err, entry.ErrWorldNotOpen):
+		httpx.Error(c, apperr.Conflict("this world is not open for public publishing").
+			WithField("world", "open the world before publishing public content").
+			WithCause(err))
 
 	case errors.Is(err, entry.ErrInvalidStatus):
 		httpx.Error(c, invalidField("status",
@@ -589,7 +618,7 @@ func (h *Handler) writeEntryError(c *gin.Context, op string, err error) {
 // An empty ?category= is treated as absent rather than refused. A frontend that
 // builds its query string from form state sends category= for "all categories", and
 // answering 400 there would break the one case the filter exists to serve.
-func (h *Handler) resolveCategory(c *gin.Context) (int64, error) {
+func (h *Handler) resolveCategory(c *gin.Context, world contentworld.Key) (int64, error) {
 	slug := c.Query("category")
 	if slug == "" {
 		return 0, nil
@@ -603,7 +632,7 @@ func (h *Handler) resolveCategory(c *gin.Context) (int64, error) {
 		return 0, apperr.Internal("this filter is not available")
 	}
 
-	id, err := h.category(c, slug)
+	id, err := h.category(c, world, slug)
 	if err != nil {
 		return 0, err
 	}

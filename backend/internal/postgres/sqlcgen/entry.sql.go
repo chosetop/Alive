@@ -24,7 +24,8 @@ RETURNING
     revision,
     author_id,
     category_id,
-    type,
+    world,
+    kind,
     title,
     slug,
     summary,
@@ -50,7 +51,8 @@ type ArchiveEntryRow struct {
 	Revision    int64
 	AuthorID    int64
 	CategoryID  *int64
-	Type        string
+	World       string
+	Kind        string
 	Title       string
 	Slug        string
 	Summary     *string
@@ -66,14 +68,6 @@ type ArchiveEntryRow struct {
 	UpdatedAt   time.Time
 }
 
-// Retire one entry: off the site, but not deleted.
-//
-// Distinct from both of the above. A draft is unfinished and an archived entry is
-// finished and withdrawn, and the difference matters in the admin list: drafts are
-// a work queue, archived entries are not. Distinct from a soft delete too, since
-// this one is still listed and still editable.
-//
-// published_at survives here for the same reason it survives unpublishing.
 func (q *Queries) ArchiveEntry(ctx context.Context, arg ArchiveEntryParams) (ArchiveEntryRow, error) {
 	row := q.db.QueryRow(ctx, archiveEntry, arg.ID, arg.ExpectedRevision)
 	var i ArchiveEntryRow
@@ -82,7 +76,8 @@ func (q *Queries) ArchiveEntry(ctx context.Context, arg ArchiveEntryParams) (Arc
 		&i.Revision,
 		&i.AuthorID,
 		&i.CategoryID,
-		&i.Type,
+		&i.World,
+		&i.Kind,
 		&i.Title,
 		&i.Slug,
 		&i.Summary,
@@ -104,30 +99,31 @@ const countAdminEntries = `-- name: CountAdminEntries :one
 SELECT count(*)
 FROM entries
 WHERE deleted_at IS NULL
-  AND ($1::bigint IS NULL OR category_id = $1::bigint)
-  AND ($2::varchar IS NULL OR status = $2::varchar)
+  AND ($1::varchar IS NULL OR world = $1::varchar)
+  AND ($2::bigint IS NULL OR category_id = $2::bigint)
+  AND ($3::varchar IS NULL OR status = $3::varchar)
   AND (
-    $3::text IS NULL
-    OR title ILIKE '%' || $3::text || '%'
-    OR slug ILIKE '%' || $3::text || '%'
-    OR COALESCE(summary, '') ILIKE '%' || $3::text || '%'
+    $4::text IS NULL
+    OR title ILIKE '%' || $4::text || '%'
+    OR slug ILIKE '%' || $4::text || '%'
+    OR COALESCE(summary, '') ILIKE '%' || $4::text || '%'
   )
 `
 
 type CountAdminEntriesParams struct {
+	World      *string
 	CategoryID *int64
 	Status     *string
 	Search     *string
 }
 
-// The total for the admin list, under the same filter.
-//
-// The search predicate is duplicated from ListAdminEntries rather than shared,
-// because sqlc generates from literal SQL and has no include mechanism. The two
-// must stay identical: a total computed under a different filter than the page
-// would report a pagination control the page cannot honour.
 func (q *Queries) CountAdminEntries(ctx context.Context, arg CountAdminEntriesParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countAdminEntries, arg.CategoryID, arg.Status, arg.Search)
+	row := q.db.QueryRow(ctx, countAdminEntries,
+		arg.World,
+		arg.CategoryID,
+		arg.Status,
+		arg.Search,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -136,33 +132,32 @@ func (q *Queries) CountAdminEntries(ctx context.Context, arg CountAdminEntriesPa
 const countPublicEntries = `-- name: CountPublicEntries :one
 SELECT count(*)
 FROM entries
-WHERE deleted_at IS NULL
+WHERE world = $1
+  AND deleted_at IS NULL
   AND status = 'published'
   AND visibility = 'public'
-  AND ($1::bigint IS NULL
-       OR category_id = $1::bigint)
+  AND ($2::bigint IS NULL
+       OR category_id = $2::bigint)
 `
 
-// The total for the pagination block, under the same filter as the list.
-//
-// A separate statement rather than a window function on the list query. With
-// count(*) OVER () the total arrives only when at least one row does, so the
-// last page plus one would report a total of zero.
-//
-// No join here: the count needs no category name, only the same filter.
-func (q *Queries) CountPublicEntries(ctx context.Context, categoryID *int64) (int64, error) {
-	row := q.db.QueryRow(ctx, countPublicEntries, categoryID)
+type CountPublicEntriesParams struct {
+	World      string
+	CategoryID *int64
+}
+
+func (q *Queries) CountPublicEntries(ctx context.Context, arg CountPublicEntriesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPublicEntries, arg.World, arg.CategoryID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
 }
 
 const createEntry = `-- name: CreateEntry :one
-
 INSERT INTO entries (
     author_id,
     category_id,
-    type,
+    world,
+    kind,
     title,
     slug,
     summary,
@@ -175,14 +170,15 @@ INSERT INTO entries (
     happened_at,
     published_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
 )
 RETURNING
     id,
     revision,
     author_id,
     category_id,
-    type,
+    world,
+    kind,
     title,
     slug,
     summary,
@@ -201,7 +197,8 @@ RETURNING
 type CreateEntryParams struct {
 	AuthorID    int64
 	CategoryID  *int64
-	Type        string
+	World       string
+	Kind        string
 	Title       string
 	Slug        string
 	Summary     *string
@@ -220,7 +217,8 @@ type CreateEntryRow struct {
 	Revision    int64
 	AuthorID    int64
 	CategoryID  *int64
-	Type        string
+	World       string
+	Kind        string
 	Title       string
 	Slug        string
 	Summary     *string
@@ -236,48 +234,12 @@ type CreateEntryRow struct {
 	UpdatedAt   time.Time
 }
 
-// Queries for entries.
-//
-// The visibility rule is in SQL, not in Go. Every public read carries
-// "deleted_at IS NULL AND status = 'published' AND visibility = 'public'" as
-// part of the statement, so a caller cannot reach an unpublished row by
-// forgetting a filter. The three conditions also match the partial index
-// idx_entries_public_feed exactly, so the planner uses it for these queries.
-//
-// The admin queries, which do see drafts, are separate statements rather than a
-// flag on these. A boolean that switches the visibility filter on and off is one
-// wrong argument away from publishing every draft. They are named Admin* and
-// appear at the end of this file; no query serves both audiences.
-//
-// GetLinkEntryBySlug is the one public read that accepts 'unlisted' as well as
-// 'public'. It is a separate statement for the reason above, not a parameter on
-// GetPublicEntryBySlug: an entry reachable by link must stay out of the lists,
-// and a shared query with a flag would make that depend on the argument.
-//
-// The reads LEFT JOIN categories to carry the category name and slug, so one
-// response needs one query. The writes cannot: RETURNING sees only the row being
-// written, so they hand back category_id alone and a caller that needs the name
-// reads the entry back. That asymmetry is in the generated types too, which is
-// why the domain has two conversion paths.
-// Insert one entry.
-//
-// published_at is a parameter rather than a now() call, because "first
-// published" is a decision the service makes: it is set when an entry is created
-// as published, and never rewritten afterwards. Passing now() here would move it
-// on every write.
-//
-// word_count likewise arrives computed. Counting words in SQL would tie the
-// definition of a word to Postgres' text functions, and the domain owns that
-// rule.
-// category_id is nullable and NULL means uncategorised, which is a normal state
-// rather than missing data. The foreign key refuses an id no category holds, so a
-// typo here is a constraint violation the repository translates, not a row
-// pointing at nothing.
 func (q *Queries) CreateEntry(ctx context.Context, arg CreateEntryParams) (CreateEntryRow, error) {
 	row := q.db.QueryRow(ctx, createEntry,
 		arg.AuthorID,
 		arg.CategoryID,
-		arg.Type,
+		arg.World,
+		arg.Kind,
 		arg.Title,
 		arg.Slug,
 		arg.Summary,
@@ -296,7 +258,8 @@ func (q *Queries) CreateEntry(ctx context.Context, arg CreateEntryParams) (Creat
 		&i.Revision,
 		&i.AuthorID,
 		&i.CategoryID,
-		&i.Type,
+		&i.World,
+		&i.Kind,
 		&i.Title,
 		&i.Slug,
 		&i.Summary,
@@ -329,8 +292,6 @@ type DashboardMetricsRow struct {
 	TotalWords       int64
 }
 
-// Deleted rows are not part of the active writing library. Word counts are
-// persisted on entries, so this aggregate does not load Markdown bodies.
 func (q *Queries) DashboardMetrics(ctx context.Context) (DashboardMetricsRow, error) {
 	row := q.db.QueryRow(ctx, dashboardMetrics)
 	var i DashboardMetricsRow
@@ -342,21 +303,19 @@ const entrySlugExists = `-- name: EntrySlugExists :one
 SELECT EXISTS (
     SELECT 1
     FROM entries
-    WHERE slug = $1
+    WHERE world = $1
+      AND slug = $2
       AND deleted_at IS NULL
 )
 `
 
-// Whether a live entry already holds this slug.
-//
-// Used to answer a conflict before attempting the insert, so the caller gets a
-// clear 409 rather than a constraint violation. It does not replace the unique
-// index: two concurrent creates can both see false here, and the index is what
-// settles it. The repository translates that violation to the same conflict.
-//
-// Matches uk_entries_slug: deleted rows do not hold their slug.
-func (q *Queries) EntrySlugExists(ctx context.Context, slug string) (bool, error) {
-	row := q.db.QueryRow(ctx, entrySlugExists, slug)
+type EntrySlugExistsParams struct {
+	World string
+	Slug  string
+}
+
+func (q *Queries) EntrySlugExists(ctx context.Context, arg EntrySlugExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, entrySlugExists, arg.World, arg.Slug)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -366,23 +325,21 @@ const entrySlugExistsExcluding = `-- name: EntrySlugExistsExcluding :one
 SELECT EXISTS (
     SELECT 1
     FROM entries
-    WHERE slug = $1
-      AND id <> $2
+    WHERE world = $1
+      AND slug = $2
+      AND id <> $3
       AND deleted_at IS NULL
 )
 `
 
 type EntrySlugExistsExcludingParams struct {
+	World      string
 	Slug       string
 	ExcludedID int64
 }
 
-// Whether a live entry other than this one holds the slug.
-//
-// The exclusion is what makes a no-op slug change work: submitting an entry's own
-// slug back must not be refused as a conflict with itself.
 func (q *Queries) EntrySlugExistsExcluding(ctx context.Context, arg EntrySlugExistsExcludingParams) (bool, error) {
-	row := q.db.QueryRow(ctx, entrySlugExistsExcluding, arg.Slug, arg.ExcludedID)
+	row := q.db.QueryRow(ctx, entrySlugExistsExcluding, arg.World, arg.Slug, arg.ExcludedID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -396,7 +353,8 @@ SELECT
     e.category_id,
     c.name AS category_name,
     c.slug AS category_slug,
-    e.type,
+    e.world,
+    e.kind,
     e.title,
     e.slug,
     e.summary,
@@ -411,7 +369,9 @@ SELECT
     e.created_at,
     e.updated_at
 FROM entries e
-LEFT JOIN categories c ON c.id = e.category_id
+LEFT JOIN categories c
+    ON c.id = e.category_id
+   AND c.world = e.world
 WHERE e.id = $1
   AND e.deleted_at IS NULL
 `
@@ -423,7 +383,8 @@ type GetAdminEntryByIDRow struct {
 	CategoryID   *int64
 	CategoryName *string
 	CategorySlug *string
-	Type         string
+	World        string
+	Kind         string
 	Title        string
 	Slug         string
 	Summary      *string
@@ -439,10 +400,6 @@ type GetAdminEntryByIDRow struct {
 	UpdatedAt    time.Time
 }
 
-// The admin detail read, addressed by id rather than slug.
-//
-// By id because a draft is edited before its slug is settled, and because a slug
-// may change during editing while the thing being edited does not.
 func (q *Queries) GetAdminEntryByID(ctx context.Context, id int64) (GetAdminEntryByIDRow, error) {
 	row := q.db.QueryRow(ctx, getAdminEntryByID, id)
 	var i GetAdminEntryByIDRow
@@ -453,7 +410,8 @@ func (q *Queries) GetAdminEntryByID(ctx context.Context, id int64) (GetAdminEntr
 		&i.CategoryID,
 		&i.CategoryName,
 		&i.CategorySlug,
-		&i.Type,
+		&i.World,
+		&i.Kind,
 		&i.Title,
 		&i.Slug,
 		&i.Summary,
@@ -478,7 +436,8 @@ SELECT
     e.category_id,
     c.name AS category_name,
     c.slug AS category_slug,
-    e.type,
+    e.world,
+    e.kind,
     e.title,
     e.slug,
     e.summary,
@@ -493,12 +452,20 @@ SELECT
     e.created_at,
     e.updated_at
 FROM entries e
-LEFT JOIN categories c ON c.id = e.category_id
-WHERE e.slug = $1
+LEFT JOIN categories c
+    ON c.id = e.category_id
+   AND c.world = e.world
+WHERE e.world = $1
+  AND e.slug = $2
   AND e.deleted_at IS NULL
   AND e.status = 'published'
   AND e.visibility IN ('public', 'unlisted')
 `
+
+type GetLinkEntryBySlugParams struct {
+	World string
+	Slug  string
+}
 
 type GetLinkEntryBySlugRow struct {
 	ID           int64
@@ -506,7 +473,8 @@ type GetLinkEntryBySlugRow struct {
 	CategoryID   *int64
 	CategoryName *string
 	CategorySlug *string
-	Type         string
+	World        string
+	Kind         string
 	Title        string
 	Slug         string
 	Summary      *string
@@ -522,19 +490,8 @@ type GetLinkEntryBySlugRow struct {
 	UpdatedAt    time.Time
 }
 
-// The detail read behind a shared link: public or unlisted.
-//
-// This is what GET /entries/:slug uses, so that an unlisted entry can be opened
-// by anyone holding its URL while staying out of every list, count and sitemap.
-// The lists above are unchanged and still say visibility = 'public'.
-//
-// Note what unlisted does and does not buy. A slug is human readable and
-// guessable, so this is "not advertised", not access control: it keeps an entry
-// off the front page and out of search engines, and that is all. An entry that
-// must not be readable by a stranger is 'private', which no public statement
-// accepts.
-func (q *Queries) GetLinkEntryBySlug(ctx context.Context, slug string) (GetLinkEntryBySlugRow, error) {
-	row := q.db.QueryRow(ctx, getLinkEntryBySlug, slug)
+func (q *Queries) GetLinkEntryBySlug(ctx context.Context, arg GetLinkEntryBySlugParams) (GetLinkEntryBySlugRow, error) {
+	row := q.db.QueryRow(ctx, getLinkEntryBySlug, arg.World, arg.Slug)
 	var i GetLinkEntryBySlugRow
 	err := row.Scan(
 		&i.ID,
@@ -542,7 +499,8 @@ func (q *Queries) GetLinkEntryBySlug(ctx context.Context, slug string) (GetLinkE
 		&i.CategoryID,
 		&i.CategoryName,
 		&i.CategorySlug,
-		&i.Type,
+		&i.World,
+		&i.Kind,
 		&i.Title,
 		&i.Slug,
 		&i.Summary,
@@ -567,7 +525,8 @@ SELECT
     e.category_id,
     c.name AS category_name,
     c.slug AS category_slug,
-    e.type,
+    e.world,
+    e.kind,
     e.title,
     e.slug,
     e.summary,
@@ -582,12 +541,20 @@ SELECT
     e.created_at,
     e.updated_at
 FROM entries e
-LEFT JOIN categories c ON c.id = e.category_id
-WHERE e.slug = $1
+LEFT JOIN categories c
+    ON c.id = e.category_id
+   AND c.world = e.world
+WHERE e.world = $1
+  AND e.slug = $2
   AND e.deleted_at IS NULL
   AND e.status = 'published'
   AND e.visibility = 'public'
 `
+
+type GetPublicEntryBySlugParams struct {
+	World string
+	Slug  string
+}
 
 type GetPublicEntryBySlugRow struct {
 	ID           int64
@@ -595,7 +562,8 @@ type GetPublicEntryBySlugRow struct {
 	CategoryID   *int64
 	CategoryName *string
 	CategorySlug *string
-	Type         string
+	World        string
+	Kind         string
 	Title        string
 	Slug         string
 	Summary      *string
@@ -611,15 +579,8 @@ type GetPublicEntryBySlugRow struct {
 	UpdatedAt    time.Time
 }
 
-// The strictly public detail read, addressed by slug.
-//
-// Returns content_md: the detail endpoints are the ones that need the body.
-//
-// Kept alongside GetLinkEntryBySlug rather than replaced by it. This one is what
-// a sitemap generator or a feed builder should ask, because those enumerate what
-// is meant to be found, and an unlisted entry is not.
-func (q *Queries) GetPublicEntryBySlug(ctx context.Context, slug string) (GetPublicEntryBySlugRow, error) {
-	row := q.db.QueryRow(ctx, getPublicEntryBySlug, slug)
+func (q *Queries) GetPublicEntryBySlug(ctx context.Context, arg GetPublicEntryBySlugParams) (GetPublicEntryBySlugRow, error) {
+	row := q.db.QueryRow(ctx, getPublicEntryBySlug, arg.World, arg.Slug)
 	var i GetPublicEntryBySlugRow
 	err := row.Scan(
 		&i.ID,
@@ -627,7 +588,8 @@ func (q *Queries) GetPublicEntryBySlug(ctx context.Context, slug string) (GetPub
 		&i.CategoryID,
 		&i.CategoryName,
 		&i.CategorySlug,
-		&i.Type,
+		&i.World,
+		&i.Kind,
 		&i.Title,
 		&i.Slug,
 		&i.Summary,
@@ -646,14 +608,14 @@ func (q *Queries) GetPublicEntryBySlug(ctx context.Context, slug string) (GetPub
 }
 
 const listAdminEntries = `-- name: ListAdminEntries :many
-
 SELECT
     e.id,
     e.author_id,
     e.category_id,
     c.name AS category_name,
     c.slug AS category_slug,
-    e.type,
+    e.world,
+    e.kind,
     e.title,
     e.slug,
     e.summary,
@@ -667,21 +629,25 @@ SELECT
     e.created_at,
     e.updated_at
 FROM entries e
-LEFT JOIN categories c ON c.id = e.category_id
+LEFT JOIN categories c
+    ON c.id = e.category_id
+   AND c.world = e.world
 WHERE e.deleted_at IS NULL
-  AND ($1::bigint IS NULL OR e.category_id = $1::bigint)
-  AND ($2::varchar IS NULL OR e.status = $2::varchar)
+  AND ($1::varchar IS NULL OR e.world = $1::varchar)
+  AND ($2::bigint IS NULL OR e.category_id = $2::bigint)
+  AND ($3::varchar IS NULL OR e.status = $3::varchar)
   AND (
-    $3::text IS NULL
-    OR e.title ILIKE '%' || $3::text || '%'
-    OR e.slug ILIKE '%' || $3::text || '%'
-    OR COALESCE(e.summary, '') ILIKE '%' || $3::text || '%'
+    $4::text IS NULL
+    OR e.title ILIKE '%' || $4::text || '%'
+    OR e.slug ILIKE '%' || $4::text || '%'
+    OR COALESCE(e.summary, '') ILIKE '%' || $4::text || '%'
   )
 ORDER BY e.updated_at DESC, e.id DESC
-LIMIT $5 OFFSET $4
+LIMIT $6 OFFSET $5
 `
 
 type ListAdminEntriesParams struct {
+	World      *string
 	CategoryID *int64
 	Status     *string
 	Search     *string
@@ -695,7 +661,8 @@ type ListAdminEntriesRow struct {
 	CategoryID   *int64
 	CategoryName *string
 	CategorySlug *string
-	Type         string
+	World        string
+	Kind         string
 	Title        string
 	Slug         string
 	Summary      *string
@@ -710,30 +677,9 @@ type ListAdminEntriesRow struct {
 	UpdatedAt    time.Time
 }
 
-// The admin reads.
-//
-// Separate statements from the public ones above, not the same queries with the
-// filter parameterised. These see every status and every visibility, and the only
-// thing keeping a draft off the front page is that the public queries cannot
-// express this. A shared query with a boolean would put that guarantee in the
-// hands of whoever passes the argument.
-//
-// Soft deleted rows are excluded here too. There is no endpoint that shows them
-// and no restore, so a deleted entry is out of reach from every route.
-// The admin list: every status, ordered by last edit.
-//
-// updated_at DESC, not happened_at: this list is a work queue, so what was
-// touched last belongs at the top. The public list answers a different question
-// and sorts differently. Matches idx_entries_admin.
-//
-// The status filter is a nullable argument: NULL means every status. That is not
-// the same hazard as parameterising the visibility filter, because no draft is
-// being kept from anyone here. Every row this statement can return is already
-// visible to the caller.
-//
-// No content_md, for the same reason the public list omits it.
 func (q *Queries) ListAdminEntries(ctx context.Context, arg ListAdminEntriesParams) ([]ListAdminEntriesRow, error) {
 	rows, err := q.db.Query(ctx, listAdminEntries,
+		arg.World,
 		arg.CategoryID,
 		arg.Status,
 		arg.Search,
@@ -753,7 +699,8 @@ func (q *Queries) ListAdminEntries(ctx context.Context, arg ListAdminEntriesPara
 			&i.CategoryID,
 			&i.CategoryName,
 			&i.CategorySlug,
-			&i.Type,
+			&i.World,
+			&i.Kind,
 			&i.Title,
 			&i.Slug,
 			&i.Summary,
@@ -784,7 +731,8 @@ SELECT
     e.category_id,
     c.name AS category_name,
     c.slug AS category_slug,
-    e.type,
+    e.world,
+    e.kind,
     e.title,
     e.slug,
     e.summary,
@@ -798,17 +746,21 @@ SELECT
     e.created_at,
     e.updated_at
 FROM entries e
-LEFT JOIN categories c ON c.id = e.category_id
-WHERE e.deleted_at IS NULL
+LEFT JOIN categories c
+    ON c.id = e.category_id
+   AND c.world = e.world
+WHERE e.world = $1
+  AND e.deleted_at IS NULL
   AND e.status = 'published'
   AND e.visibility = 'public'
-  AND ($1::bigint IS NULL
-       OR e.category_id = $1::bigint)
+  AND ($2::bigint IS NULL
+       OR e.category_id = $2::bigint)
 ORDER BY COALESCE(e.happened_at, e.published_at) DESC, e.id DESC
-LIMIT $3 OFFSET $2
+LIMIT $4 OFFSET $3
 `
 
 type ListPublicEntriesParams struct {
+	World      string
 	CategoryID *int64
 	Offset     int32
 	Limit      int32
@@ -820,7 +772,8 @@ type ListPublicEntriesRow struct {
 	CategoryID   *int64
 	CategoryName *string
 	CategorySlug *string
-	Type         string
+	World        string
+	Kind         string
 	Title        string
 	Slug         string
 	Summary      *string
@@ -835,36 +788,13 @@ type ListPublicEntriesRow struct {
 	UpdatedAt    time.Time
 }
 
-// The public list, newest happening first.
-//
-// No content_md in the column list. A list of twenty entries carrying twenty
-// Markdown bodies is a response tens of times larger than the page needs, and
-// nothing on a list view renders the body.
-//
-// Ordered by happened_at, not created_at: the timeline records when things
-// happened, not when they were typed. Entries with no happened_at fall back to
-// published_at rather than sorting to the end, because that is the date the
-// reader is shown for them, and a list sorted by one date while labelled with
-// another puts a 2026 entry below the 2024 block.
-//
-// COALESCE cannot be NULL on these rows: entries_published_at_check requires
-// published_at on every published entry, which is why there is no NULLS LAST.
-// id DESC breaks ties, which is what stops a row appearing on two pages when
-// several share a date.
-//
-// idx_entries_public_timeline (000005) indexes this exact expression. Changing
-// the ORDER BY without changing that index turns the list into a full sort.
-// The category filter is a nullable id: NULL means every category. The caller
-// passes an id, not a slug, because the service resolves the slug first — that
-// way an unknown category is a 404 saying the URL is wrong, rather than an empty
-// list saying the category has nothing in it.
-//
-// One thing this shape cannot express is "only the uncategorised ones", since
-// that would need a third state alongside "this category" and "all". No endpoint
-// asks for it: uncategorised is not a navigable page, having neither a name nor a
-// slug. Adding it later means a separate statement, not another argument.
 func (q *Queries) ListPublicEntries(ctx context.Context, arg ListPublicEntriesParams) ([]ListPublicEntriesRow, error) {
-	rows, err := q.db.Query(ctx, listPublicEntries, arg.CategoryID, arg.Offset, arg.Limit)
+	rows, err := q.db.Query(ctx, listPublicEntries,
+		arg.World,
+		arg.CategoryID,
+		arg.Offset,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -878,7 +808,8 @@ func (q *Queries) ListPublicEntries(ctx context.Context, arg ListPublicEntriesPa
 			&i.CategoryID,
 			&i.CategoryName,
 			&i.CategorySlug,
-			&i.Type,
+			&i.World,
+			&i.Kind,
 			&i.Title,
 			&i.Slug,
 			&i.Summary,
@@ -916,7 +847,8 @@ RETURNING
     revision,
     author_id,
     category_id,
-    type,
+    world,
+    kind,
     title,
     slug,
     summary,
@@ -943,7 +875,8 @@ type PublishEntryRow struct {
 	Revision    int64
 	AuthorID    int64
 	CategoryID  *int64
-	Type        string
+	World       string
+	Kind        string
 	Title       string
 	Slug        string
 	Summary     *string
@@ -959,15 +892,6 @@ type PublishEntryRow struct {
 	UpdatedAt   time.Time
 }
 
-// Publish one entry, stamping published_at only if it has never been set.
-//
-// Both changes are in one statement because entries_published_at_check refuses a
-// row with status 'published' and a NULL published_at. Two statements would leave
-// the row invalid between them, and the constraint would reject the first.
-//
-// COALESCE is the whole rule: an entry published, withdrawn and published again
-// keeps its original date, so fixing a typo years later does not move a
-// three-year-old entry to the top of the feed.
 func (q *Queries) PublishEntry(ctx context.Context, arg PublishEntryParams) (PublishEntryRow, error) {
 	row := q.db.QueryRow(ctx, publishEntry, arg.PublishedAt, arg.ID, arg.ExpectedRevision)
 	var i PublishEntryRow
@@ -976,7 +900,8 @@ func (q *Queries) PublishEntry(ctx context.Context, arg PublishEntryParams) (Pub
 		&i.Revision,
 		&i.AuthorID,
 		&i.CategoryID,
-		&i.Type,
+		&i.World,
+		&i.Kind,
 		&i.Title,
 		&i.Slug,
 		&i.Summary,
@@ -1007,17 +932,6 @@ type SoftDeleteEntryParams struct {
 	ID        int64
 }
 
-// Mark one entry deleted, returning its id so the caller can tell a hit from a
-// miss.
-//
-// deleted_at IS NULL in the WHERE makes this report no row on a second call
-// rather than moving the timestamp. The first delete is the one that happened,
-// and a repeat must not rewrite when.
-//
-// The row stays. Content is not regenerable, and every read filters on
-// deleted_at, so the row is unreachable without being gone. Note that the slug
-// is released: uk_entries_slug is partial on deleted_at IS NULL, so a later
-// entry may take it.
 func (q *Queries) SoftDeleteEntry(ctx context.Context, arg SoftDeleteEntryParams) (int64, error) {
 	row := q.db.QueryRow(ctx, softDeleteEntry, arg.DeletedAt, arg.ID)
 	var id int64
@@ -1038,7 +952,8 @@ RETURNING
     revision,
     author_id,
     category_id,
-    type,
+    world,
+    kind,
     title,
     slug,
     summary,
@@ -1064,7 +979,8 @@ type UnpublishEntryRow struct {
 	Revision    int64
 	AuthorID    int64
 	CategoryID  *int64
-	Type        string
+	World       string
+	Kind        string
 	Title       string
 	Slug        string
 	Summary     *string
@@ -1080,11 +996,6 @@ type UnpublishEntryRow struct {
 	UpdatedAt   time.Time
 }
 
-// Return one entry to draft.
-//
-// published_at is deliberately untouched: it records the first publication, which
-// is a fact that withdrawing does not undo. Clearing it would make a
-// re-publication look like a first one and move the entry to the top of the feed.
 func (q *Queries) UnpublishEntry(ctx context.Context, arg UnpublishEntryParams) (UnpublishEntryRow, error) {
 	row := q.db.QueryRow(ctx, unpublishEntry, arg.ID, arg.ExpectedRevision)
 	var i UnpublishEntryRow
@@ -1093,7 +1004,8 @@ func (q *Queries) UnpublishEntry(ctx context.Context, arg UnpublishEntryParams) 
 		&i.Revision,
 		&i.AuthorID,
 		&i.CategoryID,
-		&i.Type,
+		&i.World,
+		&i.Kind,
 		&i.Title,
 		&i.Slug,
 		&i.Summary,
@@ -1115,40 +1027,36 @@ const updateEntry = `-- name: UpdateEntry :one
 UPDATE entries
 SET
     revision = revision + 1,
-    type = CASE WHEN $1::boolean
-                THEN $2::varchar ELSE type END,
-    title = CASE WHEN $3::boolean
-                 THEN $4::varchar ELSE title END,
-    slug = CASE WHEN $5::boolean
-                THEN $6::varchar ELSE slug END,
-    summary = CASE WHEN $7::boolean
-                   THEN $8::text ELSE summary END,
-    content_md = CASE WHEN $9::boolean
-                      THEN $10::text ELSE content_md END,
-    word_count = CASE WHEN $9::boolean
-                      THEN $11::int ELSE word_count END,
-    cover_url = CASE WHEN $12::boolean
-                     THEN $13::text ELSE cover_url END,
-    visibility = CASE WHEN $14::boolean
-                      THEN $15::varchar ELSE visibility END,
-    meta = CASE WHEN $16::boolean
-                THEN $17::jsonb ELSE meta END,
-    happened_at = CASE WHEN $18::boolean
-                       THEN $19::timestamptz ELSE happened_at END,
-    -- Clearing this one is what makes an entry uncategorised again: set_category_id
-    -- true with a NULL value. Under COALESCE that would be indistinguishable from
-    -- leaving the category as it is, which is the whole reason for the flags.
-    category_id = CASE WHEN $20::boolean
-                       THEN $21::bigint ELSE category_id END
-WHERE id = $22
-  AND revision = $23
+    title = CASE WHEN $1::boolean
+                 THEN $2::varchar ELSE title END,
+    slug = CASE WHEN $3::boolean
+                THEN $4::varchar ELSE slug END,
+    summary = CASE WHEN $5::boolean
+                   THEN $6::text ELSE summary END,
+    content_md = CASE WHEN $7::boolean
+                      THEN $8::text ELSE content_md END,
+    word_count = CASE WHEN $7::boolean
+                      THEN $9::int ELSE word_count END,
+    cover_url = CASE WHEN $10::boolean
+                     THEN $11::text ELSE cover_url END,
+    visibility = CASE WHEN $12::boolean
+                      THEN $13::varchar ELSE visibility END,
+    meta = CASE WHEN $14::boolean
+                THEN $15::jsonb ELSE meta END,
+    happened_at = CASE WHEN $16::boolean
+                       THEN $17::timestamptz ELSE happened_at END,
+    category_id = CASE WHEN $18::boolean
+                       THEN $19::bigint ELSE category_id END
+WHERE id = $20
+  AND revision = $21
   AND deleted_at IS NULL
 RETURNING
     id,
     revision,
     author_id,
     category_id,
-    type,
+    world,
+    kind,
     title,
     slug,
     summary,
@@ -1165,8 +1073,6 @@ RETURNING
 `
 
 type UpdateEntryParams struct {
-	SetType          bool
-	Type             string
 	SetTitle         bool
 	Title            string
 	SetSlug          bool
@@ -1195,7 +1101,8 @@ type UpdateEntryRow struct {
 	Revision    int64
 	AuthorID    int64
 	CategoryID  *int64
-	Type        string
+	World       string
+	Kind        string
 	Title       string
 	Slug        string
 	Summary     *string
@@ -1211,29 +1118,8 @@ type UpdateEntryRow struct {
 	UpdatedAt   time.Time
 }
 
-// Apply a partial update to one live entry.
-//
-// Every field is a pair: a boolean saying whether the caller asked for this
-// field, and the value to write. The boolean is not redundant with a NULL value,
-// and this is why COALESCE is not used here: summary, cover_url and happened_at
-// are nullable, so "clear this field" and "leave this field alone" both arrive as
-// NULL under COALESCE and become the same statement. With the flag, clearing a
-// summary is set_summary = true and summary = NULL, which is distinct from
-// set_summary = false.
-//
-// status is absent on purpose. Publishing carries the published_at rule, and
-// PublishEntry below owns it; allowing status here would put that rule in two
-// places, and the CHECK constraint would reject the write anyway once status
-// became 'published' with a NULL published_at.
-//
-// word_count travels with content_md rather than being its own parameter: it is
-// derived from the body, so accepting it separately would let the two disagree.
-//
-// updated_at is left to the entries_set_updated_at trigger from 000001.
 func (q *Queries) UpdateEntry(ctx context.Context, arg UpdateEntryParams) (UpdateEntryRow, error) {
 	row := q.db.QueryRow(ctx, updateEntry,
-		arg.SetType,
-		arg.Type,
 		arg.SetTitle,
 		arg.Title,
 		arg.SetSlug,
@@ -1262,7 +1148,8 @@ func (q *Queries) UpdateEntry(ctx context.Context, arg UpdateEntryParams) (Updat
 		&i.Revision,
 		&i.AuthorID,
 		&i.CategoryID,
-		&i.Type,
+		&i.World,
+		&i.Kind,
 		&i.Title,
 		&i.Slug,
 		&i.Summary,

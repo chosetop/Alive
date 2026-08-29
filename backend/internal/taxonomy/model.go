@@ -18,6 +18,8 @@ import (
 	"regexp"
 	"time"
 	"unicode/utf8"
+
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 )
 
 // Sentinel errors. Callers compare with errors.Is.
@@ -33,6 +35,9 @@ var (
 
 	// ErrSlugTaken reports that a category already holds the slug.
 	ErrSlugTaken = errors.New("taxonomy: slug already taken")
+
+	// ErrInvalidWorld reports a world outside the installed set.
+	ErrInvalidWorld = errors.New("taxonomy: invalid world")
 
 	// ErrInvalidSlug reports a slug that does not match the required format.
 	ErrInvalidSlug = errors.New("taxonomy: invalid slug")
@@ -103,6 +108,7 @@ func ValidateName(name string) error {
 // given. That matches entry.Entry, and keeps a nil check out of every read.
 type Category struct {
 	ID          int64
+	World       contentworld.Key
 	Name        string
 	Slug        string
 	Description string
@@ -131,4 +137,12 @@ type CategoryWithCount struct {
 	// list that opening this category will show, and an unlisted entry is not in
 	// it.
 	EntryCount int64
+}
+
+// ValidateWorld checks that world names one installed content world.
+func ValidateWorld(world contentworld.Key) error {
+	if _, ok := contentworld.Lookup(world); !ok {
+		return ErrInvalidWorld
+	}
+	return nil
 }

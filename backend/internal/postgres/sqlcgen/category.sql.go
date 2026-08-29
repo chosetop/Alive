@@ -14,17 +14,18 @@ const categorySlugExists = `-- name: CategorySlugExists :one
 SELECT EXISTS (
     SELECT 1
     FROM categories
-    WHERE slug = $1
+    WHERE world = $1
+      AND slug = $2
 )
 `
 
-// Whether any category already holds this slug.
-//
-// Asked before an insert so the caller gets a conflict naming the field rather
-// than a constraint violation. It does not replace categories_slug_key: two
-// concurrent creates can both read false, and the constraint is what settles it.
-func (q *Queries) CategorySlugExists(ctx context.Context, slug string) (bool, error) {
-	row := q.db.QueryRow(ctx, categorySlugExists, slug)
+type CategorySlugExistsParams struct {
+	World string
+	Slug  string
+}
+
+func (q *Queries) CategorySlugExists(ctx context.Context, arg CategorySlugExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, categorySlugExists, arg.World, arg.Slug)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -34,39 +35,38 @@ const categorySlugExistsExcluding = `-- name: CategorySlugExistsExcluding :one
 SELECT EXISTS (
     SELECT 1
     FROM categories
-    WHERE slug = $1
-      AND id <> $2
+    WHERE world = $1
+      AND slug = $2
+      AND id <> $3
 )
 `
 
 type CategorySlugExistsExcludingParams struct {
+	World      string
 	Slug       string
 	ExcludedID int64
 }
 
-// Whether a category other than this one holds the slug.
-//
-// The exclusion is what lets an edit form submit a category's own slug back
-// unchanged without being refused as a conflict with itself.
 func (q *Queries) CategorySlugExistsExcluding(ctx context.Context, arg CategorySlugExistsExcludingParams) (bool, error) {
-	row := q.db.QueryRow(ctx, categorySlugExistsExcluding, arg.Slug, arg.ExcludedID)
+	row := q.db.QueryRow(ctx, categorySlugExistsExcluding, arg.World, arg.Slug, arg.ExcludedID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
 }
 
 const createCategory = `-- name: CreateCategory :one
-
 INSERT INTO categories (
+    world,
     name,
     slug,
     description,
     sort_order
 ) VALUES (
-    $1, $2, $3, $4
+    $1, $2, $3, $4, $5
 )
 RETURNING
     id,
+    world,
     name,
     slug,
     description,
@@ -76,6 +76,7 @@ RETURNING
 `
 
 type CreateCategoryParams struct {
+	World       string
 	Name        string
 	Slug        string
 	Description *string
@@ -84,6 +85,7 @@ type CreateCategoryParams struct {
 
 type CreateCategoryRow struct {
 	ID          int64
+	World       string
 	Name        string
 	Slug        string
 	Description *string
@@ -92,23 +94,9 @@ type CreateCategoryRow struct {
 	UpdatedAt   time.Time
 }
 
-// Queries for categories.
-//
-// Unlike entries, there is no visibility rule to enforce here and no soft
-// delete to filter on. A category is a name, a slug and a sort order; it carries
-// no content of its own, so the reads are the same set of rows for everyone and
-// a delete is a delete.
-//
-// What is not the same for everyone is the count attached to each category. The
-// public list counts only entries a public reader could reach, so the number
-// beside a category matches what opening it will show. ListCategoriesWithCounts
-// carries that filter; ListCategories has no count at all.
-// Insert one category.
-//
-// sort_order arrives from the caller rather than defaulting here, so that the
-// domain owns what "unspecified" means.
 func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) (CreateCategoryRow, error) {
 	row := q.db.QueryRow(ctx, createCategory,
+		arg.World,
 		arg.Name,
 		arg.Slug,
 		arg.Description,
@@ -117,6 +105,7 @@ func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) 
 	var i CreateCategoryRow
 	err := row.Scan(
 		&i.ID,
+		&i.World,
 		&i.Name,
 		&i.Slug,
 		&i.Description,
@@ -133,16 +122,6 @@ WHERE id = $1
 RETURNING id
 `
 
-// Delete one category, returning its id so the caller can tell a hit from a miss.
-//
-// A physical delete, unlike an entry. A category is a name and a slug, so
-// recreating one costs nothing, and a deleted_at here would add a condition to
-// every read of a table that has no other reason to need one.
-//
-// Entries referencing it are not touched by this statement. The foreign key is
-// ON DELETE SET NULL, so they become uncategorised. That makes this delete
-// succeed quietly even when the category is in use: nothing afterwards records
-// which category those rows pointed at.
 func (q *Queries) DeleteCategory(ctx context.Context, id int64) (int64, error) {
 	row := q.db.QueryRow(ctx, deleteCategory, id)
 	var id_2 int64
@@ -153,6 +132,7 @@ func (q *Queries) DeleteCategory(ctx context.Context, id int64) (int64, error) {
 const getCategoryByID = `-- name: GetCategoryByID :one
 SELECT
     id,
+    world,
     name,
     slug,
     description,
@@ -165,6 +145,7 @@ WHERE id = $1
 
 type GetCategoryByIDRow struct {
 	ID          int64
+	World       string
 	Name        string
 	Slug        string
 	Description *string
@@ -173,12 +154,12 @@ type GetCategoryByIDRow struct {
 	UpdatedAt   time.Time
 }
 
-// Read one category by id. Used after a write and by the admin edit form.
 func (q *Queries) GetCategoryByID(ctx context.Context, id int64) (GetCategoryByIDRow, error) {
 	row := q.db.QueryRow(ctx, getCategoryByID, id)
 	var i GetCategoryByIDRow
 	err := row.Scan(
 		&i.ID,
+		&i.World,
 		&i.Name,
 		&i.Slug,
 		&i.Description,
@@ -192,6 +173,7 @@ func (q *Queries) GetCategoryByID(ctx context.Context, id int64) (GetCategoryByI
 const getCategoryBySlug = `-- name: GetCategoryBySlug :one
 SELECT
     id,
+    world,
     name,
     slug,
     description,
@@ -199,11 +181,18 @@ SELECT
     created_at,
     updated_at
 FROM categories
-WHERE slug = $1
+WHERE world = $1
+  AND slug = $2
 `
+
+type GetCategoryBySlugParams struct {
+	World string
+	Slug  string
+}
 
 type GetCategoryBySlugRow struct {
 	ID          int64
+	World       string
 	Name        string
 	Slug        string
 	Description *string
@@ -212,17 +201,12 @@ type GetCategoryBySlugRow struct {
 	UpdatedAt   time.Time
 }
 
-// Read one category by slug.
-//
-// This is how a category page resolves its URL segment, and how a list request
-// filtered by category turns ?category=travel into an id. Resolving first means
-// an unknown slug is a 404 rather than an empty list, which are different
-// answers: one says the URL is wrong, the other says the category is empty.
-func (q *Queries) GetCategoryBySlug(ctx context.Context, slug string) (GetCategoryBySlugRow, error) {
-	row := q.db.QueryRow(ctx, getCategoryBySlug, slug)
+func (q *Queries) GetCategoryBySlug(ctx context.Context, arg GetCategoryBySlugParams) (GetCategoryBySlugRow, error) {
+	row := q.db.QueryRow(ctx, getCategoryBySlug, arg.World, arg.Slug)
 	var i GetCategoryBySlugRow
 	err := row.Scan(
 		&i.ID,
+		&i.World,
 		&i.Name,
 		&i.Slug,
 		&i.Description,
@@ -236,6 +220,7 @@ func (q *Queries) GetCategoryBySlug(ctx context.Context, slug string) (GetCatego
 const listCategories = `-- name: ListCategories :many
 SELECT
     id,
+    world,
     name,
     slug,
     description,
@@ -243,11 +228,13 @@ SELECT
     created_at,
     updated_at
 FROM categories
+WHERE world = $1
 ORDER BY sort_order, id
 `
 
 type ListCategoriesRow struct {
 	ID          int64
+	World       string
 	Name        string
 	Slug        string
 	Description *string
@@ -256,14 +243,8 @@ type ListCategoriesRow struct {
 	UpdatedAt   time.Time
 }
 
-// Every category, in display order.
-//
-// sort_order first, then id as the tie-break so that categories sharing a
-// sort_order have a stable order rather than whatever the planner returns. No
-// pagination: this is a navigation structure, and one that needs paging is one
-// nobody can navigate.
-func (q *Queries) ListCategories(ctx context.Context) ([]ListCategoriesRow, error) {
-	rows, err := q.db.Query(ctx, listCategories)
+func (q *Queries) ListCategories(ctx context.Context, world string) ([]ListCategoriesRow, error) {
+	rows, err := q.db.Query(ctx, listCategories, world)
 	if err != nil {
 		return nil, err
 	}
@@ -273,6 +254,7 @@ func (q *Queries) ListCategories(ctx context.Context) ([]ListCategoriesRow, erro
 		var i ListCategoriesRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.World,
 			&i.Name,
 			&i.Slug,
 			&i.Description,
@@ -293,6 +275,7 @@ func (q *Queries) ListCategories(ctx context.Context) ([]ListCategoriesRow, erro
 const listCategoriesWithCounts = `-- name: ListCategoriesWithCounts :many
 SELECT
     c.id,
+    c.world,
     c.name,
     c.slug,
     c.description,
@@ -303,15 +286,18 @@ SELECT
 FROM categories c
 LEFT JOIN entries e
     ON e.category_id = c.id
+   AND e.world = c.world
    AND e.deleted_at IS NULL
    AND e.status = 'published'
    AND e.visibility = 'public'
+WHERE c.world = $1
 GROUP BY c.id
 ORDER BY c.sort_order, c.id
 `
 
 type ListCategoriesWithCountsRow struct {
 	ID          int64
+	World       string
 	Name        string
 	Slug        string
 	Description *string
@@ -321,21 +307,8 @@ type ListCategoriesWithCountsRow struct {
 	EntryCount  int64
 }
 
-// Every category with the number of entries a public reader can see in it.
-//
-// LEFT JOIN, not an inner one, so a category with nothing in it still appears
-// with a count of zero. Whether to show an empty category is a display decision,
-// and hiding it here would leave the frontend unable to make it.
-//
-// The count conditions sit in the JOIN clause rather than in a WHERE. In a WHERE
-// they would discard the whole category row when no entry matched, turning the
-// LEFT JOIN back into an inner one.
-//
-// Same three conditions as the public entry reads: not deleted, published,
-// public. An unlisted entry is deliberately not counted, since it is absent from
-// the list the count describes.
-func (q *Queries) ListCategoriesWithCounts(ctx context.Context) ([]ListCategoriesWithCountsRow, error) {
-	rows, err := q.db.Query(ctx, listCategoriesWithCounts)
+func (q *Queries) ListCategoriesWithCounts(ctx context.Context, world string) ([]ListCategoriesWithCountsRow, error) {
+	rows, err := q.db.Query(ctx, listCategoriesWithCounts, world)
 	if err != nil {
 		return nil, err
 	}
@@ -345,6 +318,7 @@ func (q *Queries) ListCategoriesWithCounts(ctx context.Context) ([]ListCategorie
 		var i ListCategoriesWithCountsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.World,
 			&i.Name,
 			&i.Slug,
 			&i.Description,
@@ -377,6 +351,7 @@ SET
 WHERE id = $9
 RETURNING
     id,
+    world,
     name,
     slug,
     description,
@@ -399,6 +374,7 @@ type UpdateCategoryParams struct {
 
 type UpdateCategoryRow struct {
 	ID          int64
+	World       string
 	Name        string
 	Slug        string
 	Description *string
@@ -407,13 +383,6 @@ type UpdateCategoryRow struct {
 	UpdatedAt   time.Time
 }
 
-// Apply a partial update to one category.
-//
-// The same paired-flag shape as UpdateEntry, and for the same reason: description
-// is nullable, so "clear the description" and "leave it alone" both arrive as
-// NULL under COALESCE and would become one statement.
-//
-// updated_at is left to the categories_set_updated_at trigger.
 func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (UpdateCategoryRow, error) {
 	row := q.db.QueryRow(ctx, updateCategory,
 		arg.SetName,
@@ -429,6 +398,7 @@ func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) 
 	var i UpdateCategoryRow
 	err := row.Scan(
 		&i.ID,
+		&i.World,
 		&i.Name,
 		&i.Slug,
 		&i.Description,

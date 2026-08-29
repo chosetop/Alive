@@ -147,8 +147,8 @@ func New(deps Dependencies) *gin.Engine {
 	// POST   /api/v1/entries/:id/publish  requires a session
 	// POST   /api/v1/entries/:id/unpublish
 	// POST   /api/v1/entries/:id/archive
-	// GET    /api/v1/entries              public, paginated
-	// GET    /api/v1/entries/:slug        public
+	// GET    /api/v1/journals             public, paginated
+	// GET    /api/v1/journals/:slug       public
 	//
 	// GET /api/v1/admin/entries           requires a session, every status
 	// GET /api/v1/admin/entries/:id       requires a session, every status
@@ -205,16 +205,16 @@ func New(deps Dependencies) *gin.Engine {
 // side that may recognise a taxonomy error: entryhttp does not import taxonomy, and
 // the whole point of the resolver type is that it does not have to.
 //
-// An unknown slug is a 404 rather than an empty list. /entries?category=nope and
-// /entries?category=travel-with-no-posts-yet are different situations, and a client
+// An unknown slug is a 404 rather than an empty list. /journals?category=nope and
+// /journals?category=travel-with-no-posts-yet are different situations, and a client
 // that cannot tell them apart shows "no posts in this category" for a typo.
 //
 // Every other error falls through as-is and becomes a 500, which is what a failed
 // query is. Flattening either case to an id of 0 would answer a request for one
 // category with every entry on the site.
 func categoryFromSlug(service *taxonomy.Service) entryhttp.CategoryResolver {
-	return func(c *gin.Context, slug string) (int64, error) {
-		id, err := service.ResolveSlug(c.Request.Context(), slug)
+	return func(c *gin.Context, world contentworld.Key, slug string) (int64, error) {
+		id, err := service.ResolveSlug(c.Request.Context(), world, slug)
 		if err != nil {
 			// One case to map, not two. A malformed slug never arrives as
 			// ErrInvalidSlug: the service answers it as not-found without a query,

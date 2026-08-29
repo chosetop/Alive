@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/entry"
 )
 
@@ -31,8 +32,8 @@ type Store struct {
 
 	// Injected failures, one per method with a distinct failure path.
 	FailCreate              error
-	FailGetBySlug           error
-	FailGetLinkBySlug       error
+	FailGetByWorldSlug      error
+	FailGetLinkByWorldSlug  error
 	FailListPublic          error
 	FailSlugExists          error
 	FailUpdate              error
@@ -93,7 +94,7 @@ func (s *Store) Create(ctx context.Context, params entry.CreateParams) (entry.En
 	// pre-check, and that path needs to be reachable here.
 	if params.Slug != "" {
 		for _, existing := range s.entries {
-			if existing.Slug == params.Slug {
+			if existing.World == params.World && existing.Slug == params.Slug {
 				return entry.Entry{}, fmt.Errorf("%w: %s", entry.ErrSlugTaken, params.Slug)
 			}
 		}
@@ -109,7 +110,8 @@ func (s *Store) Create(ctx context.Context, params entry.CreateParams) (entry.En
 		// No CategoryName or CategorySlug: a write cannot join, and the real store
 		// leaves them empty here too.
 		CategoryID:  params.CategoryID,
-		Type:        params.Type,
+		World:       params.World,
+		Kind:        params.Kind,
 		Title:       params.Title,
 		Slug:        params.Slug,
 		Summary:     params.Summary,
@@ -127,18 +129,18 @@ func (s *Store) Create(ctx context.Context, params entry.CreateParams) (entry.En
 	return stored, nil
 }
 
-// GetPublicBySlug returns the entry with this slug if it is publicly readable.
+// GetPublicByWorldSlug returns the entry with this slug if it is publicly readable.
 //
 // The visibility rule is applied here as well as in SQL. Without it this fake
 // would answer questions the real store refuses, and a handler test could pass
 // while the endpoint leaks drafts.
-func (s *Store) GetPublicBySlug(ctx context.Context, slug string) (entry.Entry, error) {
-	if s.FailGetBySlug != nil {
-		return entry.Entry{}, s.FailGetBySlug
+func (s *Store) GetPublicByWorldSlug(ctx context.Context, world contentworld.Key, slug string) (entry.Entry, error) {
+	if s.FailGetByWorldSlug != nil {
+		return entry.Entry{}, s.FailGetByWorldSlug
 	}
 
 	for _, candidate := range s.entries {
-		if candidate.Slug != slug {
+		if candidate.Slug != slug || candidate.World != world {
 			continue
 		}
 		if !candidate.IsPubliclyReadable() {
@@ -150,19 +152,19 @@ func (s *Store) GetPublicBySlug(ctx context.Context, slug string) (entry.Entry, 
 	return entry.Entry{}, fmt.Errorf("%w: %s", entry.ErrEntryNotFound, slug)
 }
 
-// GetLinkBySlug returns the entry with this slug if it is published and either
+// GetLinkByWorldSlug returns the entry with this slug if it is published and either
 // public or unlisted.
 //
 // Uses IsLinkReadable, not IsPubliclyReadable. A fake that shared one predicate
-// with GetPublicBySlug could not show the difference between the two reads, which
+// with GetPublicByWorldSlug could not show the difference between the two reads, which
 // is the only reason both exist.
-func (s *Store) GetLinkBySlug(ctx context.Context, slug string) (entry.Entry, error) {
-	if s.FailGetLinkBySlug != nil {
-		return entry.Entry{}, s.FailGetLinkBySlug
+func (s *Store) GetLinkByWorldSlug(ctx context.Context, world contentworld.Key, slug string) (entry.Entry, error) {
+	if s.FailGetLinkByWorldSlug != nil {
+		return entry.Entry{}, s.FailGetLinkByWorldSlug
 	}
 
 	for _, candidate := range s.entries {
-		if candidate.Slug != slug {
+		if candidate.Slug != slug || candidate.World != world {
 			continue
 		}
 		if !candidate.IsLinkReadable() {
@@ -180,7 +182,7 @@ func (s *Store) GetLinkBySlug(ctx context.Context, slug string) (entry.Entry, er
 // categoryID 0 means every category, as in the real store. The filter is applied
 // to the total as well as the page: they describe the same set, and a fake that
 // counted everything would let a wrong total pass here.
-func (s *Store) ListPublic(ctx context.Context, categoryID int64, limit, offset int) ([]entry.Entry, int64, error) {
+func (s *Store) ListPublic(ctx context.Context, world contentworld.Key, categoryID int64, limit, offset int) ([]entry.Entry, int64, error) {
 	if s.FailListPublic != nil {
 		return nil, 0, s.FailListPublic
 	}
@@ -188,9 +190,9 @@ func (s *Store) ListPublic(ctx context.Context, categoryID int64, limit, offset 
 	visible := make([]entry.Entry, 0, len(s.entries))
 	for _, candidate := range s.entries {
 		// Unlisted is excluded here because IsPubliclyReadable excludes it. That is
-		// the difference this fake exists to preserve: GetLinkBySlug accepts it and
+		// the difference this fake exists to preserve: GetLinkByWorldSlug accepts it and
 		// the list does not.
-		if !candidate.IsPubliclyReadable() {
+		if candidate.World != world || !candidate.IsPubliclyReadable() {
 			continue
 		}
 		if categoryID != 0 && candidate.CategoryID != categoryID {
@@ -235,7 +237,7 @@ func (s *Store) ListPublic(ctx context.Context, categoryID int64, limit, offset 
 // publishing it later cannot collide. A soft deleted entry does not, because
 // SoftDelete removes it from the map, which matches the partial unique index
 // releasing the slug.
-func (s *Store) SlugExists(ctx context.Context, slug string) (bool, error) {
+func (s *Store) SlugExists(ctx context.Context, world contentworld.Key, slug string) (bool, error) {
 	s.SlugExistsCalls++
 
 	if s.FailSlugExists != nil {
@@ -246,7 +248,7 @@ func (s *Store) SlugExists(ctx context.Context, slug string) (bool, error) {
 	}
 
 	for _, candidate := range s.entries {
-		if candidate.Slug == slug {
+		if candidate.World == world && candidate.Slug == slug {
 			return true, nil
 		}
 	}
@@ -258,7 +260,7 @@ func (s *Store) SlugExists(ctx context.Context, slug string) (bool, error) {
 //
 // The exclusion is the point: an update that resubmits an entry's own slug must
 // not be refused as a conflict with itself.
-func (s *Store) SlugExistsExcluding(ctx context.Context, slug string, excludedID int64) (bool, error) {
+func (s *Store) SlugExistsExcluding(ctx context.Context, world contentworld.Key, slug string, excludedID int64) (bool, error) {
 	s.SlugExistsExcludingCalls++
 
 	if s.FailSlugExistsExcluding != nil {
@@ -269,7 +271,7 @@ func (s *Store) SlugExistsExcluding(ctx context.Context, slug string, excludedID
 	}
 
 	for _, candidate := range s.entries {
-		if candidate.Slug == slug && candidate.ID != excludedID {
+		if candidate.World == world && candidate.Slug == slug && candidate.ID != excludedID {
 			return true, nil
 		}
 	}
@@ -300,15 +302,12 @@ func (s *Store) Update(ctx context.Context, params entry.UpdateParams) (entry.En
 	// The unique index applies to an update too, and this fake stands in for it.
 	if params.SetSlug && params.Slug != "" {
 		for _, candidate := range s.entries {
-			if candidate.Slug == params.Slug && candidate.ID != params.ID {
+			if candidate.World == stored.World && candidate.Slug == params.Slug && candidate.ID != params.ID {
 				return entry.Entry{}, fmt.Errorf("%w: %s", entry.ErrSlugTaken, params.Slug)
 			}
 		}
 	}
 
-	if params.SetType {
-		stored.Type = params.Type
-	}
 	if params.SetTitle {
 		stored.Title = params.Title
 	}
@@ -442,7 +441,7 @@ func (s *Store) Archive(ctx context.Context, id, expectedRevision int64) (entry.
 
 // GetByID returns one entry whatever its status.
 //
-// No visibility check, unlike GetPublicBySlug. That difference is the admin read's
+// No visibility check, unlike GetPublicByWorldSlug. That difference is the admin read's
 // whole purpose, and a fake that filtered here would make the endpoint untestable.
 func (s *Store) GetByID(ctx context.Context, id int64) (entry.Entry, error) {
 	if s.FailGetByID != nil {
@@ -474,7 +473,7 @@ func (s *Store) GetByID(ctx context.Context, id int64) (entry.Entry, error) {
 // while strings.ToLower is Unicode's. They agree across ASCII and leave CJK
 // untouched, which covers what these tests assert. A test that turned on
 // case-insensitivity for, say, Turkish dotless i would need the real database.
-func (s *Store) ListAdmin(ctx context.Context, categoryID int64, status *entry.Status, search *string, limit, offset int) ([]entry.Entry, int64, error) {
+func (s *Store) ListAdmin(ctx context.Context, world *contentworld.Key, categoryID int64, status *entry.Status, search *string, limit, offset int) ([]entry.Entry, int64, error) {
 	if s.FailListAdmin != nil {
 		return nil, 0, s.FailListAdmin
 	}
@@ -487,6 +486,9 @@ func (s *Store) ListAdmin(ctx context.Context, categoryID int64, status *entry.S
 
 	matching := make([]entry.Entry, 0, len(s.entries))
 	for _, candidate := range s.entries {
+		if world != nil && candidate.World != *world {
+			continue
+		}
 		if categoryID != 0 && candidate.CategoryID != categoryID {
 			continue
 		}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/entry"
 )
 
@@ -15,15 +16,15 @@ type dashboardMetrics struct {
 
 // createEntryRequest is the create body.
 //
-// All fields are optional because creation starts an incomplete draft. type and
+// All fields are optional because creation starts an incomplete draft. world and
 // visibility are absent-able because the service owns their defaults: repeating
 // the defaults here would mean two places to change when one of them moves.
 //
-// No `binding:"oneof=..."` on type or visibility. Those sets live in the
+// No `binding:"oneof=..."` on world or visibility. Those sets live in the
 // domain and are checked there, and a binding tag would answer with gin's own
 // message instead of this API's error envelope.
 type createEntryRequest struct {
-	Type       string `json:"type"`
+	World      string `json:"world"`
 	Title      string `json:"title"`
 	Slug       string `json:"slug"`
 	Summary    string `json:"summary"`
@@ -61,7 +62,7 @@ func (r createEntryRequest) toInput(authorID int64) entry.CreateInput {
 	in := entry.CreateInput{
 		AuthorID:   authorID,
 		CategoryID: r.CategoryID,
-		Type:       entry.Type(r.Type),
+		World:      contentworld.Key(r.World),
 		Title:      r.Title,
 		Slug:       r.Slug,
 		Summary:    r.Summary,
@@ -98,7 +99,7 @@ func (r createEntryRequest) toInput(authorID int64) entry.CreateInput {
 // that names no editable field.
 type updateEntryRequest struct {
 	Revision   int64   `json:"revision" binding:"required,min=1"`
-	Type       *string `json:"type"`
+	World      *string `json:"world"`
 	Title      *string `json:"title"`
 	Slug       *string `json:"slug"`
 	Summary    *string `json:"summary"`
@@ -138,15 +139,6 @@ func (r updateEntryRequest) toInput() entry.UpdateInput {
 		HappenedAt:       r.HappenedAt,
 		CategoryID:       r.CategoryID,
 	}
-
-	// The three domain-typed fields need a conversion, and a new variable each:
-	// taking the address of a converted value inline would alias one variable
-	// across iterations of nothing, but more importantly the domain types are
-	// distinct from string and cannot share a pointer with the request field.
-	if r.Type != nil {
-		t := entry.Type(*r.Type)
-		in.Type = &t
-	}
 	if r.Visibility != nil {
 		v := entry.Visibility(*r.Visibility)
 		in.Visibility = &v
@@ -177,7 +169,8 @@ type transitionEntryRequest struct {
 //
 // tags and media are absent until the tables behind them exist.
 type entrySummary struct {
-	Type      string          `json:"type"`
+	World     string          `json:"world"`
+	Kind      string          `json:"kind"`
 	Title     string          `json:"title"`
 	Slug      string          `json:"slug"`
 	Summary   string          `json:"summary"`
@@ -188,7 +181,7 @@ type entrySummary struct {
 	// Category is null when the entry is uncategorised, which is a normal state
 	// rather than missing data. A nested object rather than a bare id because
 	// everything a reader does with a category needs the label and the link:
-	// rendering "in 旅行" and pointing at /entries?category=travel. It is filled from
+	// rendering "in 旅行" and pointing at /journals?category=travel. It is filled from
 	// the LEFT JOIN, so it costs no extra query.
 	Category *entryCategory `json:"category"`
 
@@ -257,7 +250,8 @@ type ownerEntryDetail struct {
 	ID       int64 `json:"id"`
 	Revision int64 `json:"revision"`
 
-	Type       string          `json:"type"`
+	World      string          `json:"world"`
+	Kind       string          `json:"kind"`
 	Title      string          `json:"title"`
 	Slug       string          `json:"slug"`
 	Summary    string          `json:"summary"`
@@ -337,7 +331,8 @@ type paginationMeta struct {
 // newEntrySummary converts a domain entry into the list shape.
 func newEntrySummary(e entry.Entry) entrySummary {
 	return entrySummary{
-		Type:        string(e.Type),
+		World:       string(e.World),
+		Kind:        e.Kind,
 		Title:       e.Title,
 		Slug:        e.Slug,
 		Summary:     e.Summary,
@@ -362,7 +357,8 @@ func newOwnerEntryDetail(e entry.Entry) ownerEntryDetail {
 	return ownerEntryDetail{
 		ID:          e.ID,
 		Revision:    e.Revision,
-		Type:        string(e.Type),
+		World:       string(e.World),
+		Kind:        e.Kind,
 		Title:       e.Title,
 		Slug:        e.Slug,
 		Summary:     e.Summary,

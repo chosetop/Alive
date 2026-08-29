@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/postgres"
 	"github.com/p30huiwei/alive/backend/internal/postgres/sqlcgen"
 )
@@ -33,9 +34,11 @@ func NewRepository(pool *postgres.Pool) *Repository {
 // categories are already enforced by ValidateName and ValidateSlug, and nothing
 // this package writes references another table.
 const uniqueViolation = "23505"
+const checkViolation = "23514"
 
 // CreateParams is a validated category ready to be written.
 type CreateParams struct {
+	World       contentworld.Key
 	Name        string
 	Slug        string
 	Description string
@@ -66,6 +69,7 @@ type UpdateParams struct {
 // Create writes one category.
 func (r *Repository) Create(ctx context.Context, params CreateParams) (Category, error) {
 	row, err := r.q.CreateCategory(ctx, sqlcgen.CreateCategoryParams{
+		World:       string(params.World),
 		Name:        params.Name,
 		Slug:        params.Slug,
 		Description: optionalString(params.Description),
@@ -76,7 +80,7 @@ func (r *Repository) Create(ctx context.Context, params CreateParams) (Category,
 	}
 
 	return categoryFromRow(rowFields{
-		ID: row.ID, Name: row.Name, Slug: row.Slug,
+		ID: row.ID, World: contentworld.Key(row.World), Name: row.Name, Slug: row.Slug,
 		Description: row.Description, SortOrder: row.SortOrder,
 		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}), nil
@@ -93,7 +97,7 @@ func (r *Repository) GetByID(ctx context.Context, id int64) (Category, error) {
 	}
 
 	return categoryFromRow(rowFields{
-		ID: row.ID, Name: row.Name, Slug: row.Slug,
+		ID: row.ID, World: contentworld.Key(row.World), Name: row.Name, Slug: row.Slug,
 		Description: row.Description, SortOrder: row.SortOrder,
 		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}), nil
@@ -103,8 +107,11 @@ func (r *Repository) GetByID(ctx context.Context, id int64) (Category, error) {
 //
 // This is how a category page resolves its URL segment, and how a filtered entry
 // list turns ?category=travel into an id.
-func (r *Repository) GetBySlug(ctx context.Context, slug string) (Category, error) {
-	row, err := r.q.GetCategoryBySlug(ctx, slug)
+func (r *Repository) GetBySlug(ctx context.Context, world contentworld.Key, slug string) (Category, error) {
+	row, err := r.q.GetCategoryBySlug(ctx, sqlcgen.GetCategoryBySlugParams{
+		World: string(world),
+		Slug:  slug,
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Category{}, fmt.Errorf("%w: %s", ErrCategoryNotFound, slug)
@@ -113,7 +120,7 @@ func (r *Repository) GetBySlug(ctx context.Context, slug string) (Category, erro
 	}
 
 	return categoryFromRow(rowFields{
-		ID: row.ID, Name: row.Name, Slug: row.Slug,
+		ID: row.ID, World: contentworld.Key(row.World), Name: row.Name, Slug: row.Slug,
 		Description: row.Description, SortOrder: row.SortOrder,
 		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}), nil
@@ -123,8 +130,8 @@ func (r *Repository) GetBySlug(ctx context.Context, slug string) (Category, erro
 //
 // No pagination. This is a navigation structure, and one that needs paging is one
 // nobody can navigate.
-func (r *Repository) List(ctx context.Context) ([]Category, error) {
-	rows, err := r.q.ListCategories(ctx)
+func (r *Repository) List(ctx context.Context, world contentworld.Key) ([]Category, error) {
+	rows, err := r.q.ListCategories(ctx, string(world))
 	if err != nil {
 		return nil, fmt.Errorf("taxonomy: list categories: %w", err)
 	}
@@ -132,7 +139,7 @@ func (r *Repository) List(ctx context.Context) ([]Category, error) {
 	categories := make([]Category, 0, len(rows))
 	for _, row := range rows {
 		categories = append(categories, categoryFromRow(rowFields{
-			ID: row.ID, Name: row.Name, Slug: row.Slug,
+			ID: row.ID, World: contentworld.Key(row.World), Name: row.Name, Slug: row.Slug,
 			Description: row.Description, SortOrder: row.SortOrder,
 			CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		}))
@@ -145,8 +152,8 @@ func (r *Repository) List(ctx context.Context) ([]Category, error) {
 //
 // Categories holding nothing are included with a count of zero. Whether to show
 // them is a display decision, and dropping them here would take it away.
-func (r *Repository) ListWithCounts(ctx context.Context) ([]CategoryWithCount, error) {
-	rows, err := r.q.ListCategoriesWithCounts(ctx)
+func (r *Repository) ListWithCounts(ctx context.Context, world contentworld.Key) ([]CategoryWithCount, error) {
+	rows, err := r.q.ListCategoriesWithCounts(ctx, string(world))
 	if err != nil {
 		return nil, fmt.Errorf("taxonomy: list categories with counts: %w", err)
 	}
@@ -155,7 +162,7 @@ func (r *Repository) ListWithCounts(ctx context.Context) ([]CategoryWithCount, e
 	for _, row := range rows {
 		categories = append(categories, CategoryWithCount{
 			Category: categoryFromRow(rowFields{
-				ID: row.ID, Name: row.Name, Slug: row.Slug,
+				ID: row.ID, World: contentworld.Key(row.World), Name: row.Name, Slug: row.Slug,
 				Description: row.Description, SortOrder: row.SortOrder,
 				CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 			}),
@@ -189,7 +196,7 @@ func (r *Repository) Update(ctx context.Context, params UpdateParams) (Category,
 	}
 
 	return categoryFromRow(rowFields{
-		ID: row.ID, Name: row.Name, Slug: row.Slug,
+		ID: row.ID, World: contentworld.Key(row.World), Name: row.Name, Slug: row.Slug,
 		Description: row.Description, SortOrder: row.SortOrder,
 		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}), nil
@@ -212,8 +219,11 @@ func (r *Repository) Delete(ctx context.Context, id int64) (bool, error) {
 }
 
 // SlugExists reports whether any category holds this slug.
-func (r *Repository) SlugExists(ctx context.Context, slug string) (bool, error) {
-	exists, err := r.q.CategorySlugExists(ctx, slug)
+func (r *Repository) SlugExists(ctx context.Context, world contentworld.Key, slug string) (bool, error) {
+	exists, err := r.q.CategorySlugExists(ctx, sqlcgen.CategorySlugExistsParams{
+		World: string(world),
+		Slug:  slug,
+	})
 	if err != nil {
 		return false, fmt.Errorf("taxonomy: category slug exists: %w", err)
 	}
@@ -222,8 +232,9 @@ func (r *Repository) SlugExists(ctx context.Context, slug string) (bool, error) 
 
 // SlugExistsExcluding reports whether a category other than excludedID holds the
 // slug.
-func (r *Repository) SlugExistsExcluding(ctx context.Context, slug string, excludedID int64) (bool, error) {
+func (r *Repository) SlugExistsExcluding(ctx context.Context, world contentworld.Key, slug string, excludedID int64) (bool, error) {
 	exists, err := r.q.CategorySlugExistsExcluding(ctx, sqlcgen.CategorySlugExistsExcludingParams{
+		World:      string(world),
 		Slug:       slug,
 		ExcludedID: excludedID,
 	})
@@ -240,6 +251,7 @@ func (r *Repository) SlugExistsExcluding(ctx context.Context, slug string, exclu
 // have to be added to each copy.
 type rowFields struct {
 	ID          int64
+	World       contentworld.Key
 	Name        string
 	Slug        string
 	Description *string
@@ -252,6 +264,7 @@ type rowFields struct {
 func categoryFromRow(row rowFields) Category {
 	return Category{
 		ID:          row.ID,
+		World:       row.World,
 		Name:        row.Name,
 		Slug:        row.Slug,
 		Description: derefString(row.Description),
@@ -274,8 +287,11 @@ func translateWriteError(op string, err error, slug string) error {
 		return fmt.Errorf("taxonomy: %s: %w", op, err)
 	}
 
-	if pgErr.Code == uniqueViolation && pgErr.ConstraintName == "categories_slug_key" {
+	if pgErr.Code == uniqueViolation && pgErr.ConstraintName == "categories_world_slug_key" {
 		return fmt.Errorf("%w: %s", ErrSlugTaken, slug)
+	}
+	if pgErr.Code == checkViolation && pgErr.ConstraintName == "categories_world_check" {
+		return ErrInvalidWorld
 	}
 
 	return fmt.Errorf("taxonomy: %s: %w", op, err)

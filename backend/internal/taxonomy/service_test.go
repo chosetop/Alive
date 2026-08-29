@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/taxonomy"
 	"github.com/p30huiwei/alive/backend/internal/taxonomy/taxonomytest"
 )
@@ -27,6 +28,7 @@ func newService(t *testing.T) (*taxonomy.Service, *taxonomytest.Store) {
 // isolates the rule it is about.
 func validCreate() taxonomy.CreateInput {
 	return taxonomy.CreateInput{
+		World:       contentworld.Journal,
 		Name:        "旅行",
 		Slug:        "travel",
 		Description: "places and the getting there",
@@ -50,6 +52,9 @@ func TestCreateStoresEveryField(t *testing.T) {
 	if store.LastCreate.Name != "旅行" {
 		t.Errorf("stored name = %q, want 旅行", store.LastCreate.Name)
 	}
+	if store.LastCreate.World != contentworld.Journal {
+		t.Errorf("stored world = %q, want %q", store.LastCreate.World, contentworld.Journal)
+	}
 	if store.LastCreate.Slug != "travel" {
 		t.Errorf("stored slug = %q, want travel", store.LastCreate.Slug)
 	}
@@ -71,6 +76,8 @@ func TestCreateRefusesInvalidInput(t *testing.T) {
 		wantErr error
 	}{
 		{"empty name", func(in *taxonomy.CreateInput) { in.Name = "" }, taxonomy.ErrInvalidName},
+		{"missing world", func(in *taxonomy.CreateInput) { in.World = "" }, taxonomy.ErrInvalidWorld},
+		{"unknown world", func(in *taxonomy.CreateInput) { in.World = contentworld.Key("photo") }, taxonomy.ErrInvalidWorld},
 		{
 			"name over 64 characters",
 			func(in *taxonomy.CreateInput) { in.Name = strings.Repeat("a", 65) },
@@ -126,7 +133,7 @@ func TestCreateCountsNameInRunes(t *testing.T) {
 
 func TestCreateRefusesADuplicateSlug(t *testing.T) {
 	service, store := newService(t)
-	store.Seed(taxonomy.Category{Name: "existing", Slug: "travel"})
+	store.Seed(taxonomy.Category{World: contentworld.Journal, Name: "existing", Slug: "travel"})
 
 	_, err := service.Create(context.Background(), validCreate())
 	if !errors.Is(err, taxonomy.ErrSlugTaken) {
@@ -144,7 +151,7 @@ func TestCreateRefusesADuplicateSlug(t *testing.T) {
 // the same mistake would produce a 409 or a 500 depending on timing.
 func TestCreateReportsAConflictFoundByTheConstraint(t *testing.T) {
 	service, store := newService(t)
-	store.Seed(taxonomy.Category{Name: "existing", Slug: "travel"})
+	store.Seed(taxonomy.Category{World: contentworld.Journal, Name: "existing", Slug: "travel"})
 	store.SlugExistsAlwaysFree = true
 
 	_, err := service.Create(context.Background(), validCreate())
@@ -160,8 +167,9 @@ func TestCreateAcceptsAnAbsentDescriptionAndZeroOrder(t *testing.T) {
 	service, store := newService(t)
 
 	created, err := service.Create(context.Background(), taxonomy.CreateInput{
-		Name: "杂记",
-		Slug: "notes",
+		World: contentworld.Journal,
+		Name:  "杂记",
+		Slug:  "notes",
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -181,7 +189,7 @@ func TestCreateAcceptsAnAbsentDescriptionAndZeroOrder(t *testing.T) {
 func TestUpdateTouchesOnlySubmittedFields(t *testing.T) {
 	service, store := newService(t)
 	store.Seed(taxonomy.Category{
-		ID: 1, Name: "旅行", Slug: "travel",
+		ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel",
 		Description: "keep me", SortOrder: 10,
 	})
 
@@ -219,7 +227,7 @@ func TestUpdateTouchesOnlySubmittedFields(t *testing.T) {
 // indistinguishable from an absent field unless the flag carries the difference.
 func TestUpdateClearsADescriptionWithAnEmptyString(t *testing.T) {
 	service, store := newService(t)
-	store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel", Description: "remove me"})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel", Description: "remove me"})
 
 	empty := ""
 	updated, err := service.Update(context.Background(), 1, taxonomy.UpdateInput{Description: &empty})
@@ -240,7 +248,7 @@ func TestUpdateClearsADescriptionWithAnEmptyString(t *testing.T) {
 // to move a category to the front.
 func TestUpdateAcceptsAZeroSortOrder(t *testing.T) {
 	service, store := newService(t)
-	store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel", SortOrder: 50})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel", SortOrder: 50})
 
 	zero := 0
 	updated, err := service.Update(context.Background(), 1, taxonomy.UpdateInput{SortOrder: &zero})
@@ -258,7 +266,7 @@ func TestUpdateAcceptsAZeroSortOrder(t *testing.T) {
 
 func TestUpdateRefusesAnEmptyInput(t *testing.T) {
 	service, store := newService(t)
-	store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel"})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel"})
 
 	_, err := service.Update(context.Background(), 1, taxonomy.UpdateInput{})
 	if !errors.Is(err, taxonomy.ErrNoUpdateFields) {
@@ -285,7 +293,7 @@ func TestUpdateValidatesOnlySubmittedFields(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			service, store := newService(t)
-			store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel"})
+			store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel"})
 
 			_, err := service.Update(context.Background(), 1, tc.in)
 			if !errors.Is(err, tc.wantErr) {
@@ -303,7 +311,7 @@ func TestUpdateValidatesOnlySubmittedFields(t *testing.T) {
 // as a conflict would make a category impossible to edit.
 func TestUpdateAcceptsACategorysOwnSlug(t *testing.T) {
 	service, store := newService(t)
-	store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel"})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel"})
 
 	updated, err := service.Update(context.Background(), 1, taxonomy.UpdateInput{
 		Slug: pointer("travel"),
@@ -322,8 +330,8 @@ func TestUpdateAcceptsACategorysOwnSlug(t *testing.T) {
 
 func TestUpdateRefusesAnotherCategorysSlug(t *testing.T) {
 	service, store := newService(t)
-	store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel"})
-	store.Seed(taxonomy.Category{ID: 2, Name: "杂记", Slug: "notes"})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel"})
+	store.Seed(taxonomy.Category{ID: 2, World: contentworld.Journal, Name: "杂记", Slug: "notes"})
 
 	_, err := service.Update(context.Background(), 1, taxonomy.UpdateInput{Slug: pointer("notes")})
 	if !errors.Is(err, taxonomy.ErrSlugTaken) {
@@ -339,8 +347,8 @@ func TestUpdateRefusesAnotherCategorysSlug(t *testing.T) {
 // the write.
 func TestUpdateReportsAConflictFoundByTheConstraint(t *testing.T) {
 	service, store := newService(t)
-	store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel"})
-	store.Seed(taxonomy.Category{ID: 2, Name: "杂记", Slug: "notes"})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel"})
+	store.Seed(taxonomy.Category{ID: 2, World: contentworld.Journal, Name: "杂记", Slug: "notes"})
 	store.SlugExistsAlwaysFree = true
 
 	_, err := service.Update(context.Background(), 1, taxonomy.UpdateInput{Slug: pointer("notes")})
@@ -358,7 +366,7 @@ func TestUpdateReportsAConflictFoundByTheConstraint(t *testing.T) {
 // verified against a real database.
 func TestDeleteRemovesTheCategory(t *testing.T) {
 	service, store := newService(t)
-	store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel"})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel"})
 
 	if err := service.Delete(context.Background(), 1); err != nil {
 		t.Fatalf("Delete: %v", err)
@@ -373,7 +381,7 @@ func TestDeleteRemovesTheCategory(t *testing.T) {
 // effect it did not have.
 func TestDeleteTwiceReportsNotFound(t *testing.T) {
 	service, store := newService(t)
-	store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel"})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel"})
 
 	if err := service.Delete(context.Background(), 1); err != nil {
 		t.Fatalf("first Delete: %v", err)
@@ -423,7 +431,7 @@ func TestGetBySlugRefusesAMalformedSlugAsNotFound(t *testing.T) {
 	service, store := newService(t)
 
 	for _, slug := range []string{"", "Travel", "a b", "旅行", strings.Repeat("a", 65)} {
-		_, err := service.GetBySlug(context.Background(), slug)
+		_, err := service.GetBySlug(context.Background(), contentworld.Journal, slug)
 		if !errors.Is(err, taxonomy.ErrCategoryNotFound) {
 			t.Errorf("GetBySlug(%q) error = %v, want ErrCategoryNotFound", slug, err)
 		}
@@ -436,14 +444,14 @@ func TestGetBySlugRefusesAMalformedSlugAsNotFound(t *testing.T) {
 }
 
 // TestResolveSlugDistinguishesUnknownFromEmpty is the reason ResolveSlug exists.
-// /entries?category=nope and /entries?category=an-empty-category are different
+// /journals?category=nope and /journals?category=an-empty-category are different
 // situations, and flattening the first to an id of 0 would answer it with every
 // entry on the site.
 func TestResolveSlugDistinguishesUnknownFromEmpty(t *testing.T) {
 	service, store := newService(t)
-	store.Seed(taxonomy.Category{ID: 7, Name: "旅行", Slug: "travel"})
+	store.Seed(taxonomy.Category{ID: 7, World: contentworld.Journal, Name: "旅行", Slug: "travel"})
 
-	id, err := service.ResolveSlug(context.Background(), "travel")
+	id, err := service.ResolveSlug(context.Background(), contentworld.Journal, "travel")
 	if err != nil {
 		t.Fatalf("ResolveSlug: %v", err)
 	}
@@ -451,7 +459,7 @@ func TestResolveSlugDistinguishesUnknownFromEmpty(t *testing.T) {
 		t.Errorf("id = %d, want 7", id)
 	}
 
-	if _, err := service.ResolveSlug(context.Background(), "nope"); !errors.Is(err, taxonomy.ErrCategoryNotFound) {
+	if _, err := service.ResolveSlug(context.Background(), contentworld.Journal, "nope"); !errors.Is(err, taxonomy.ErrCategoryNotFound) {
 		t.Errorf("unknown slug error = %v, want ErrCategoryNotFound", err)
 	}
 }
@@ -461,14 +469,14 @@ func TestResolveSlugDistinguishesUnknownFromEmpty(t *testing.T) {
 // order was produced rather than preserved.
 func TestListsReturnDisplayOrder(t *testing.T) {
 	service, store := newService(t)
-	store.Seed(taxonomy.Category{ID: 3, Name: "third", Slug: "third", SortOrder: 20})
-	store.Seed(taxonomy.Category{ID: 1, Name: "first", Slug: "first", SortOrder: 10})
-	store.Seed(taxonomy.Category{ID: 2, Name: "second", Slug: "second", SortOrder: 10})
+	store.Seed(taxonomy.Category{ID: 3, World: contentworld.Journal, Name: "third", Slug: "third", SortOrder: 20})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "first", Slug: "first", SortOrder: 10})
+	store.Seed(taxonomy.Category{ID: 2, World: contentworld.Journal, Name: "second", Slug: "second", SortOrder: 10})
 
 	want := []string{"first", "second", "third"}
 
 	t.Run("admin list", func(t *testing.T) {
-		categories, err := service.List(context.Background())
+		categories, err := service.List(context.Background(), contentworld.Journal)
 		if err != nil {
 			t.Fatalf("List: %v", err)
 		}
@@ -480,7 +488,7 @@ func TestListsReturnDisplayOrder(t *testing.T) {
 	})
 
 	t.Run("public list", func(t *testing.T) {
-		categories, err := service.ListWithCounts(context.Background())
+		categories, err := service.ListWithCounts(context.Background(), contentworld.Journal)
 		if err != nil {
 			t.Fatalf("ListWithCounts: %v", err)
 		}
@@ -498,11 +506,11 @@ func TestListsReturnDisplayOrder(t *testing.T) {
 // until someone filed something under it.
 func TestListWithCountsListsEmptyCategories(t *testing.T) {
 	service, store := newService(t)
-	store.Seed(taxonomy.Category{ID: 1, Name: "full", Slug: "full"})
-	store.Seed(taxonomy.Category{ID: 2, Name: "empty", Slug: "empty"})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "full", Slug: "full"})
+	store.Seed(taxonomy.Category{ID: 2, World: contentworld.Journal, Name: "empty", Slug: "empty"})
 	store.EntryCounts[1] = 3
 
-	categories, err := service.ListWithCounts(context.Background())
+	categories, err := service.ListWithCounts(context.Background(), contentworld.Journal)
 	if err != nil {
 		t.Fatalf("ListWithCounts: %v", err)
 	}
@@ -586,7 +594,7 @@ func TestStoreFailuresReachTheCaller(t *testing.T) {
 			"resolve slug",
 			func(s *taxonomytest.Store) { s.FailGetBySlug = boom },
 			func(s *taxonomy.Service) error {
-				_, err := s.ResolveSlug(context.Background(), "travel")
+				_, err := s.ResolveSlug(context.Background(), contentworld.Journal, "travel")
 				return err
 			},
 		},
@@ -594,7 +602,7 @@ func TestStoreFailuresReachTheCaller(t *testing.T) {
 			"admin list",
 			func(s *taxonomytest.Store) { s.FailList = boom },
 			func(s *taxonomy.Service) error {
-				_, err := s.List(context.Background())
+				_, err := s.List(context.Background(), contentworld.Journal)
 				return err
 			},
 		},
@@ -602,14 +610,14 @@ func TestStoreFailuresReachTheCaller(t *testing.T) {
 			"public list",
 			func(s *taxonomytest.Store) { s.FailListWithCounts = boom },
 			func(s *taxonomy.Service) error {
-				_, err := s.ListWithCounts(context.Background())
+				_, err := s.ListWithCounts(context.Background(), contentworld.Journal)
 				return err
 			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			service, store := newService(t)
-			store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel"})
+			store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel"})
 			tc.fail(store)
 
 			err := tc.call(service)
