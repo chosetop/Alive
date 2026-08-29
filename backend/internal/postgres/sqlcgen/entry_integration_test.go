@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/p30huiwei/alive/backend/internal/dbtest"
 	"github.com/p30huiwei/alive/backend/internal/postgres"
 	"github.com/p30huiwei/alive/backend/internal/postgres/sqlcgen"
@@ -96,6 +98,70 @@ func insertEntry(t *testing.T, q *sqlcgen.Queries, pool *postgres.Pool, authorID
 	return row.ID
 }
 
+func pgErrorCode(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code
+	}
+	return ""
+}
+
+func insertWorldCategory(t *testing.T, pool *postgres.Pool, world, slug string) int64 {
+	t.Helper()
+
+	row := pool.QueryRow(context.Background(), `
+		INSERT INTO categories (name, slug, description, sort_order, world)
+		VALUES ($1, $2, NULL, 0, $3)
+		RETURNING id
+	`, fmt.Sprintf("%s name", slug), slug, world)
+
+	var id int64
+	if err := row.Scan(&id); err != nil {
+		t.Fatalf("insertWorldCategory(%s, %s): %v", world, slug, err)
+	}
+	return id
+}
+
+func insertWorldEntry(
+	t *testing.T,
+	pool *postgres.Pool,
+	authorID int64,
+	world string,
+	categoryID *int64,
+	slug string,
+) (int64, error) {
+	t.Helper()
+
+	publishedAt := time.Now().UTC()
+	row := pool.QueryRow(context.Background(), `
+		INSERT INTO entries (
+			author_id,
+			category_id,
+			world,
+			kind,
+			title,
+			slug,
+			content_md,
+			status,
+			visibility,
+			meta,
+			word_count,
+			published_at
+		) VALUES (
+			$1, $2, $3, '', $4, $5, '# body', 'published', 'public', '{}'::jsonb, 2, $6
+		)
+		RETURNING id
+	`, authorID, categoryID, world, "Title for "+slug, slug, publishedAt)
+
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 func TestCreateEntry(t *testing.T) {
 	q, _ := newTestQueries(t)
 	ctx := context.Background()
@@ -163,6 +229,85 @@ func TestCreateEntry(t *testing.T) {
 			t.Errorf("summary = %v, want nil", row.Summary)
 		}
 	})
+}
+
+func TestEntrySlugUniquenessByWorld(t *testing.T) {
+	q, pool := newTestQueries(t)
+	authorID := seedAuthor(t, q, "entry-world-slug-author")
+
+	slug := dbtest.Slug(t, "shared-entry-world-slug")
+
+	if _, err := insertWorldEntry(t, pool, authorID, "journal", nil, slug); err != nil {
+		t.Fatalf("insert journal entry: %v", err)
+	}
+	if _, err := insertWorldEntry(t, pool, authorID, "saying", nil, slug); err != nil {
+		t.Fatalf("insert same slug in another world: %v", err)
+	}
+	if _, err := insertWorldEntry(t, pool, authorID, "journal", nil, slug); pgErrorCode(err) != "23505" {
+		t.Fatalf("duplicate slug in same world error code = %q, want 23505 (err=%v)", pgErrorCode(err), err)
+	}
+}
+
+func TestCategorySlugUniquenessByWorld(t *testing.T) {
+	_, pool := newTestQueries(t)
+	dbtest.CleanupCategories(t, pool)
+
+	slug := dbtest.Slug(t, "shared-category-world-slug")
+
+	insertWorldCategory(t, pool, "journal", slug)
+	insertWorldCategory(t, pool, "video", slug)
+
+	row := pool.QueryRow(context.Background(), `
+		INSERT INTO categories (name, slug, description, sort_order, world)
+		VALUES ($1, $2, NULL, 0, $3)
+		RETURNING id
+	`, fmt.Sprintf("%s duplicate", slug), slug, "journal")
+
+	var duplicateID int64
+	err := row.Scan(&duplicateID)
+	if pgErrorCode(err) != "23505" {
+		t.Fatalf("duplicate category slug in same world error code = %q, want 23505 (err=%v)", pgErrorCode(err), err)
+	}
+}
+
+func TestEntryCannotUseCategoryFromAnotherWorld(t *testing.T) {
+	q, pool := newTestQueries(t)
+	dbtest.CleanupCategories(t, pool)
+
+	authorID := seedAuthor(t, q, "cross-world-category-author")
+	categoryID := insertWorldCategory(t, pool, "saying", dbtest.Slug(t, "saying-category"))
+
+	_, err := insertWorldEntry(t, pool, authorID, "journal", &categoryID, dbtest.Slug(t, "journal-entry"))
+	if pgErrorCode(err) != "23503" {
+		t.Fatalf("cross-world category error code = %q, want 23503 (err=%v)", pgErrorCode(err), err)
+	}
+}
+
+func TestEntryWorldIsImmutable(t *testing.T) {
+	q, pool := newTestQueries(t)
+	authorID := seedAuthor(t, q, "entry-world-immutable-author")
+
+	entryID, err := insertWorldEntry(t, pool, authorID, "journal", nil, dbtest.Slug(t, "immutable-entry"))
+	if err != nil {
+		t.Fatalf("insert entry: %v", err)
+	}
+
+	if _, err := pool.Exec(context.Background(),
+		"UPDATE entries SET world = 'video' WHERE id = $1", entryID); err == nil {
+		t.Fatal("UPDATE entries SET world succeeded, want rejection")
+	}
+}
+
+func TestCategoryWorldIsImmutable(t *testing.T) {
+	_, pool := newTestQueries(t)
+	dbtest.CleanupCategories(t, pool)
+
+	categoryID := insertWorldCategory(t, pool, "journal", dbtest.Slug(t, "immutable-category"))
+
+	if _, err := pool.Exec(context.Background(),
+		"UPDATE categories SET world = 'video' WHERE id = $1", categoryID); err == nil {
+		t.Fatal("UPDATE categories SET world succeeded, want rejection")
+	}
 }
 
 // createEntry supplies the non-draft defaults that the schema already requires
