@@ -1,5 +1,13 @@
 package contentworld
 
+import (
+	"errors"
+	"sort"
+	"strings"
+	"time"
+	"unicode/utf8"
+)
+
 type Key string
 
 const (
@@ -40,6 +48,31 @@ type Definition struct {
 	AllowedViews    []ViewMode
 	CategoryEnabled bool
 	MediaCapability MediaCapability
+}
+
+var (
+	ErrWorldNotFound   = errors.New("contentworld: world not found")
+	ErrVersionConflict = errors.New("contentworld: version conflict")
+	ErrInvalidStatus   = errors.New("contentworld: invalid status")
+	ErrInvalidNavLabel = errors.New("contentworld: invalid nav label")
+	ErrInvalidViewMode = errors.New("contentworld: invalid view mode")
+)
+
+type Setting struct {
+	World       Key
+	Status      Status
+	NavLabel    string
+	SortOrder   int
+	DefaultView ViewMode
+	Revision    int64
+	UpdatedAt   time.Time
+}
+
+type UpdateInput struct {
+	ExpectedRevision int64
+	Status           *Status
+	NavLabel         *string
+	DefaultView      *ViewMode
 }
 
 var definitions = []Definition{
@@ -96,4 +129,41 @@ func Keys() []Key {
 func cloneDefinition(def Definition) Definition {
 	def.AllowedViews = append([]ViewMode(nil), def.AllowedViews...)
 	return def
+}
+
+func sortSettings(settings []Setting) {
+	sort.Slice(settings, func(i, j int) bool {
+		if settings[i].SortOrder == settings[j].SortOrder {
+			return settings[i].World < settings[j].World
+		}
+		return settings[i].SortOrder < settings[j].SortOrder
+	})
+}
+
+func validStatus(status Status) bool {
+	switch status {
+	case Unopened, Open, Hidden:
+		return true
+	default:
+		return false
+	}
+}
+
+func validNavLabel(label string) bool {
+	trimmed := strings.TrimSpace(label)
+	runes := utf8.RuneCountInString(trimmed)
+	return runes >= 1 && runes <= 64
+}
+
+func validViewForWorld(key Key, view ViewMode) bool {
+	def, ok := Lookup(key)
+	if !ok {
+		return false
+	}
+	for _, allowed := range def.AllowedViews {
+		if allowed == view {
+			return true
+		}
+	}
+	return false
 }

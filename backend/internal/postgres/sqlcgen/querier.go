@@ -59,7 +59,7 @@ type Querier interface {
 	//
 	// sort_order arrives from the caller rather than defaulting here, so that the
 	// domain owns what "unspecified" means.
-	CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error)
+	CreateCategory(ctx context.Context, arg CreateCategoryParams) (CreateCategoryRow, error)
 	// Queries for entries.
 	//
 	// The visibility rule is in SQL, not in Go. Every public read carries
@@ -154,14 +154,14 @@ type Querier interface {
 	// may change during editing while the thing being edited does not.
 	GetAdminEntryByID(ctx context.Context, id int64) (GetAdminEntryByIDRow, error)
 	// Read one category by id. Used after a write and by the admin edit form.
-	GetCategoryByID(ctx context.Context, id int64) (Category, error)
+	GetCategoryByID(ctx context.Context, id int64) (GetCategoryByIDRow, error)
 	// Read one category by slug.
 	//
 	// This is how a category page resolves its URL segment, and how a list request
 	// filtered by category turns ?category=travel into an id. Resolving first means
 	// an unknown slug is a 404 rather than an empty list, which are different
 	// answers: one says the URL is wrong, the other says the category is empty.
-	GetCategoryBySlug(ctx context.Context, slug string) (Category, error)
+	GetCategoryBySlug(ctx context.Context, slug string) (GetCategoryBySlugRow, error)
 	// The detail read behind a shared link: public or unlisted.
 	//
 	// This is what GET /entries/:slug uses, so that an unlisted entry can be opened
@@ -198,6 +198,7 @@ type Querier interface {
 	// case-insensitive. Wrapping the column in lower() would also make the query
 	// unable to use the unique index.
 	GetUserByUsername(ctx context.Context, username string) (User, error)
+	GetWorld(ctx context.Context, world string) (SiteWorld, error)
 	// The admin reads.
 	//
 	// Separate statements from the public ones above, not the same queries with the
@@ -221,13 +222,14 @@ type Querier interface {
 	//
 	// No content_md, for the same reason the public list omits it.
 	ListAdminEntries(ctx context.Context, arg ListAdminEntriesParams) ([]ListAdminEntriesRow, error)
+	ListAllWorlds(ctx context.Context) ([]SiteWorld, error)
 	// Every category, in display order.
 	//
 	// sort_order first, then id as the tie-break so that categories sharing a
 	// sort_order have a stable order rather than whatever the planner returns. No
 	// pagination: this is a navigation structure, and one that needs paging is one
 	// nobody can navigate.
-	ListCategories(ctx context.Context) ([]Category, error)
+	ListCategories(ctx context.Context) ([]ListCategoriesRow, error)
 	// Every category with the number of entries a public reader can see in it.
 	//
 	// LEFT JOIN, not an inner one, so a category with nothing in it still appears
@@ -242,6 +244,7 @@ type Querier interface {
 	// public. An unlisted entry is deliberately not counted, since it is absent from
 	// the list the count describes.
 	ListCategoriesWithCounts(ctx context.Context) ([]ListCategoriesWithCountsRow, error)
+	ListOpenWorlds(ctx context.Context) ([]SiteWorld, error)
 	// The public list, newest happening first.
 	//
 	// No content_md in the column list. A list of twenty entries carrying twenty
@@ -310,7 +313,7 @@ type Querier interface {
 	// NULL under COALESCE and would become one statement.
 	//
 	// updated_at is left to the categories_set_updated_at trigger.
-	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (Category, error)
+	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (UpdateCategoryRow, error)
 	// Apply a partial update to one live entry.
 	//
 	// Every field is a pair: a boolean saying whether the caller asked for this
@@ -332,6 +335,7 @@ type Querier interface {
 	// updated_at is left to the entries_set_updated_at trigger from 000001.
 	UpdateEntry(ctx context.Context, arg UpdateEntryParams) (UpdateEntryRow, error)
 	UpdateSiteTheme(ctx context.Context, arg UpdateSiteThemeParams) (UpdateSiteThemeRow, error)
+	UpdateWorld(ctx context.Context, arg UpdateWorldParams) (SiteWorld, error)
 }
 
 var _ Querier = (*Queries)(nil)

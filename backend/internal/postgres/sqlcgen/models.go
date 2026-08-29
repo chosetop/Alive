@@ -18,6 +18,7 @@ type Category struct {
 	SortOrder   int32
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	World       string
 }
 
 type Entry struct {
@@ -40,6 +41,8 @@ type Entry struct {
 	DeletedAt   *time.Time
 	CategoryID  *int64
 	Revision    int64
+	World       string
+	Kind        string
 }
 
 type Session struct {
@@ -58,6 +61,16 @@ type SiteSetting struct {
 	DefaultTheme string
 	Revision     int64
 	UpdatedAt    time.Time
+}
+
+type SiteWorld struct {
+	World       string
+	Status      string
+	NavLabel    string
+	SortOrder   int32
+	DefaultView string
+	Revision    int64
+	UpdatedAt   time.Time
 }
 
 type User struct {

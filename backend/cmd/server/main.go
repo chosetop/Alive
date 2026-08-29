@@ -17,6 +17,7 @@ import (
 
 	"github.com/p30huiwei/alive/backend/internal/auth"
 	"github.com/p30huiwei/alive/backend/internal/config"
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/entry"
 	"github.com/p30huiwei/alive/backend/internal/postgres"
 	"github.com/p30huiwei/alive/backend/internal/router"
@@ -81,6 +82,7 @@ func run() error {
 	)
 
 	siteService := site.NewService(site.NewRepository(pool))
+	worldService := contentworld.NewService(contentworld.NewRepository(pool))
 
 	handler := router.New(router.Dependencies{
 		Config:          cfg,
@@ -90,6 +92,7 @@ func run() error {
 		EntryService:    entryService,
 		TaxonomyService: taxonomyService,
 		SiteService:     siteService,
+		WorldService:    worldService,
 	})
 
 	server := &http.Server{

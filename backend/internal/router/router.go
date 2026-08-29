@@ -16,6 +16,8 @@ import (
 	"github.com/p30huiwei/alive/backend/internal/auth"
 	"github.com/p30huiwei/alive/backend/internal/authhttp"
 	"github.com/p30huiwei/alive/backend/internal/config"
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
+	"github.com/p30huiwei/alive/backend/internal/contentworldhttp"
 	"github.com/p30huiwei/alive/backend/internal/entry"
 	"github.com/p30huiwei/alive/backend/internal/entryhttp"
 	"github.com/p30huiwei/alive/backend/internal/health"
@@ -55,6 +57,9 @@ type Dependencies struct {
 
 	// SiteService owns the singleton site settings, including the default theme.
 	SiteService *site.Service
+
+	// WorldService owns lifecycle and browse-mode settings for the closed world registry.
+	WorldService *contentworld.Service
 }
 
 // New builds the fully wired HTTP handler.
@@ -77,6 +82,9 @@ func New(deps Dependencies) *gin.Engine {
 	}
 	if deps.SiteService == nil {
 		panic("router: SiteService is required")
+	}
+	if deps.WorldService == nil {
+		panic("router: WorldService is required")
 	}
 
 	if !deps.Config.IsDevelopment() {
@@ -182,6 +190,11 @@ func New(deps Dependencies) *gin.Engine {
 	// GET   /api/v1/site       public site settings
 	// PATCH /api/v1/admin/site requires a session and an expected revision
 	sitehttp.NewHandler(deps.SiteService, deps.Logger).Register(api, authHandler.RequireAuth())
+
+	// GET   /api/v1/worlds              public open-world navigation settings
+	// GET   /api/v1/admin/worlds        requires a session, every world status
+	// PATCH /api/v1/admin/worlds/:key   requires a session and an expected revision
+	contentworldhttp.NewHandler(deps.WorldService, deps.Logger).Register(api, authHandler.RequireAuth())
 
 	return engine
 }

@@ -82,6 +82,16 @@ type CreateCategoryParams struct {
 	SortOrder   int32
 }
 
+type CreateCategoryRow struct {
+	ID          int64
+	Name        string
+	Slug        string
+	Description *string
+	SortOrder   int32
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 // Queries for categories.
 //
 // Unlike entries, there is no visibility rule to enforce here and no soft
@@ -97,14 +107,14 @@ type CreateCategoryParams struct {
 //
 // sort_order arrives from the caller rather than defaulting here, so that the
 // domain owns what "unspecified" means.
-func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error) {
+func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) (CreateCategoryRow, error) {
 	row := q.db.QueryRow(ctx, createCategory,
 		arg.Name,
 		arg.Slug,
 		arg.Description,
 		arg.SortOrder,
 	)
-	var i Category
+	var i CreateCategoryRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -153,10 +163,20 @@ FROM categories
 WHERE id = $1
 `
 
+type GetCategoryByIDRow struct {
+	ID          int64
+	Name        string
+	Slug        string
+	Description *string
+	SortOrder   int32
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 // Read one category by id. Used after a write and by the admin edit form.
-func (q *Queries) GetCategoryByID(ctx context.Context, id int64) (Category, error) {
+func (q *Queries) GetCategoryByID(ctx context.Context, id int64) (GetCategoryByIDRow, error) {
 	row := q.db.QueryRow(ctx, getCategoryByID, id)
-	var i Category
+	var i GetCategoryByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -182,15 +202,25 @@ FROM categories
 WHERE slug = $1
 `
 
+type GetCategoryBySlugRow struct {
+	ID          int64
+	Name        string
+	Slug        string
+	Description *string
+	SortOrder   int32
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 // Read one category by slug.
 //
 // This is how a category page resolves its URL segment, and how a list request
 // filtered by category turns ?category=travel into an id. Resolving first means
 // an unknown slug is a 404 rather than an empty list, which are different
 // answers: one says the URL is wrong, the other says the category is empty.
-func (q *Queries) GetCategoryBySlug(ctx context.Context, slug string) (Category, error) {
+func (q *Queries) GetCategoryBySlug(ctx context.Context, slug string) (GetCategoryBySlugRow, error) {
 	row := q.db.QueryRow(ctx, getCategoryBySlug, slug)
-	var i Category
+	var i GetCategoryBySlugRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -216,21 +246,31 @@ FROM categories
 ORDER BY sort_order, id
 `
 
+type ListCategoriesRow struct {
+	ID          int64
+	Name        string
+	Slug        string
+	Description *string
+	SortOrder   int32
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 // Every category, in display order.
 //
 // sort_order first, then id as the tie-break so that categories sharing a
 // sort_order have a stable order rather than whatever the planner returns. No
 // pagination: this is a navigation structure, and one that needs paging is one
 // nobody can navigate.
-func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
+func (q *Queries) ListCategories(ctx context.Context) ([]ListCategoriesRow, error) {
 	rows, err := q.db.Query(ctx, listCategories)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Category{}
+	items := []ListCategoriesRow{}
 	for rows.Next() {
-		var i Category
+		var i ListCategoriesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -357,6 +397,16 @@ type UpdateCategoryParams struct {
 	ID             int64
 }
 
+type UpdateCategoryRow struct {
+	ID          int64
+	Name        string
+	Slug        string
+	Description *string
+	SortOrder   int32
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 // Apply a partial update to one category.
 //
 // The same paired-flag shape as UpdateEntry, and for the same reason: description
@@ -364,7 +414,7 @@ type UpdateCategoryParams struct {
 // NULL under COALESCE and would become one statement.
 //
 // updated_at is left to the categories_set_updated_at trigger.
-func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (Category, error) {
+func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (UpdateCategoryRow, error) {
 	row := q.db.QueryRow(ctx, updateCategory,
 		arg.SetName,
 		arg.Name,
@@ -376,7 +426,7 @@ func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) 
 		arg.SortOrder,
 		arg.ID,
 	)
-	var i Category
+	var i UpdateCategoryRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
