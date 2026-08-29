@@ -12,7 +12,8 @@
 
 ## Global Constraints
 
-- Plans 1 through 3 are complete.
+- Complete `2026-08-29-cross-world-tags.md` first. This plan is phase 4 of `2026-08-29-content-worlds-roadmap.md`.
+- Foundation uses migration `000010`, Tags uses `000011`, this plan owns `000012`, and Videos later owns `000013`.
 - Alibaba Cloud OSS is the storage provider; preserve a domain-owned storage interface.
 - Image bytes go directly from the browser to OSS and never through the Go API.
 - Accepted upload types are JPEG, PNG, WebP, and GIF. SVG is rejected because it can contain executable content when served inline.
@@ -130,8 +131,8 @@ git commit -m "feat: add Aliyun OSS storage signer"
 ### Task 2: Add media records and article associations
 
 **Files:**
-- Create: `backend/migrations/000008_create_media.up.sql`
-- Create: `backend/migrations/000008_create_media.down.sql`
+- Create: `backend/migrations/000012_create_media.up.sql`
+- Create: `backend/migrations/000012_create_media.down.sql`
 - Create: `backend/sql/queries/media.sql`
 - Regenerate: `backend/internal/postgres/sqlcgen/*.go`
 - Create: `backend/internal/media/model.go`
@@ -156,7 +157,7 @@ if err != nil { t.Fatal(err) }
 if !strings.HasPrefix(signed.ObjectKey, "media/7/42/2026/08/") { t.Fatal(signed.ObjectKey) }
 ```
 
-- [ ] **Step 2: Add migration 000008**
+- [ ] **Step 2: Add migration 000012**
 
 ```sql
 CREATE TABLE media (
@@ -207,7 +208,7 @@ caller cannot register another entry's object or an arbitrary bucket key.
 cd backend
 make sqlc
 go test ./internal/media -count=1
-git add backend/migrations/000008_* backend/sql/queries/media.sql backend/internal/postgres/sqlcgen backend/internal/media
+git add backend/migrations/000012_* backend/sql/queries/media.sql backend/internal/postgres/sqlcgen backend/internal/media
 git commit -m "feat: record article media"
 ```
 
