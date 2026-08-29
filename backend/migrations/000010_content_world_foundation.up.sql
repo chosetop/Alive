@@ -1,7 +1,5 @@
-ALTER TABLE entries DROP CONSTRAINT entries_type_check;
-ALTER TABLE entries RENAME COLUMN type TO world;
-UPDATE entries SET world = 'journal';
-ALTER TABLE entries ALTER COLUMN world DROP DEFAULT;
+UPDATE entries SET type = 'journal';
+ALTER TABLE entries ADD COLUMN world VARCHAR(32) NOT NULL DEFAULT 'journal';
 ALTER TABLE entries ADD CONSTRAINT entries_world_check
   CHECK (world IN ('journal', 'saying', 'video'));
 ALTER TABLE entries ADD COLUMN kind VARCHAR(32) NOT NULL DEFAULT '';
@@ -10,15 +8,10 @@ DROP INDEX uk_entries_slug;
 CREATE UNIQUE INDEX uk_entries_world_slug
   ON entries (world, slug)
   WHERE deleted_at IS NULL AND slug <> '';
-DROP INDEX idx_entries_type;
 CREATE INDEX idx_entries_world
   ON entries (world, published_at DESC)
   WHERE deleted_at IS NULL AND status = 'published';
 
-DROP INDEX idx_entries_public_feed;
-DROP INDEX idx_entries_timeline;
-DROP INDEX idx_entries_public_timeline;
-DROP INDEX idx_entries_category;
 CREATE INDEX idx_entries_world_public_timeline
   ON entries (world, COALESCE(happened_at, published_at) DESC, id DESC)
   WHERE deleted_at IS NULL
@@ -31,7 +24,6 @@ CREATE INDEX idx_entries_world_category_public
     AND visibility = 'public';
 
 ALTER TABLE categories ADD COLUMN world VARCHAR(32) NOT NULL DEFAULT 'journal';
-ALTER TABLE categories ALTER COLUMN world DROP DEFAULT;
 ALTER TABLE categories ADD CONSTRAINT categories_world_check
   CHECK (world IN ('journal', 'saying', 'video'));
 ALTER TABLE categories DROP CONSTRAINT categories_slug_key;
@@ -88,7 +80,6 @@ CREATE TRIGGER site_worlds_set_updated_at
 
 INSERT INTO site_worlds (world, status, nav_label, sort_order, default_view)
 VALUES
-  ('journal', 'open', '日志', 10, 'stream'),
+  ('journal', 'open', '日志', 10, ''),
   ('saying', 'unopened', '片语', 20, 'stream'),
-  ('video', 'unopened', '影像', 30, 'wall');
-
+  ('video', 'unopened', '影像', 30, '');

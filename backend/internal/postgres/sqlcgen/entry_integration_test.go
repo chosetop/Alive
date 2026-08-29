@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"testing"
 	"time"
 
@@ -307,6 +308,42 @@ func TestCategoryWorldIsImmutable(t *testing.T) {
 	if _, err := pool.Exec(context.Background(),
 		"UPDATE categories SET world = 'video' WHERE id = $1", categoryID); err == nil {
 		t.Fatal("UPDATE categories SET world succeeded, want rejection")
+	}
+}
+
+func TestSiteWorldSeedsDefaultViews(t *testing.T) {
+	_, pool := newTestQueries(t)
+
+	rows, err := pool.Query(context.Background(), `
+		SELECT world, default_view
+		FROM site_worlds
+		ORDER BY sort_order, world
+	`)
+	if err != nil {
+		t.Fatalf("query site_worlds: %v", err)
+	}
+	defer rows.Close()
+
+	got := make(map[string]string)
+	for rows.Next() {
+		var world string
+		var defaultView string
+		if err := rows.Scan(&world, &defaultView); err != nil {
+			t.Fatalf("scan site_worlds row: %v", err)
+		}
+		got[world] = defaultView
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate site_worlds: %v", err)
+	}
+
+	want := map[string]string{
+		"journal": "",
+		"saying":  "stream",
+		"video":   "",
+	}
+	if !maps.Equal(got, want) {
+		t.Fatalf("site_worlds default views = %#v, want %#v", got, want)
 	}
 }
 

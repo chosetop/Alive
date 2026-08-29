@@ -32,38 +32,13 @@ DROP INDEX idx_entries_world;
 DROP INDEX uk_entries_world_slug;
 
 ALTER TABLE entries DROP CONSTRAINT entries_category_world_fkey;
-
-UPDATE entries SET world = 'journal';
-
 ALTER TABLE entries DROP CONSTRAINT entries_world_check;
 ALTER TABLE entries DROP COLUMN kind;
-ALTER TABLE entries RENAME COLUMN world TO type;
-ALTER TABLE entries ALTER COLUMN type SET DEFAULT 'journal';
-ALTER TABLE entries ADD CONSTRAINT entries_type_check
-  CHECK (type IN ('journal', 'book', 'movie', 'music', 'travel', 'photo'));
+ALTER TABLE entries DROP COLUMN world;
 
 CREATE UNIQUE INDEX uk_entries_slug
   ON entries (slug)
   WHERE deleted_at IS NULL AND slug <> '';
-CREATE INDEX idx_entries_type
-  ON entries (type, published_at DESC)
-  WHERE deleted_at IS NULL AND status = 'published';
-CREATE INDEX idx_entries_public_feed
-  ON entries (published_at DESC)
-  WHERE deleted_at IS NULL
-    AND status = 'published'
-    AND visibility = 'public';
-CREATE INDEX idx_entries_timeline
-  ON entries (happened_at DESC)
-  WHERE deleted_at IS NULL AND status = 'published';
-CREATE INDEX idx_entries_public_timeline
-  ON entries (COALESCE(happened_at, published_at) DESC, id DESC)
-  WHERE deleted_at IS NULL
-    AND status = 'published'
-    AND visibility = 'public';
-CREATE INDEX idx_entries_category
-  ON entries (category_id, published_at DESC)
-  WHERE deleted_at IS NULL AND status = 'published';
 
 ALTER TABLE categories DROP CONSTRAINT categories_id_world_key;
 ALTER TABLE categories DROP CONSTRAINT categories_world_slug_key;
