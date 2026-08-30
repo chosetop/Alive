@@ -201,6 +201,12 @@ func stringField(t *testing.T, object map[string]json.RawMessage, name string) s
 	return value
 }
 
+// hasField reports whether a decoded JSON object carries the named key.
+func hasField(object map[string]json.RawMessage, name string) bool {
+	_, ok := object[name]
+	return ok
+}
+
 func intField(t *testing.T, object map[string]json.RawMessage, name string) int {
 	t.Helper()
 	raw, ok := object[name]
@@ -469,6 +475,131 @@ func TestEmptyListIsAnArray(t *testing.T) {
 	envelope := decodeEnvelope(t, rec)
 	if got := string(envelope["data"]); got != "[]" {
 		t.Errorf("data = %s, want []", got)
+	}
+}
+
+func TestSayingsEndpointsUseTheSayingShape(t *testing.T) {
+	handler, store := newTestServer(t, testAuthorID)
+
+	store.Seed(entry.Entry{
+		ID:         1,
+		Slug:       "bbbbbbbbbb",
+		World:      contentworld.Saying,
+		Status:     entry.StatusPublished,
+		Visibility: entry.VisibilityPublic,
+		ContentMD:  "前一条片语",
+		Meta:       entry.Meta(`{"source":"先写的"}`),
+	})
+	store.Seed(entry.Entry{
+		ID:         2,
+		Slug:       "abcdefghjk",
+		World:      contentworld.Saying,
+		Status:     entry.StatusPublished,
+		Visibility: entry.VisibilityPublic,
+		ContentMD:  "第一句\n第二句",
+		Meta:       entry.Meta(`{"source":"随口一说","author":"我"}`),
+	})
+	store.Seed(entry.Entry{
+		ID:         3,
+		Slug:       "cccccccccc",
+		World:      contentworld.Journal,
+		Status:     entry.StatusPublished,
+		Visibility: entry.VisibilityPublic,
+		ContentMD:  "这条日志不该出现在片语列表里",
+	})
+	store.Seed(entry.Entry{
+		ID:         4,
+		Slug:       "zzzzzzzzzz",
+		World:      contentworld.Saying,
+		Status:     entry.StatusPublished,
+		Visibility: entry.VisibilityPublic,
+		ContentMD:  "后一条片语",
+	})
+
+	rec := do(t, handler, http.MethodGet, "/api/v1/sayings", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
+	}
+
+	items := dataArray(t, rec)
+	if len(items) != 3 {
+		t.Fatalf("list returned %d items, want 3\nbody: %s", len(items), rec.Body.String())
+	}
+
+	seen := make(map[string]map[string]json.RawMessage, len(items))
+	for _, item := range items {
+		shortID := stringField(t, item, "short_id")
+		seen[shortID] = item
+		for _, field := range []string{"title", "happened_at", "published_at", "cover_url"} {
+			if hasField(item, field) {
+				t.Errorf("list response unexpectedly carries %q for %s", field, shortID)
+			}
+		}
+	}
+	for _, shortID := range []string{"bbbbbbbbbb", "abcdefghjk", "zzzzzzzzzz"} {
+		if _, ok := seen[shortID]; !ok {
+			t.Fatalf("list is missing %s", shortID)
+		}
+	}
+	if _, ok := seen["cccccccccc"]; ok {
+		t.Fatal("journal entry leaked into the sayings list")
+	}
+
+	item := seen["abcdefghjk"]
+	if got := stringField(t, item, "content_md"); got != "第一句\n第二句" {
+		t.Fatalf("content_md = %q, want the saying body", got)
+	}
+
+	detail := do(t, handler, http.MethodGet, "/api/v1/sayings/abcdefghjk", "")
+	if detail.Code != http.StatusOK {
+		t.Fatalf("detail status = %d, want 200\nbody: %s", detail.Code, detail.Body.String())
+	}
+
+	data := dataObject(t, detail)
+	if got := stringField(t, data, "short_id"); got != "abcdefghjk" {
+		t.Fatalf("detail short_id = %q, want %q", got, "abcdefghjk")
+	}
+	if got := stringField(t, data, "content_md"); got != "第一句\n第二句" {
+		t.Fatalf("detail content_md = %q, want the saying body", got)
+	}
+	for _, field := range []string{"title", "happened_at", "published_at", "cover_url"} {
+		if hasField(data, field) {
+			t.Errorf("detail response unexpectedly carries %q", field)
+		}
+	}
+	if prev := data["previous"]; prev == nil {
+		t.Fatal("detail response is missing previous")
+	} else {
+		var link map[string]json.RawMessage
+		if err := json.Unmarshal(prev, &link); err != nil {
+			t.Fatalf("previous is not an object: %v", err)
+		}
+		if got := stringField(t, link, "short_id"); got != "zzzzzzzzzz" {
+			t.Fatalf("previous.short_id = %q, want %q", got, "zzzzzzzzzz")
+		}
+	}
+	if next := data["next"]; next == nil {
+		t.Fatal("detail response is missing next")
+	} else {
+		var link map[string]json.RawMessage
+		if err := json.Unmarshal(next, &link); err != nil {
+			t.Fatalf("next is not an object: %v", err)
+		}
+		if got := stringField(t, link, "short_id"); got != "bbbbbbbbbb" {
+			t.Fatalf("next.short_id = %q, want %q", got, "bbbbbbbbbb")
+		}
+	}
+}
+
+func TestSayingShortIDRejectsInvalidPathsBeforeLookup(t *testing.T) {
+	handler, _ := newTestServer(t, testAuthorID)
+
+	rec := do(t, handler, http.MethodGet, "/api/v1/sayings/not-valid", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400\nbody: %s", rec.Code, rec.Body.String())
+	}
+	if code := errorCode(t, rec); code != "INVALID_INPUT" {
+		t.Fatalf("code = %q, want INVALID_INPUT", code)
 	}
 }
 

@@ -7,10 +7,13 @@
 package entryhttp
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -105,6 +108,8 @@ func (h *Handler) Register(api *gin.RouterGroup, requireAuth gin.HandlerFunc) {
 
 	api.GET("/journals", h.List)
 	api.GET("/journals/:slug", h.GetBySlug)
+	api.GET("/sayings", h.ListSayings)
+	api.GET("/sayings/:shortID", h.GetSayingByShortID)
 }
 
 // RegisterAdmin adds the authenticated read routes under the admin group.
@@ -247,6 +252,78 @@ func (h *Handler) GetBySlug(c *gin.Context) {
 	}
 
 	httpx.OK(c, newPublicEntryDetail(found))
+}
+
+// ListSayings returns one page of published public sayings, newest first.
+func (h *Handler) ListSayings(c *gin.Context) {
+	world := contentworld.Saying
+	page, err := intQuery(c, "page")
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+	pageSize, err := intQuery(c, "page_size")
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	categoryID, err := h.resolveCategory(c, world)
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	result, err := h.service.ListPublic(c.Request.Context(), world, categoryID, page, pageSize)
+	if err != nil {
+		h.logger.ErrorContext(c.Request.Context(), "list sayings failed",
+			slog.String("error", err.Error()),
+		)
+		httpx.Error(c, apperr.From(err))
+		return
+	}
+
+	httpx.List(c, newSayingListItems(result.Entries), paginationMeta{
+		Page:     result.Page,
+		PageSize: result.PageSize,
+		Total:    result.Total,
+	})
+}
+
+// GetSayingByShortID returns one public or unlisted saying by its permanent id.
+func (h *Handler) GetSayingByShortID(c *gin.Context) {
+	world := contentworld.Saying
+	shortID := c.Param("shortID")
+	if err := validateSayingShortID(shortID); err != nil {
+		httpx.Error(c, invalidField("short_id",
+			"must be 10 characters from 23456789abcdefghjkmnpqrstuvwxyz", err))
+		return
+	}
+
+	found, err := h.service.GetLinkByWorldSlug(c.Request.Context(), world, shortID)
+	if err != nil {
+		if errors.Is(err, entry.ErrEntryNotFound) {
+			httpx.Error(c, apperr.NotFound("no entry matches this short id"))
+			return
+		}
+
+		h.logger.ErrorContext(c.Request.Context(), "read saying failed",
+			slog.String("error", err.Error()),
+		)
+		httpx.Error(c, apperr.From(err))
+		return
+	}
+
+	previous, next, err := h.sayingNeighbors(c.Request.Context(), shortID)
+	if err != nil {
+		h.logger.ErrorContext(c.Request.Context(), "read saying neighbors failed",
+			slog.String("error", err.Error()),
+		)
+		httpx.Error(c, apperr.From(err))
+		return
+	}
+
+	httpx.OK(c, newSayingDetail(found, previous, next))
 }
 
 // Update applies a partial change to one entry.
@@ -638,6 +715,94 @@ func (h *Handler) resolveCategory(c *gin.Context, world contentworld.Key) (int64
 	}
 
 	return id, nil
+}
+
+// sayingNeighbors loads the published rows for the saying world and finds the
+// rows that neighbour one short id in the site's published ordering.
+func (h *Handler) sayingNeighbors(ctx context.Context, shortID string) (*entry.Entry, *entry.Entry, error) {
+	status := entry.StatusPublished
+	var (
+		all []entry.Entry
+	)
+
+	for page := 1; ; page++ {
+		world := contentworld.Saying
+		result, err := h.service.ListAdmin(ctx, &world, 0, &status, "", page, entry.MaxPageSize)
+		if err != nil {
+			return nil, nil, err
+		}
+		all = append(all, result.Entries...)
+		if len(result.Entries) == 0 || len(all) >= int(result.Total) {
+			break
+		}
+	}
+
+	sortEntriesForSaying(all)
+
+	for i := range all {
+		if all[i].Slug != shortID {
+			continue
+		}
+		var previous, next *entry.Entry
+		if i > 0 {
+			previous = &all[i-1]
+		}
+		if i+1 < len(all) {
+			next = &all[i+1]
+		}
+		return previous, next, nil
+	}
+
+	return nil, nil, nil
+}
+
+func sortEntriesForSaying(entries []entry.Entry) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		return sayingOrderLess(entries[i], entries[j])
+	})
+}
+
+func sayingOrderLess(a, b entry.Entry) bool {
+	ak := sayingOrderKeyFor(a)
+	bk := sayingOrderKeyFor(b)
+	if !ak.when.Equal(bk.when) {
+		return ak.when.After(bk.when)
+	}
+	return ak.id > bk.id
+}
+
+type sayingOrderKey struct {
+	when time.Time
+	id   int64
+}
+
+func sayingOrderKeyFor(e entry.Entry) sayingOrderKey {
+	when := e.PublishedAt
+	if when.IsZero() {
+		when = e.CreatedAt
+	}
+	return sayingOrderKey{when: when, id: e.ID}
+}
+
+const sayingShortIDLength = 10
+
+var sayingShortIDAlphabet = map[rune]struct{}{
+	'2': {}, '3': {}, '4': {}, '5': {}, '6': {}, '7': {}, '8': {}, '9': {},
+	'a': {}, 'b': {}, 'c': {}, 'd': {}, 'e': {}, 'f': {}, 'g': {}, 'h': {},
+	'j': {}, 'k': {}, 'm': {}, 'n': {}, 'p': {}, 'q': {}, 'r': {}, 's': {},
+	't': {}, 'u': {}, 'v': {}, 'w': {}, 'x': {}, 'y': {}, 'z': {},
+}
+
+func validateSayingShortID(shortID string) error {
+	if len(shortID) != sayingShortIDLength {
+		return errors.New("invalid short id length")
+	}
+	for _, r := range shortID {
+		if _, ok := sayingShortIDAlphabet[r]; !ok {
+			return errors.New("invalid short id alphabet")
+		}
+	}
+	return nil
 }
 
 // entryID reads the :id path parameter.
