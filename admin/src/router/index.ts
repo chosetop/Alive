@@ -91,6 +91,17 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('../views/NewEntry.vue'),
       },
       {
+        path: 'new/saying',
+        name: 'saying-editor-new',
+        component: () => import('../views/SayingEditor.vue'),
+      },
+      {
+        path: 'new/video',
+        name: 'video-editor-new',
+        component: () => import('../views/EntryEditor.vue'),
+        props: { world: 'video' },
+      },
+      {
         path: 'new/:world',
         name: 'entry-new-world',
         component: () => import('../views/EntryEditor.vue'),
@@ -100,11 +111,6 @@ export const routes: RouteRecordRaw[] = [
           if (world === null || world.editorRouteName === null) return { name: 'not-found' }
           return true
         },
-      },
-      {
-        path: 'new/saying',
-        name: 'saying-editor-new',
-        component: () => import('../views/SayingEditor.vue'),
       },
       {
         path: 'blank',

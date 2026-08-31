@@ -33,7 +33,7 @@ export const ADMIN_WORLD_REGISTRY: readonly AdminWorldDefinition[] = [
     key: 'video',
     label: '影像',
     createLabel: '发影像',
-    editorRouteName: null,
+    editorRouteName: 'video-editor-new',
     publishPolicy: 'video',
     categoryEnabled: true,
     mediaCapability: 'primary-video',
