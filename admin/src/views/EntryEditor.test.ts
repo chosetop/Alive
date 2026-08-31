@@ -482,6 +482,15 @@ describe('EntryEditor autosave integration', () => {
     })
   })
 
+  it('binds a preloaded existing entry without issuing a second getEntry call', async () => {
+    const current = entry({ id: 67, world: 'video', revision: 4 })
+    const wrapper = await mountEditorWithProps({ id: '67', initialEntry: current })
+
+    expect(api.getEntry).not.toHaveBeenCalled()
+    expect(storeFor(wrapper).activeWorld).toBe('video')
+    expect((await titleField(wrapper)).element).toHaveProperty('value', '原始标题')
+  })
+
   it('locks the previous entry while the next route loads and keeps it locked after failure', async () => {
     const previous = entry({ id: 57, revision: 4, title: '上一篇' })
     const nextLoad = deferred<EntryDetail>()
@@ -1029,7 +1038,7 @@ function storeFor(wrapper: VueWrapper) {
 }
 
 async function mountEditorWithProps(
-  props: { id?: string },
+  props: { id?: string; initialEntry?: EntryDetail },
   flushGate?: Ref<(() => Promise<void>) | null>,
 ): Promise<VueWrapper> {
   const wrapper = mount(EntryEditor, {

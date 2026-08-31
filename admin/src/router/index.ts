@@ -128,7 +128,7 @@ export const routes: RouteRecordRaw[] = [
         // does not reach into the route to find its own subject.
         path: ':id',
         name: 'entry-edit',
-        component: () => import('../views/EntryEditor.vue'),
+        component: () => import('../views/WorldEditorHost.vue'),
         props: true,
       },
     ],

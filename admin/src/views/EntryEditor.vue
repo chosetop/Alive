@@ -47,6 +47,7 @@ const props = defineProps<{
   id?: string
   blank?: boolean
   world?: string
+  initialEntry?: EntryDetail
 }>()
 
 const router = useRouter()
@@ -172,6 +173,7 @@ async function load(targetId: number | null = entryId.value): Promise<void> {
   if (targetId === null) {
     // A new route is an editing session, not a database command. The first
     // meaningful edit or explicit save creates the server-side draft.
+    writing.setActiveWorld(draftWorld.value)
     resetToBlank()
     return
   }
@@ -182,32 +184,39 @@ async function load(targetId: number | null = entryId.value): Promise<void> {
   loadError.value = null
   categoryError.value = null
   try {
-    const entry = await entriesApi.getEntry(targetId)
+    const entry =
+      props.initialEntry?.id === targetId
+        ? props.initialEntry
+        : await entriesApi.getEntry(targetId)
     if (!isCurrentLoad(generation)) return
-    recoveryDraft = null
-
-    original.value = entry
-    applyEntryToForm(entry)
-    writing.setActiveEntry(entry.id)
-    void loadWorldStatus(entry.world ?? draftWorld.value)
-
-    editorSession.value += 1
-    await bindCoordinator(entry)
-    if (!isCurrentLoad(generation)) return
-    isLoading.value = false
-
-    try {
-      const cats = await categoriesApi.listCategoriesAdmin({
-        world: entry.world ?? draftWorld.value,
-      })
-      if (isCurrentLoad(generation)) categories.value = cats
-    } catch (error) {
-      if (isCurrentLoad(generation)) categoryError.value = toUserMessage(error)
-    }
+    await applyLoadedEntry(entry, generation)
   } catch (error) {
     if (isCurrentLoad(generation)) loadError.value = toUserMessage(error)
   } finally {
     if (isCurrentLoad(generation)) isLoading.value = false
+  }
+}
+
+async function applyLoadedEntry(entry: EntryDetail, generation: number): Promise<void> {
+  recoveryDraft = null
+  original.value = entry
+  writing.setActiveWorld(entry.world ?? draftWorld.value)
+  applyEntryToForm(entry)
+  writing.setActiveEntry(entry.id)
+  void loadWorldStatus(entry.world ?? draftWorld.value)
+
+  editorSession.value += 1
+  await bindCoordinator(entry)
+  if (!isCurrentLoad(generation)) return
+  isLoading.value = false
+
+  try {
+    const cats = await categoriesApi.listCategoriesAdmin({
+      world: entry.world ?? draftWorld.value,
+    })
+    if (isCurrentLoad(generation)) categories.value = cats
+  } catch (error) {
+    if (isCurrentLoad(generation)) categoryError.value = toUserMessage(error)
   }
 }
 
@@ -486,6 +495,8 @@ function resetToBlank(): void {
   loadError.value = null
   saveError.value = null
   fieldErrors.value = {}
+  categories.value = []
+  worldStatus.value = null
   settingsOpen.value = false
   publishOpen.value = false
   editorSession.value += 1

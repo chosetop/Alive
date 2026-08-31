@@ -1,13 +1,19 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { entriesApi, toUserMessage } from '../api'
 import TagPicker from '../components/writing/TagPicker.vue'
 import type { Tag } from '../api/tags'
 import type { EntryDetail, EntryVisibility } from '../types/api'
+import { useWritingStore } from '../stores/writing'
+
+const props = defineProps<{
+  initialEntry?: EntryDetail
+}>()
 
 const router = useRouter()
+const writing = useWritingStore()
 const entry = ref<EntryDetail | null>(null)
 const content = ref('')
 const source = ref('')
@@ -23,11 +29,26 @@ let creating: Promise<void> | null = null
 
 const longFormWarning = computed(() => Array.from(content.value.trim()).length > 300)
 
+onMounted(() => {
+  writing.setActiveWorld(props.initialEntry?.world ?? 'saying')
+  if (props.initialEntry) applyEntry(props.initialEntry)
+})
+
+function applyEntry(next: EntryDetail): void {
+  entry.value = next
+  content.value = next.content_md
+  visibility.value = next.visibility
+  source.value = typeof next.meta.source === 'string' ? next.meta.source : ''
+  author.value = typeof next.meta.author === 'string' ? next.meta.author : ''
+  tags.value = next.tags ?? []
+}
+
 async function createDraft(): Promise<void> {
   if (entry.value || creating !== null) return creating ?? Promise.resolve()
   creating = (async () => {
   try {
-    entry.value = await entriesApi.createEntry({ world: 'saying', visibility: 'public' })
+    const created = await entriesApi.createEntry({ world: 'saying', visibility: 'public' })
+    applyEntry(created)
   } catch (cause) {
     error.value = toUserMessage(cause)
   } finally {
