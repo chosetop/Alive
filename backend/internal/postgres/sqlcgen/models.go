@@ -45,6 +45,12 @@ type Entry struct {
 	Kind        string
 }
 
+type EntryTag struct {
+	EntryID   int64
+	TagID     int64
+	CreatedAt time.Time
+}
+
 type Session struct {
 	ID                int64
 	UserID            int64
@@ -71,6 +77,14 @@ type SiteWorld struct {
 	DefaultView string
 	Revision    int64
 	UpdatedAt   time.Time
+}
+
+type Tag struct {
+	ID        int64
+	Name      string
+	Slug      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type User struct {

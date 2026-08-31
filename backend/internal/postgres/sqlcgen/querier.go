@@ -19,6 +19,7 @@ type Querier interface {
 	// token_hash is supplied by the caller, already hashed. The plaintext token
 	// never reaches the database.
 	CreateSession(ctx context.Context, arg CreateSessionParams) (CreateSessionRow, error)
+	CreateTag(ctx context.Context, arg CreateTagParams) (Tag, error)
 	// Queries for the owner account and its sessions.
 	//
 	// These return database facts and nothing more. Whether a session has expired
@@ -40,6 +41,7 @@ type Querier interface {
 	// session in one round trip instead of a lookup followed by a delete by id.
 	// DeleteSession stays for callers that already hold the id.
 	DeleteSessionByHash(ctx context.Context, tokenHash []byte) error
+	DeleteTag(ctx context.Context, id int64) (int64, error)
 	EntrySlugExists(ctx context.Context, arg EntrySlugExistsParams) (bool, error)
 	EntrySlugExistsExcluding(ctx context.Context, arg EntrySlugExistsExcludingParams) (bool, error)
 	GetAdminEntryByID(ctx context.Context, id int64) (GetAdminEntryByIDRow, error)
@@ -56,6 +58,8 @@ type Querier interface {
 	// an unknown token and a known but expired one.
 	GetSessionByHash(ctx context.Context, tokenHash []byte) (GetSessionByHashRow, error)
 	GetSiteSettings(ctx context.Context) (GetSiteSettingsRow, error)
+	GetTagByID(ctx context.Context, id int64) (Tag, error)
+	GetTagBySlug(ctx context.Context, slug string) (Tag, error)
 	GetUserByID(ctx context.Context, id int64) (GetUserByIDRow, error)
 	// The login lookup, and the only query that exposes password_hash.
 	//
@@ -70,8 +74,11 @@ type Querier interface {
 	ListCategoriesWithCounts(ctx context.Context, world string) ([]ListCategoriesWithCountsRow, error)
 	ListOpenWorlds(ctx context.Context) ([]SiteWorld, error)
 	ListPublicEntries(ctx context.Context, arg ListPublicEntriesParams) ([]ListPublicEntriesRow, error)
+	ListTags(ctx context.Context, arg ListTagsParams) ([]ListTagsRow, error)
 	PublishEntry(ctx context.Context, arg PublishEntryParams) (PublishEntryRow, error)
 	SoftDeleteEntry(ctx context.Context, arg SoftDeleteEntryParams) (int64, error)
+	TagNameExists(ctx context.Context, name string) (bool, error)
+	TagSlugExists(ctx context.Context, slug string) (bool, error)
 	// Sliding renewal. The service calls this only when a session is past the
 	// halfway point of its lifetime, so an active session is not one write per
 	// request.
@@ -80,6 +87,7 @@ type Querier interface {
 	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (UpdateCategoryRow, error)
 	UpdateEntry(ctx context.Context, arg UpdateEntryParams) (UpdateEntryRow, error)
 	UpdateSiteTheme(ctx context.Context, arg UpdateSiteThemeParams) (UpdateSiteThemeRow, error)
+	UpdateTag(ctx context.Context, arg UpdateTagParams) (Tag, error)
 	UpdateWorld(ctx context.Context, arg UpdateWorldParams) (SiteWorld, error)
 }
 

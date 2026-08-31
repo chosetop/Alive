@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS entry_tags;
+DROP TABLE IF EXISTS tags;

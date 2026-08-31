@@ -11,12 +11,12 @@ import (
 )
 
 var (
-	ErrTagNotFound       = errors.New("taxonomy: tag not found")
-	ErrTagNameTaken      = errors.New("taxonomy: tag name already taken")
-	ErrTagSlugTaken      = errors.New("taxonomy: tag slug already taken")
-	ErrTagInUse          = errors.New("taxonomy: tag in use")
-	ErrInvalidTagName    = errors.New("taxonomy: invalid tag name")
-	ErrInvalidTagSlug    = errors.New("taxonomy: invalid tag slug")
+	ErrTagNotFound    = errors.New("taxonomy: tag not found")
+	ErrTagNameTaken   = errors.New("taxonomy: tag name already taken")
+	ErrTagSlugTaken   = errors.New("taxonomy: tag slug already taken")
+	ErrTagInUse       = errors.New("taxonomy: tag in use")
+	ErrInvalidTagName = errors.New("taxonomy: invalid tag name")
+	ErrInvalidTagSlug = errors.New("taxonomy: invalid tag slug")
 )
 
 const (
