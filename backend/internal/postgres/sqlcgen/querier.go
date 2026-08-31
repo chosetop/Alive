@@ -16,6 +16,7 @@ type Querier interface {
 	CountPublicEntries(ctx context.Context, arg CountPublicEntriesParams) (int64, error)
 	CreateCategory(ctx context.Context, arg CreateCategoryParams) (CreateCategoryRow, error)
 	CreateEntry(ctx context.Context, arg CreateEntryParams) (CreateEntryRow, error)
+	CreateMedia(ctx context.Context, arg CreateMediaParams) (CreateMediaRow, error)
 	// token_hash is supplied by the caller, already hashed. The plaintext token
 	// never reaches the database.
 	CreateSession(ctx context.Context, arg CreateSessionParams) (CreateSessionRow, error)
@@ -48,6 +49,7 @@ type Querier interface {
 	GetCategoryByID(ctx context.Context, id int64) (GetCategoryByIDRow, error)
 	GetCategoryBySlug(ctx context.Context, arg GetCategoryBySlugParams) (GetCategoryBySlugRow, error)
 	GetLinkEntryBySlug(ctx context.Context, arg GetLinkEntryBySlugParams) (GetLinkEntryBySlugRow, error)
+	GetMediaByID(ctx context.Context, id int64) (GetMediaByIDRow, error)
 	GetPublicEntryBySlug(ctx context.Context, arg GetPublicEntryBySlugParams) (GetPublicEntryBySlugRow, error)
 	// The authentication lookup. One round trip returns the session and its user,
 	// because this runs on every protected request and a second query would double

@@ -45,10 +45,29 @@ type Entry struct {
 	Kind        string
 }
 
+type EntryMedium struct {
+	EntryID   int64
+	MediaID   int64
+	CreatedAt time.Time
+	Role      string
+}
+
 type EntryTag struct {
 	EntryID   int64
 	TagID     int64
 	CreatedAt time.Time
+}
+
+type Medium struct {
+	ID              int64
+	AuthorID        int64
+	ObjectKey       string
+	MimeType        string
+	ByteSize        int64
+	Width           *int32
+	Height          *int32
+	DurationSeconds *int32
+	CreatedAt       time.Time
 }
 
 type Session struct {
