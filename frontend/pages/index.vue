@@ -57,7 +57,8 @@ useHead({
 
 <template>
   <div>
-    <EntryTimeline v-if="entries.length > 0" :entries="entries" />
+    <MixedHome v-if="page === 1" />
+    <EntryTimeline v-else-if="entries.length > 0" :entries="entries" />
 
     <p v-else class="empty">还没有公开的内容。</p>
 
