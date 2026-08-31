@@ -17,6 +17,7 @@ type Service interface {
 	Register(context.Context, media.RegisterInput) (media.Media, error)
 	ListForEntry(context.Context, int64, int64) ([]media.Media, error)
 	SetPrimaryVideo(context.Context, int64, int64, int64, int64) (int64, error)
+	GetPrimaryVideoByEntry(context.Context, int64) (media.Media, error)
 }
 
 type Handler struct {
