@@ -1,10 +1,21 @@
 package media
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestMediaJSONUsesPublicFieldNames(t *testing.T) {
+	b, err := json.Marshal(Media{ID: 1, URL: "https://example.test/a.mp4", MimeType: "video/mp4", ByteSize: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "MIMEType") || !strings.Contains(string(b), `"mime_type"`) {
+		t.Fatalf("json = %s", b)
+	}
+}
 
 func TestValidateUpload(t *testing.T) {
 	if err := ValidateUpload("video/mp4", MaxVideoBytes); err != nil {
