@@ -36,13 +36,13 @@ const (
 )
 
 type Media struct {
-	ID        int64
-	AuthorID  int64
-	ObjectKey string
-	URL       string
-	MimeType  string
-	ByteSize  int64
-	CreatedAt time.Time
+	ID        int64     `json:"id"`
+	AuthorID  int64     `json:"author_id"`
+	ObjectKey string    `json:"object_key"`
+	URL       string    `json:"url"`
+	MimeType  string    `json:"mime_type"`
+	ByteSize  int64     `json:"byte_size"`
+	CreatedAt time.Time `json:"created_at"`
 }
 type Store interface {
 	Create(context.Context, Media) (Media, error)

@@ -6,10 +6,10 @@ import (
 )
 
 type PresignedPut struct {
-	URL       string
-	Method    string
-	Headers   map[string]string
-	ExpiresAt time.Time
+	URL       string            `json:"url"`
+	Method    string            `json:"method"`
+	Headers   map[string]string `json:"headers"`
+	ExpiresAt time.Time         `json:"expires_at"`
 }
 
 type ObjectInfo struct {
