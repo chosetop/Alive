@@ -44,6 +44,7 @@ type Querier interface {
 	// DeleteSession stays for callers that already hold the id.
 	DeleteSessionByHash(ctx context.Context, tokenHash []byte) error
 	DeleteTag(ctx context.Context, id int64) (int64, error)
+	EntryOwnedByAuthor(ctx context.Context, arg EntryOwnedByAuthorParams) (bool, error)
 	EntrySlugExists(ctx context.Context, arg EntrySlugExistsParams) (bool, error)
 	EntrySlugExistsExcluding(ctx context.Context, arg EntrySlugExistsExcludingParams) (bool, error)
 	GetAdminEntryByID(ctx context.Context, id int64) (GetAdminEntryByIDRow, error)

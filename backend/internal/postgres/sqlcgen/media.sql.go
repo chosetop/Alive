@@ -55,6 +55,22 @@ func (q *Queries) CreateMedia(ctx context.Context, arg CreateMediaParams) (Creat
 	return i, err
 }
 
+const entryOwnedByAuthor = `-- name: EntryOwnedByAuthor :one
+SELECT EXISTS(SELECT 1 FROM entries WHERE id = $1 AND author_id = $2 AND deleted_at IS NULL)
+`
+
+type EntryOwnedByAuthorParams struct {
+	ID       int64
+	AuthorID int64
+}
+
+func (q *Queries) EntryOwnedByAuthor(ctx context.Context, arg EntryOwnedByAuthorParams) (bool, error) {
+	row := q.db.QueryRow(ctx, entryOwnedByAuthor, arg.ID, arg.AuthorID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const getMediaByID = `-- name: GetMediaByID :one
 SELECT id, author_id, object_key, url, mime_type, byte_size, created_at
 FROM media WHERE id = $1

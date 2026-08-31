@@ -40,3 +40,7 @@ func (r *Repository) ListForEntry(ctx context.Context, entryID int64) ([]Media, 
 	}
 	return out, nil
 }
+
+func (r *Repository) EntryOwnedByAuthor(ctx context.Context, entryID, authorID int64) (bool, error) {
+	return r.q.EntryOwnedByAuthor(ctx, sqlcgen.EntryOwnedByAuthorParams{ID: entryID, AuthorID: authorID})
+}

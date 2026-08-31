@@ -48,6 +48,7 @@ type Store interface {
 	Create(context.Context, Media) (Media, error)
 	Get(context.Context, int64) (Media, error)
 	ListForEntry(context.Context, int64) ([]Media, error)
+	EntryOwnedByAuthor(context.Context, int64, int64) (bool, error)
 }
 type Service struct{ store Store }
 
@@ -80,7 +81,14 @@ type ConfiguredService struct {
 	now           func() time.Time
 }
 
-func (s *ConfiguredService) ListForEntry(ctx context.Context, entryID int64) ([]Media, error) {
+func (s *ConfiguredService) ListForEntry(ctx context.Context, entryID, authorID int64) ([]Media, error) {
+	ok, err := s.store.EntryOwnedByAuthor(ctx, entryID, authorID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errors.New("media: entry not found")
+	}
 	return s.store.ListForEntry(ctx, entryID)
 }
 
@@ -130,7 +138,14 @@ func (s *ConfiguredService) Register(ctx context.Context, in RegisterInput) (Med
 }
 
 func NewService(store Store) *Service { return &Service{store: store} }
-func (s *Service) ListForEntry(ctx context.Context, entryID int64) ([]Media, error) {
+func (s *Service) ListForEntry(ctx context.Context, entryID, authorID int64) ([]Media, error) {
+	ok, err := s.store.EntryOwnedByAuthor(ctx, entryID, authorID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errors.New("media: entry not found")
+	}
 	return s.store.ListForEntry(ctx, entryID)
 }
 func (s *Service) Register(ctx context.Context, m Media) (Media, error) {

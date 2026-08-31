@@ -15,7 +15,7 @@ type AuthorResolver func(*gin.Context) (int64, bool)
 type Service interface {
 	Presign(context.Context, media.PresignInput) (media.SignedUpload, error)
 	Register(context.Context, media.RegisterInput) (media.Media, error)
-	ListForEntry(context.Context, int64) ([]media.Media, error)
+	ListForEntry(context.Context, int64, int64) ([]media.Media, error)
 }
 
 type Handler struct {
@@ -43,8 +43,7 @@ func (h *Handler) ListForEntry(c *gin.Context) {
 		httpx.Error(c, apperr.InvalidInput("invalid entry id"))
 		return
 	}
-	_ = author // ownership filtering is enforced by the entry-scoped write path; list remains scoped by entry.
-	items, err := h.service.ListForEntry(c.Request.Context(), id)
+	items, err := h.service.ListForEntry(c.Request.Context(), id, author)
 	if err != nil {
 		h.writeErr(c, err)
 		return
