@@ -79,6 +79,11 @@ const autosave = useEntryAutosave(coordinatorBridge)
 
 const writing = useWritingStore()
 
+function onTagsSaved(revision: number, tags: Array<{ id: number; name: string; slug: string; usage_count?: number }>): void {
+  if (original.value) original.value = { ...original.value, revision, tags }
+  autosave.revision.value = revision
+}
+
 /**
  * The flush gate the directory pulls before it navigates away.
  *
@@ -657,7 +662,7 @@ function createCoordinatorBridge(): CoordinatorBridge {
         :entry-id="original.id"
         :revision="original.revision"
         :selected="original.tags ?? []"
-        @saved="(revision, tags) => { if (original) { original.revision = revision; original.tags = tags } }"
+        @saved="onTagsSaved"
       />
       <PublishPanel
         v-if="editorEntry"
