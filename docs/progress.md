@@ -1,6 +1,6 @@
 # Alive 施工进度
 
-最后更新：2026-08-31（内容世界、片语、标签聚合与影像公开浏览已落地，媒体上传与影像管理仍在推进）
+最后更新：2026-08-31（内容世界、片语、标签聚合、影像公开浏览与影像管理基础已落地）
 
 本文档记录已完成的内容、当前状态和待办项。设计依据见 `architecture.md`，认证方案见 `stage-auth-plan.md`。
 
@@ -36,7 +36,7 @@
 | 5C | 公开端 Journal 路由与 API 切换 | 完成 |
 | 5D | mixed home、sitemap、片语/影像公共页面 | 完成（公开浏览基础） |
 | 5E | 跨世界标签聚合与编辑器标签选择 | 完成（公开聚合、CAS 替换） |
-| 5F | 媒体记录与影像公开播放基础 | 进行中（上传凭证与管理端仍待补齐） |
+| 5F | 媒体记录、直接上传与影像公开播放基础 | 完成（OSS 凭证、媒资登记、主视频关联与管理端控件） |
 
 **Stage 1（users + auth）与 Stage 2（Entry + Categories）的后端 API 均已完成**，共 19 个业务端点加 2 个探针。
 
@@ -163,7 +163,7 @@ GET /api/v1/categories →  500
 
 后端还剩的三件事：session 绝对过期、Argon2id 参数、trusted proxy，各自在 3.3 到 3.5。**其中 trusted proxy 是部署前必须做的**，见 3.5。
 
-标签与媒体基础接口已实现；剩余是 feed、归档等后续能力。标签仍落在 `internal/taxonomy`，媒体由 `internal/media` 与 `internal/storage` 承担。
+标签与媒体基础接口已实现；剩余是 feed、归档等后续能力。标签仍落在 `internal/taxonomy`，媒体由 `internal/media` 与 `internal/storage` 承担。影像上传链路包含 OSS 预签名、直传、登记、条目媒资列表与 primary video 的 revision-CAS 关联；管理端按世界显示日志图片上传或影像视频上传控件，片语不提供媒资入口。
 
 ### 3.3 待办：绝对过期
 
