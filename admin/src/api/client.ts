@@ -20,17 +20,19 @@ import { ApiClientError, NETWORK_ERROR } from './errors'
  * "am I logged in".
  */
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL
 const API_PREFIX = '/api/v1'
 
-if (!BASE_URL) {
-  // Failing loudly at startup beats every request 404ing against the dev
-  // server's own origin, which looks like a backend problem.
-  throw new Error('VITE_API_BASE_URL is not set. Copy .env.example to .env.')
+/**
+ * Uses same-origin API calls when the deployment serves Admin and API through
+ * one reverse proxy. An explicit origin remains available for local Vite
+ * development, where Admin and the API intentionally use different ports.
+ */
+export function resolveApiOrigin(configuredBaseUrl: string | undefined, currentOrigin: string): string {
+  if (!configuredBaseUrl?.trim()) return currentOrigin
+  return configuredBaseUrl.replace(/\/$/, '')
 }
 
-/** Strip one trailing slash so joining paths cannot produce `//api/v1`. */
-const ORIGIN = BASE_URL.replace(/\/$/, '')
+const ORIGIN = resolveApiOrigin(import.meta.env.VITE_API_BASE_URL, globalThis.location?.origin ?? '')
 
 /**
  * Called when a request fails with 401 outside of the login flow, meaning the

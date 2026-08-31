@@ -1,5 +1,6 @@
 import type { ApiPage } from '~/types'
 import { toApiError } from '~/utils/api-error'
+import { resolveApiBase } from '~/utils/api-base'
 
 /** Backend API version prefix. The health probes deliberately sit outside it. */
 const API_PREFIX = '/api/v1'
@@ -50,7 +51,8 @@ function cleanQuery(query: ApiQuery | undefined): Record<string, string> | undef
  */
 export function useApi() {
   const config = useRuntimeConfig()
-  const baseURL = `${config.public.apiBase}${API_PREFIX}`
+  const browserOrigin = import.meta.client ? window.location.origin : ''
+  const baseURL = `${resolveApiBase(config.public.apiBase, Boolean(import.meta.server), browserOrigin)}${API_PREFIX}`
 
   // Only forwards on the server; returns {} in the browser, where the cookie is
   // attached by credentials: 'include'.
