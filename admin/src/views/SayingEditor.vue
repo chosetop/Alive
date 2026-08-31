@@ -3,6 +3,8 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { entriesApi, toUserMessage } from '../api'
+import TagPicker from '../components/writing/TagPicker.vue'
+import type { Tag } from '../api/tags'
 import type { EntryDetail, EntryVisibility } from '../types/api'
 
 const router = useRouter()
@@ -14,6 +16,7 @@ const visibility = ref<EntryVisibility>('public')
 const isSaving = ref(false)
 const isPublishing = ref(false)
 const error = ref<string | null>(null)
+const tags = ref<Tag[]>([])
 
 const longFormWarning = computed(() => Array.from(content.value.trim()).length > 300)
 
@@ -81,6 +84,14 @@ onMounted(() => void createDraft())
         <option value="private">私密</option>
       </select>
     </section>
+
+    <TagPicker
+      v-if="entry"
+      :entry-id="entry.id"
+      :revision="entry.revision"
+      :selected="tags"
+      @saved="(revision, nextTags) => { if (entry) { entry.revision = revision; tags = nextTags } }"
+    />
 
     <footer class="actions">
       <button type="button" :disabled="isSaving || !entry" @click="save">{{ isSaving ? '保存中…' : '保存草稿' }}</button>
