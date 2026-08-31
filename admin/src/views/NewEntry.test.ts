@@ -17,11 +17,11 @@ describe('NewEntry', () => {
     })
 
     const links = wrapper.findAll('a')
-    expect(links).toHaveLength(1)
+    expect(links).toHaveLength(2)
     expect(links[0]?.text()).toContain('写日志')
     expect(links[0]?.attributes('data-to')).toContain('"name":"entry-new-world"')
     expect(links[0]?.attributes('data-to')).toContain('"world":"journal"')
-    expect(wrapper.text()).not.toContain('片语')
+    expect(wrapper.text()).toContain('片语')
     expect(wrapper.text()).not.toContain('影像')
   })
 })

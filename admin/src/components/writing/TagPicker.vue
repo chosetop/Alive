@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { ref } from 'vue'
 import { tagsApi } from '../../api'
 import type { Tag } from '../../api/tags'
 
@@ -22,12 +22,11 @@ async function toggle(tag: Tag): Promise<void> {
   const saved = await tagsApi.replaceEntryTags(props.entryId, props.revision, ids)
   emit('saved', saved.revision, ids.map((id) => [...props.selected, tag].find((item) => item.id === id)!).filter(Boolean))
 }
-onMounted(() => void search())
 </script>
 <template>
   <section class="tag-picker" aria-label="标签">
     <div class="selected"><button v-for="tag in selected" :key="tag.id" type="button" @click="void toggle(tag)">{{ tag.name }} ×</button><span v-if="selected.length === 0">尚未添加标签</span></div>
-    <input v-model="query" type="search" placeholder="搜索标签" @input="void search" />
+    <input v-model="query" type="search" placeholder="搜索标签" @focus="void search" @input="void search" />
     <div v-if="busy">搜索中…</div><p v-if="error" role="alert">{{ error }}</p>
     <ul v-else><li v-for="tag in results" :key="tag.id"><button type="button" :aria-pressed="selected.some((item) => item.id === tag.id)" @click="void toggle(tag)">{{ tag.name }}</button></li></ul>
   </section>
