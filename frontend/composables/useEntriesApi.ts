@@ -9,6 +9,7 @@ import type {
   EntryListQuery,
   EntryUpdateBody,
 } from '~/types'
+import { useApi } from './useApi'
 
 /**
  * Entry endpoints. Source of truth: docs/api.md section 4.
@@ -24,23 +25,23 @@ export function useEntriesApi() {
 
   return {
     /**
-     * Public, paginated list. Returns only published + public + not-deleted
-     * entries. Items carry neither `content_md` nor `id`.
+     * Public, paginated list for the Journal world. Returns only published +
+     * public + not-deleted entries. Items carry neither `content_md` nor `id`.
      *
      * An unknown `category` slug is a 404, not an empty page — a mistyped link
      * and an empty category are different things and must read differently.
      */
     list(query: EntryListQuery = {}): Promise<ApiPage<EntryListItem>> {
-      return api.getPage<EntryListItem>('/entries', { ...query })
+      return api.getPage<EntryListItem>('/journals', { ...query })
     },
 
     /**
-     * Public detail by slug. The only endpoint that can reach an `unlisted`
-     * entry. Drafts, archived, private and soft-deleted entries all 404 with a
-     * response identical to a slug that was never used.
+     * Public detail by slug in the Journal world. The only endpoint that can
+     * reach an `unlisted` entry. Drafts, archived, private and soft-deleted
+     * entries all 404 with a response identical to a slug that was never used.
      */
     getBySlug(slug: string): Promise<EntryDetail> {
-      return api.get<EntryDetail>(`/entries/${encodeURIComponent(slug)}`)
+      return api.get<EntryDetail>(`/journals/${encodeURIComponent(slug)}`)
     },
 
     /** Requires a session. 201. */

@@ -53,6 +53,8 @@ const wrappers: VueWrapper[] = []
 function item(overrides: Partial<EntryListItem> = {}): EntryListItem {
   return {
     id: 1,
+    world: 'journal',
+    kind: '',
     type: 'journal',
     title: '山中一日',
     slug: 'a-day',
@@ -354,9 +356,7 @@ describe('ArticleDirectory', () => {
     await wrapper.get('[data-directory-new]').trigger('click')
     await flushPromises()
 
-    // `{}` and nothing else: asking for a title before the canvas opens is the
-    // form-first flow this workspace removes.
-    expect(api.createEntry).toHaveBeenCalledWith({})
+    expect(api.createEntry).toHaveBeenCalledWith({ world: 'journal' })
     expect(order).toEqual(['flush', 'create', 'navigate'])
     // The server's id, never a locally invented one.
     expect(navigation.push).toHaveBeenCalledWith({ name: 'entry-edit', params: { id: '77' } })

@@ -1,5 +1,4 @@
-// Package entry owns recorded content: journals, books, films, music, travel
-// and photos, all as one type told apart by its Type field.
+// Package entry owns recorded content across Alive's installed worlds.
 //
 // Like auth, this package imports no database driver and no HTTP framework. The
 // rules here are the same whether they are reached from a request or from a CLI
@@ -15,6 +14,9 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
+	"github.com/p30huiwei/alive/backend/internal/taxonomy"
 )
 
 // Sentinel errors. Callers compare with errors.Is.
@@ -36,8 +38,8 @@ var (
 	// ErrInvalidSlug reports a slug that does not match the required format.
 	ErrInvalidSlug = errors.New("entry: invalid slug")
 
-	// ErrInvalidType reports a type outside the accepted set.
-	ErrInvalidType = errors.New("entry: invalid type")
+	// ErrInvalidWorld reports a world outside the installed set.
+	ErrInvalidWorld = errors.New("entry: invalid world")
 
 	// ErrInvalidStatus reports a status outside the accepted set.
 	ErrInvalidStatus = errors.New("entry: invalid status")
@@ -72,22 +74,9 @@ var (
 	// know nothing else about it. A client sent an id that is wrong or was deleted
 	// between choosing it and saving, and either way the answer names the field.
 	ErrUnknownCategory = errors.New("entry: unknown category")
-)
 
-// Type is what kind of thing an entry records.
-//
-// The six values are fixed here and by a CHECK constraint on the column. A
-// seventh needs a migration, which is the point: it forces one explicit decision
-// instead of a new string appearing in a request body.
-type Type string
-
-const (
-	TypeJournal Type = "journal"
-	TypeBook    Type = "book"
-	TypeMovie   Type = "movie"
-	TypeMusic   Type = "music"
-	TypeTravel  Type = "travel"
-	TypePhoto   Type = "photo"
+	// ErrWorldNotOpen reports a public publish attempt into an unopened world.
+	ErrWorldNotOpen = errors.New("entry: world not open")
 )
 
 // Status is how finished an entry is.
@@ -114,7 +103,7 @@ const (
 	VisibilityPrivate Visibility = "private"
 
 	// VisibilityUnlisted is readable by anyone holding the link but absent from
-	// lists, counts and the sitemap. GetLinkBySlug is the one read that accepts it.
+	// lists, counts and the sitemap. GetLinkByWorldSlug is the one read that accepts it.
 	//
 	// This is "not advertised", not access control. A slug is human readable and
 	// therefore guessable, so unlisted keeps an entry off the front page and out of
@@ -123,16 +112,12 @@ const (
 	VisibilityUnlisted Visibility = "unlisted"
 )
 
-// validTypes, validStatuses and validVisibilities back the Valid methods.
+// validStatuses and validVisibilities back the Valid methods.
 //
 // Maps rather than switch statements so that the sets can also be ranged over,
 // which is what lets a test assert that these agree with the CHECK constraints
-// rather than restating the same six values a third time.
+// rather than restating the same values a third time.
 var (
-	validTypes = map[Type]struct{}{
-		TypeJournal: {}, TypeBook: {}, TypeMovie: {},
-		TypeMusic: {}, TypeTravel: {}, TypePhoto: {},
-	}
 	validStatuses = map[Status]struct{}{
 		StatusDraft: {}, StatusPublished: {}, StatusArchived: {},
 	}
@@ -140,12 +125,6 @@ var (
 		VisibilityPublic: {}, VisibilityPrivate: {}, VisibilityUnlisted: {},
 	}
 )
-
-// Valid reports whether t is one of the accepted types.
-func (t Type) Valid() bool {
-	_, ok := validTypes[t]
-	return ok
-}
 
 // Valid reports whether s is one of the accepted statuses.
 func (s Status) Valid() bool {
@@ -237,13 +216,12 @@ func validateDraftSlug(slug string) error {
 	return ValidateSlug(slug)
 }
 
-// Meta holds the attributes that belong to one Type and not to the others: a
-// rating and an author for a book, a place for a trip.
+// Meta holds the attributes that belong to one world and not to the others.
 //
 // Raw JSON rather than a Go struct per type. A struct per type would need this
-// package to know all six shapes, and adding a field to one of them would be a
-// change here rather than in the code that owns that type. Only journal has a
-// defined shape today, and its shape is "empty".
+// package to know every world's shape, and adding a field to one of them would
+// be a change here rather than in the code that owns that world. The first three
+// worlds use the empty object today.
 type Meta []byte
 
 // emptyMetaObject is what an absent meta becomes: the column is NOT NULL with a
@@ -314,7 +292,13 @@ type Entry struct {
 	CategoryName string
 	CategorySlug string
 
-	Type       Type
+	// Tags are filled by the reads, which join through entry_tags and load the
+	// global taxonomy separately. Writes leave this empty until the read path asks
+	// for it.
+	Tags []taxonomy.Tag
+
+	World      contentworld.Key
+	Kind       string
 	Title      string
 	Slug       string
 	Summary    string
@@ -323,8 +307,8 @@ type Entry struct {
 	Status     Status
 	Visibility Visibility
 
-	// Meta holds attributes specific to Type. It is raw JSON because its shape
-	// differs per type, and the code that owns a type decodes it.
+	// Meta holds attributes specific to World. It is raw JSON because its shape
+	// differs per world, and the code that owns a world decodes it.
 	//
 	// Never compare these bytes to a literal. jsonb stores a parsed structure and
 	// re-serialises it on read, so key order and spacing are not preserved.
@@ -417,4 +401,12 @@ func isCJK(r rune) bool {
 		return true
 	}
 	return false
+}
+
+// ValidateWorld checks that world names one installed content world.
+func ValidateWorld(world contentworld.Key) error {
+	if _, ok := contentworld.Lookup(world); !ok {
+		return ErrInvalidWorld
+	}
+	return nil
 }

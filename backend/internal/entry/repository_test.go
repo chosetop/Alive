@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"github.com/p30huiwei/alive/backend/internal/auth"
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/dbtest"
 	"github.com/p30huiwei/alive/backend/internal/entry"
 	"github.com/p30huiwei/alive/backend/internal/postgres"
+	"github.com/p30huiwei/alive/backend/internal/taxonomy"
 )
 
 // The repository translates storage facts into domain facts, and that
@@ -47,7 +49,7 @@ func newTestRepository(t *testing.T) (*entry.Repository, *postgres.Pool, int64) 
 func validCreate(authorID int64, slug string) entry.CreateParams {
 	return entry.CreateParams{
 		AuthorID:   authorID,
-		Type:       entry.TypeJournal,
+		World:      contentworld.Journal,
 		Title:      "京都的春天",
 		Slug:       slug,
 		ContentMD:  "在鸭川边坐了一整个下午。",
@@ -152,7 +154,7 @@ func TestRepositoryCreateTranslatesConstraintErrors(t *testing.T) {
 			t.Fatal("Create succeeded with an unknown author")
 		}
 		for _, sentinel := range []error{
-			entry.ErrSlugTaken, entry.ErrInvalidSlug, entry.ErrInvalidType,
+			entry.ErrSlugTaken, entry.ErrInvalidSlug, entry.ErrInvalidWorld,
 			entry.ErrInvalidStatus, entry.ErrInvalidVisibility,
 		} {
 			if errors.Is(err, sentinel) {
@@ -221,12 +223,12 @@ func TestRepositoryPublicReadsHideEverythingElse(t *testing.T) {
 
 	visibleSlug := slugs["published public"]
 
-	t.Run("GetPublicBySlug", func(t *testing.T) {
+	t.Run("GetPublicByWorldSlug", func(t *testing.T) {
 		for _, tc := range repositoryVisibilityCases {
 			t.Run(tc.name, func(t *testing.T) {
 				slug := slugs[tc.name]
 
-				got, err := repo.GetPublicBySlug(ctx, slug)
+				got, err := repo.GetPublicByWorldSlug(ctx, contentworld.Journal, slug)
 				switch {
 				case tc.visible && err != nil:
 					t.Fatalf("want the entry, got %v", err)
@@ -240,7 +242,7 @@ func TestRepositoryPublicReadsHideEverythingElse(t *testing.T) {
 	})
 
 	t.Run("ListPublic shows the published public entry and none of the others", func(t *testing.T) {
-		entries, total, err := repo.ListPublic(ctx, 0, 50, 0)
+		entries, total, err := repo.ListPublic(ctx, contentworld.Journal, 0, 50, 0)
 		if err != nil {
 			t.Fatalf("ListPublic: %v", err)
 		}
@@ -271,7 +273,7 @@ func TestRepositoryPublicReadsHideEverythingElse(t *testing.T) {
 	t.Run("the list carries no content_md", func(t *testing.T) {
 		// The query does not select it, so a list response cannot accidentally ship
 		// the bodies. The detail read is where the body belongs.
-		entries, _, err := repo.ListPublic(ctx, 0, 50, 0)
+		entries, _, err := repo.ListPublic(ctx, contentworld.Journal, 0, 50, 0)
 		if err != nil {
 			t.Fatalf("ListPublic: %v", err)
 		}
@@ -282,9 +284,9 @@ func TestRepositoryPublicReadsHideEverythingElse(t *testing.T) {
 			}
 		}
 
-		detail, err := repo.GetPublicBySlug(ctx, visibleSlug)
+		detail, err := repo.GetPublicByWorldSlug(ctx, contentworld.Journal, visibleSlug)
 		if err != nil {
-			t.Fatalf("GetPublicBySlug: %v", err)
+			t.Fatalf("GetPublicByWorldSlug: %v", err)
 		}
 		if detail.ContentMD == "" {
 			t.Error("content_md is empty in the detail read, want the body")
@@ -322,7 +324,7 @@ func TestRepositorySlugExists(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := repo.SlugExists(ctx, tc.slug)
+			got, err := repo.SlugExists(ctx, contentworld.Journal, tc.slug)
 			if err != nil {
 				t.Fatalf("SlugExists: %v", err)
 			}
@@ -586,7 +588,7 @@ func TestRepositorySlugExistsExcluding(t *testing.T) {
 	}
 
 	t.Run("excluded from itself, so free", func(t *testing.T) {
-		exists, err := repo.SlugExistsExcluding(ctx, slug, created.ID)
+		exists, err := repo.SlugExistsExcluding(ctx, contentworld.Journal, slug, created.ID)
 		if err != nil {
 			t.Fatalf("SlugExistsExcluding: %v", err)
 		}
@@ -596,7 +598,7 @@ func TestRepositorySlugExistsExcluding(t *testing.T) {
 	})
 
 	t.Run("taken as far as anyone else is concerned", func(t *testing.T) {
-		exists, err := repo.SlugExistsExcluding(ctx, slug, created.ID+100000)
+		exists, err := repo.SlugExistsExcluding(ctx, contentworld.Journal, slug, created.ID+100000)
 		if err != nil {
 			t.Fatalf("SlugExistsExcluding: %v", err)
 		}
@@ -640,7 +642,7 @@ func TestRepositorySoftDeleteReleasesTheSlug(t *testing.T) {
 	})
 
 	t.Run("the slug is free again", func(t *testing.T) {
-		exists, err := repo.SlugExists(ctx, slug)
+		exists, err := repo.SlugExists(ctx, contentworld.Journal, slug)
 		if err != nil {
 			t.Fatalf("SlugExists: %v", err)
 		}
@@ -830,7 +832,7 @@ func TestRepositoryAdminReadsSeeEveryStatus(t *testing.T) {
 	t.Run("the list reaches all of them", func(t *testing.T) {
 		// Filtered to this process's rows by prefix, since another package may be
 		// running against the same database.
-		listed, total, err := repo.ListAdmin(ctx, 0, nil, nil, entry.MaxPageSize, 0)
+		listed, total, err := repo.ListAdmin(ctx, nil, 0, nil, nil, entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -856,7 +858,7 @@ func TestRepositoryAdminReadsSeeEveryStatus(t *testing.T) {
 
 	t.Run("filtered by status", func(t *testing.T) {
 		draft := entry.StatusDraft
-		listed, _, err := repo.ListAdmin(ctx, 0, &draft, nil, entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, nil, 0, &draft, nil, entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -882,7 +884,7 @@ func TestRepositoryAdminReadsSeeEveryStatus(t *testing.T) {
 			t.Fatalf("update: %v", err)
 		}
 
-		listed, _, err := repo.ListAdmin(ctx, 0, nil, nil, entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, nil, 0, nil, nil, entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -905,7 +907,7 @@ func TestRepositoryAdminReadsSeeEveryStatus(t *testing.T) {
 			t.Errorf("GetByID = %v, want ErrEntryNotFound", err)
 		}
 
-		listed, _, err := repo.ListAdmin(ctx, 0, nil, nil, entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, nil, 0, nil, nil, entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -915,6 +917,53 @@ func TestRepositoryAdminReadsSeeEveryStatus(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestRepositoryGetByIDIncludesTags(t *testing.T) {
+	repo, pool, authorID := newTestRepository(t)
+	ctx := context.Background()
+	dbtest.CleanupTags(t, pool)
+
+	created, err := repo.Create(ctx, validCreate(authorID, dbtest.Slug(t, "tagged-entry")))
+	if err != nil {
+		t.Fatalf("create entry: %v", err)
+	}
+
+	tagRepo := taxonomy.NewTagRepository(pool)
+	travel, err := tagRepo.Create(ctx, taxonomy.CreateTagParams{
+		Name: "Travel",
+		Slug: dbtest.Slug(t, "travel"),
+	})
+	if err != nil {
+		t.Fatalf("create travel tag: %v", err)
+	}
+	food, err := tagRepo.Create(ctx, taxonomy.CreateTagParams{
+		Name: "Food",
+		Slug: dbtest.Slug(t, "food"),
+	})
+	if err != nil {
+		t.Fatalf("create food tag: %v", err)
+	}
+
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO entry_tags (entry_id, tag_id) VALUES ($1, $2), ($1, $3)`,
+		created.ID, travel.ID, food.ID); err != nil {
+		t.Fatalf("seed entry_tags: %v", err)
+	}
+
+	got, err := repo.GetByID(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if len(got.Tags) != 2 {
+		t.Fatalf("len(tags) = %d, want 2", len(got.Tags))
+	}
+	if got.Tags[0].Name != "Food" || got.Tags[1].Name != "Travel" {
+		t.Fatalf("tags = %#v, want Food then Travel", got.Tags)
+	}
+	if got.Tags[0].Slug != food.Slug || got.Tags[1].Slug != travel.Slug {
+		t.Fatalf("tags slugs = %#v, want sorted by name", got.Tags)
+	}
 }
 
 // TestRepositoryAdminListSearches covers the search predicate in real SQL rather
@@ -962,7 +1011,7 @@ func TestRepositoryAdminListSearches(t *testing.T) {
 	}
 
 	t.Run("matches title, summary, and slug", func(t *testing.T) {
-		listed, total, err := repo.ListAdmin(ctx, 0, nil, &token, entry.MaxPageSize, 0)
+		listed, total, err := repo.ListAdmin(ctx, nil, 0, nil, &token, entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -977,7 +1026,7 @@ func TestRepositoryAdminListSearches(t *testing.T) {
 	})
 
 	t.Run("ILIKE is case-insensitive", func(t *testing.T) {
-		listed, _, err := repo.ListAdmin(ctx, 0, nil, ptr(strings.ToUpper(token)), entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, nil, 0, nil, ptr(strings.ToUpper(token)), entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -988,7 +1037,7 @@ func TestRepositoryAdminListSearches(t *testing.T) {
 
 	t.Run("intersects with the status filter", func(t *testing.T) {
 		draft := entry.StatusDraft
-		listed, total, err := repo.ListAdmin(ctx, 0, &draft, &token, entry.MaxPageSize, 0)
+		listed, total, err := repo.ListAdmin(ctx, nil, 0, &draft, &token, entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1004,7 +1053,7 @@ func TestRepositoryAdminListSearches(t *testing.T) {
 	})
 
 	t.Run("a nil search is not a filter", func(t *testing.T) {
-		_, total, err := repo.ListAdmin(ctx, 0, nil, nil, entry.MaxPageSize, 0)
+		_, total, err := repo.ListAdmin(ctx, nil, 0, nil, nil, entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1015,7 +1064,7 @@ func TestRepositoryAdminListSearches(t *testing.T) {
 	})
 
 	t.Run("no match is an empty page, not an error", func(t *testing.T) {
-		listed, total, err := repo.ListAdmin(ctx, 0, nil, ptr(token+"-absent"), entry.MaxPageSize, 0)
+		listed, total, err := repo.ListAdmin(ctx, nil, 0, nil, ptr(token+"-absent"), entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1061,7 +1110,7 @@ func TestRepositoryAdminListSearchTreatsQueryAsLiteralText(t *testing.T) {
 	}
 
 	t.Run("underscore is a literal underscore, not any character", func(t *testing.T) {
-		listed, _, err := repo.ListAdmin(ctx, 0, nil, ptr("read_me"), entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, nil, 0, nil, ptr("read_me"), entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1075,7 +1124,7 @@ func TestRepositoryAdminListSearchTreatsQueryAsLiteralText(t *testing.T) {
 
 	t.Run("a bare underscore does not match everything", func(t *testing.T) {
 		// The worst case: one keystroke returning the whole directory unfiltered.
-		listed, _, err := repo.ListAdmin(ctx, 0, nil, ptr("_"), entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, nil, 0, nil, ptr("_"), entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1088,7 +1137,7 @@ func TestRepositoryAdminListSearchTreatsQueryAsLiteralText(t *testing.T) {
 	})
 
 	t.Run("percent is a literal percent sign", func(t *testing.T) {
-		listed, _, err := repo.ListAdmin(ctx, 0, nil, ptr("80%"), entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, nil, 0, nil, ptr("80%"), entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1103,7 +1152,7 @@ func TestRepositoryAdminListSearchTreatsQueryAsLiteralText(t *testing.T) {
 	t.Run("a lone backslash matches nothing rather than erroring", func(t *testing.T) {
 		// An escape character with nothing to escape is a malformed pattern in some
 		// engines. It must be ordinary text here.
-		listed, _, err := repo.ListAdmin(ctx, 0, nil, ptr(`\`), entry.MaxPageSize, 0)
+		listed, _, err := repo.ListAdmin(ctx, nil, 0, nil, ptr(`\`), entry.MaxPageSize, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1135,7 +1184,7 @@ func TestRepositoryAdminListSearchIgnoresTheBody(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	listed, total, err := repo.ListAdmin(ctx, 0, nil, &bodyOnly, entry.MaxPageSize, 0)
+	listed, total, err := repo.ListAdmin(ctx, nil, 0, nil, &bodyOnly, entry.MaxPageSize, 0)
 	if err != nil {
 		t.Fatalf("ListAdmin: %v", err)
 	}

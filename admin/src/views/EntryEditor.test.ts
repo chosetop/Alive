@@ -109,6 +109,8 @@ const activeWrappers: VueWrapper[] = []
 function listItem(overrides: Partial<EntryListItem> = {}): EntryListItem {
   return {
     id: 1,
+    world: 'journal',
+    kind: '',
     type: 'journal',
     title: '文章',
     slug: 'article',
@@ -139,6 +141,7 @@ describe('EntryEditor autosave integration', () => {
     api.listCategoriesAdmin.mockResolvedValue([
       {
         id: 7,
+        world: 'journal',
         name: '随笔',
         slug: 'notes',
         description: '',
@@ -235,24 +238,17 @@ describe('EntryEditor autosave integration', () => {
       })
     }
 
-    await wrapper.get('#e-type').setValue('book')
+    await wrapper.get('#e-category').setValue('7')
     await vi.advanceTimersByTimeAsync(1000)
     expect(api.updateEntry).toHaveBeenNthCalledWith(5, server.current.id, {
       revision: 5,
-      type: 'book',
-    })
-
-    await wrapper.get('#e-category').setValue('7')
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(api.updateEntry).toHaveBeenNthCalledWith(6, server.current.id, {
-      revision: 6,
       category_id: 7,
     })
 
     await wrapper.get('input[type="radio"][value="private"]').setValue()
     await vi.advanceTimersByTimeAsync(1000)
-    expect(api.updateEntry).toHaveBeenNthCalledWith(7, server.current.id, {
-      revision: 7,
+    expect(api.updateEntry).toHaveBeenNthCalledWith(6, server.current.id, {
+      revision: 6,
       visibility: 'private',
     })
   })
@@ -611,7 +607,7 @@ describe('EntryEditor autosave integration', () => {
       .trigger('click')
     await flushPromises()
 
-    expect(api.createEntry).toHaveBeenCalledWith({})
+    expect(api.createEntry).toHaveBeenCalledWith({ world: 'journal' })
     expect(api.updateEntry).toHaveBeenLastCalledWith(99, {
       revision: 1,
       content_md: '409 后继续写的正文',
@@ -787,6 +783,7 @@ describe('EntryEditor autosave integration', () => {
     await recoverButton().trigger('click')
     await flushPromises()
     expect(api.createEntry).toHaveBeenCalledOnce()
+    expect(api.createEntry).toHaveBeenCalledWith({ world: 'journal' })
     expect(api.updateEntry).toHaveBeenNthCalledWith(2, 120, {
       revision: 4,
       content_md: '待恢复正文',
@@ -797,6 +794,7 @@ describe('EntryEditor autosave integration', () => {
     await flushPromises()
 
     expect(api.createEntry).toHaveBeenCalledOnce()
+    expect(api.createEntry).toHaveBeenCalledWith({ world: 'journal' })
     expect(api.updateEntry).toHaveBeenNthCalledWith(3, 120, {
       revision: 4,
       content_md: '待恢复正文',
@@ -859,7 +857,7 @@ describe('EntryEditor autosave integration', () => {
     )
     const wrapper = await mountEditor(undefined)
 
-    expect(api.createEntry).toHaveBeenCalledWith({})
+    expect(api.createEntry).toHaveBeenCalledWith({ world: 'journal' })
     expect(navigation.replace).toHaveBeenCalledWith({
       name: 'entry-edit',
       params: { id: '99' },
@@ -884,10 +882,12 @@ describe('EntryEditor autosave integration', () => {
     const wrapper = await mountEditor(undefined)
 
     expect(api.createEntry).toHaveBeenCalledOnce()
+    expect(api.createEntry).toHaveBeenCalledWith({ world: 'journal' })
     expect(navigation.replace).toHaveBeenCalledWith({
       name: 'entry-edit',
       params: { id: '140' },
     })
+    expect(api.listCategoriesAdmin).toHaveBeenCalledWith({ world: 'journal' })
     expect(wrapper.get('[role="alert"]').text()).toContain('无法连接到服务器')
 
     await (await titleField(wrapper)).setValue('分类失败仍可编辑')
@@ -1094,6 +1094,8 @@ function entry(overrides: Partial<EntryDetail> = {}): EntryDetail {
   return {
     id: 42,
     revision: 1,
+    world: 'journal',
+    kind: '',
     type: 'journal',
     title: '原始标题',
     slug: 'original-title',

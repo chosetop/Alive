@@ -79,6 +79,24 @@ export type EntryStatus = 'draft' | 'published' | 'archived'
 /** `unlisted` is absent from listings but reachable by slug. It is not access control. */
 export type EntryVisibility = 'public' | 'unlisted' | 'private'
 
+export type WorldKey = 'journal' | 'saying' | 'video'
+export type WorldStatus = 'unopened' | 'open' | 'hidden'
+export type SayingViewMode = 'stream' | 'wall' | 'focus'
+export type WorldViewMode = '' | SayingViewMode
+
+export interface WorldSetting {
+  world: WorldKey
+  nav_label: string
+  sort_order: number
+  default_view: WorldViewMode
+}
+
+export interface AdminWorldSetting extends WorldSetting {
+  status: WorldStatus
+  revision: number
+  updated_at: string
+}
+
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
@@ -132,7 +150,9 @@ export interface EntryCategoryRef {
  */
 export interface EntryListItem {
   id: number
-  type: EntryType
+  world: WorldKey
+  kind: string
+  type?: EntryType
   title: string
   slug: string
   summary: string
@@ -167,6 +187,7 @@ export interface EntryDetail extends Omit<EntryListItem, 'category'> {
   /** `0` means uncategorised, not "unset". */
   category_id: number
   category: EntryCategoryRef | null
+  tags?: Array<{ id: number; name: string; slug: string; usage_count?: number }>
 }
 
 /**
@@ -176,7 +197,7 @@ export interface EntryDetail extends Omit<EntryListItem, 'category'> {
  * revision-aware PATCH requests.
  */
 export interface EntryCreateRequest {
-  type?: EntryType
+  world: WorldKey
   visibility?: EntryVisibility
 }
 
@@ -197,7 +218,6 @@ export interface EntryUpdateRequest {
   summary?: string
   content_md?: string
   cover_url?: string
-  type?: EntryType
   visibility?: EntryVisibility
   category_id?: number
   meta?: Record<string, unknown>
@@ -210,6 +230,7 @@ export type EntryPatchFields = Omit<EntryUpdateRequest, 'revision'>
 export interface EntryListQuery {
   page?: number
   page_size?: number
+  world?: WorldKey
   /**
    * A misspelled value is a 400 with `fields.status`, not an empty list — an
    * empty list would read as "no drafts" when it means "you typed it wrong".
@@ -246,6 +267,7 @@ export interface EntryListQuery {
  */
 export interface CategoryWithCount {
   id: number
+  world: WorldKey
   name: string
   slug: string
   description: string
@@ -261,6 +283,7 @@ export interface CategoryWithCount {
  */
 export interface Category {
   id: number
+  world: WorldKey
   name: string
   slug: string
   description: string
@@ -271,6 +294,7 @@ export interface Category {
 
 /** `name` and `slug` are required; both cap at 64. */
 export interface CategoryCreateRequest {
+  world: WorldKey
   name: string
   slug: string
   description?: string

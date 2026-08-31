@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 )
 
 // Store is the storage the service needs.
@@ -15,26 +17,26 @@ import (
 type Store interface {
 	Create(ctx context.Context, params CreateParams) (Category, error)
 	GetByID(ctx context.Context, id int64) (Category, error)
-	GetBySlug(ctx context.Context, slug string) (Category, error)
+	GetBySlug(ctx context.Context, world contentworld.Key, slug string) (Category, error)
 
 	// List returns every category in display order, without counts.
-	List(ctx context.Context) ([]Category, error)
+	List(ctx context.Context, world contentworld.Key) ([]Category, error)
 
 	// ListWithCounts returns every category with the number of entries a public
 	// reader can see in it.
-	ListWithCounts(ctx context.Context) ([]CategoryWithCount, error)
+	ListWithCounts(ctx context.Context, world contentworld.Key) ([]CategoryWithCount, error)
 
 	Update(ctx context.Context, params UpdateParams) (Category, error)
 
 	// Delete removes a category and reports whether it found one.
 	Delete(ctx context.Context, id int64) (bool, error)
 
-	SlugExists(ctx context.Context, slug string) (bool, error)
+	SlugExists(ctx context.Context, world contentworld.Key, slug string) (bool, error)
 
 	// SlugExistsExcluding reports whether a category other than excludedID holds
 	// the slug. Separate from SlugExists because a category keeping its own slug
 	// through an update is not a conflict with itself.
-	SlugExistsExcluding(ctx context.Context, slug string, excludedID int64) (bool, error)
+	SlugExistsExcluding(ctx context.Context, world contentworld.Key, slug string, excludedID int64) (bool, error)
 }
 
 // Checked at compile time so the repository cannot drift from the interface.
@@ -76,6 +78,7 @@ func NewService(store Store, opts ...ServiceOption) *Service {
 
 // CreateInput carries a create request as the caller states it.
 type CreateInput struct {
+	World       contentworld.Key
 	Name        string
 	Slug        string
 	Description string
@@ -91,6 +94,9 @@ type CreateInput struct {
 // because a conflict is the likely failure and saying so plainly beats surfacing
 // a constraint violation.
 func (s *Service) Create(ctx context.Context, in CreateInput) (Category, error) {
+	if err := ValidateWorld(in.World); err != nil {
+		return Category{}, fmt.Errorf("%w: %s", err, in.World)
+	}
 	if err := ValidateName(in.Name); err != nil {
 		return Category{}, fmt.Errorf("%w: %s", err, in.Name)
 	}
@@ -105,7 +111,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Category, error) 
 	// This is not the guarantee: two concurrent creates can both read false, and
 	// categories_slug_key settles it. The repository translates that violation to
 	// the same ErrSlugTaken, so both paths agree.
-	taken, err := s.store.SlugExists(ctx, in.Slug)
+	taken, err := s.store.SlugExists(ctx, in.World, in.Slug)
 	if err != nil {
 		return Category{}, err
 	}
@@ -114,6 +120,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Category, error) 
 	}
 
 	created, err := s.store.Create(ctx, CreateParams{
+		World:       in.World,
 		Name:        in.Name,
 		Slug:        in.Slug,
 		Description: in.Description,
@@ -170,6 +177,11 @@ func (s *Service) Update(ctx context.Context, id int64, in UpdateInput) (Categor
 		return Category{}, ErrNoUpdateFields
 	}
 
+	current, err := s.store.GetByID(ctx, id)
+	if err != nil {
+		return Category{}, err
+	}
+
 	if in.Name != nil {
 		if err := ValidateName(*in.Name); err != nil {
 			return Category{}, fmt.Errorf("%w: %s", err, *in.Name)
@@ -189,7 +201,7 @@ func (s *Service) Update(ctx context.Context, id int64, in UpdateInput) (Categor
 	if in.Slug != nil {
 		// Excluding this category: submitting its own slug back is a no-op, not a
 		// conflict with itself.
-		taken, err := s.store.SlugExistsExcluding(ctx, *in.Slug, id)
+		taken, err := s.store.SlugExistsExcluding(ctx, current.World, *in.Slug, id)
 		if err != nil {
 			return Category{}, err
 		}
@@ -258,27 +270,36 @@ func (s *Service) GetByID(ctx context.Context, id int64) (Category, error) {
 // A malformed slug is answered without a query: it cannot match a row. The error
 // is the same as for a well-formed slug that is absent, since a reader has no use
 // for the difference.
-func (s *Service) GetBySlug(ctx context.Context, slug string) (Category, error) {
+func (s *Service) GetBySlug(ctx context.Context, world contentworld.Key, slug string) (Category, error) {
+	if err := ValidateWorld(world); err != nil {
+		return Category{}, fmt.Errorf("%w: %s", err, world)
+	}
 	if err := ValidateSlug(slug); err != nil {
 		return Category{}, fmt.Errorf("%w: %s", ErrCategoryNotFound, slug)
 	}
-	return s.store.GetBySlug(ctx, slug)
+	return s.store.GetBySlug(ctx, world, slug)
 }
 
 // List returns every category in display order.
 //
 // The admin read. No counts, because the admin list is a place to edit categories
 // rather than to see how full they are.
-func (s *Service) List(ctx context.Context) ([]Category, error) {
-	return s.store.List(ctx)
+func (s *Service) List(ctx context.Context, world contentworld.Key) ([]Category, error) {
+	if err := ValidateWorld(world); err != nil {
+		return nil, fmt.Errorf("%w: %s", err, world)
+	}
+	return s.store.List(ctx, world)
 }
 
 // ListWithCounts returns every category with its publicly visible entry count.
 //
 // The public read. The count matches what opening the category will show, so a
 // category holding only drafts reports zero.
-func (s *Service) ListWithCounts(ctx context.Context) ([]CategoryWithCount, error) {
-	return s.store.ListWithCounts(ctx)
+func (s *Service) ListWithCounts(ctx context.Context, world contentworld.Key) ([]CategoryWithCount, error) {
+	if err := ValidateWorld(world); err != nil {
+		return nil, fmt.Errorf("%w: %s", err, world)
+	}
+	return s.store.ListWithCounts(ctx, world)
 }
 
 // ResolveSlug turns a category slug into its id.
@@ -287,8 +308,8 @@ func (s *Service) ListWithCounts(ctx context.Context) ([]CategoryWithCount, erro
 // that an unknown slug is ErrCategoryNotFound, which the caller answers as 404,
 // rather than an empty list: "this URL is wrong" and "this category is empty" are
 // different answers and a reader needs to tell them apart.
-func (s *Service) ResolveSlug(ctx context.Context, slug string) (int64, error) {
-	category, err := s.GetBySlug(ctx, slug)
+func (s *Service) ResolveSlug(ctx context.Context, world contentworld.Key, slug string) (int64, error) {
+	category, err := s.GetBySlug(ctx, world, slug)
 	if err != nil {
 		return 0, err
 	}

@@ -6,6 +6,8 @@ import EntryRow from './EntryRow.vue'
 
 const entry: EntryListItem = {
   id: 7,
+  world: 'journal',
+  kind: '',
   type: 'journal',
   title: '待完成的文章',
   slug: 'draft-entry',

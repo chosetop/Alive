@@ -17,10 +17,13 @@ import (
 
 	"github.com/p30huiwei/alive/backend/internal/auth"
 	"github.com/p30huiwei/alive/backend/internal/config"
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/entry"
+	"github.com/p30huiwei/alive/backend/internal/media"
 	"github.com/p30huiwei/alive/backend/internal/postgres"
 	"github.com/p30huiwei/alive/backend/internal/router"
 	"github.com/p30huiwei/alive/backend/internal/site"
+	"github.com/p30huiwei/alive/backend/internal/storage/aliyunoss"
 	"github.com/p30huiwei/alive/backend/internal/taxonomy"
 )
 
@@ -68,9 +71,12 @@ func run() error {
 		auth.WithLogger(logger),
 	)
 
+	worldService := contentworld.NewService(contentworld.NewRepository(pool))
+
 	entryService := entry.NewService(
 		entry.NewRepository(pool),
 		entry.WithLogger(logger),
+		entry.WithWorldService(worldService),
 	)
 
 	// No WithClock, unlike entry: nothing in taxonomy stamps a time. created_at
@@ -79,17 +85,27 @@ func run() error {
 		taxonomy.NewRepository(pool),
 		taxonomy.WithLogger(logger),
 	)
+	tagService := taxonomy.NewTagService(taxonomy.NewTagRepository(pool), taxonomy.WithTagLogger(logger))
+	var signer media.UploadSigner
+	if cfg.OSS.Enabled {
+		signer = aliyunoss.New(cfg.OSS)
+	}
+	mediaService := media.NewConfiguredService(media.NewRepository(pool), signer, cfg.OSS.PublicBaseURL, cfg.OSS.PresignTTL)
 
 	siteService := site.NewService(site.NewRepository(pool))
 
 	handler := router.New(router.Dependencies{
-		Config:          cfg,
-		Logger:          logger,
-		Pool:            pool,
-		AuthService:     authService,
-		EntryService:    entryService,
-		TaxonomyService: taxonomyService,
-		SiteService:     siteService,
+		Config:           cfg,
+		Logger:           logger,
+		Pool:             pool,
+		AuthService:      authService,
+		EntryService:     entryService,
+		EntryTagReplacer: entry.NewRepository(pool),
+		MediaService:     mediaService,
+		TaxonomyService:  taxonomyService,
+		TagService:       tagService,
+		SiteService:      siteService,
+		WorldService:     worldService,
 	})
 
 	server := &http.Server{

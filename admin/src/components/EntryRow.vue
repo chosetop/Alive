@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { EntryListItem } from '../types/api'
+import type { EntryListItem, WorldKey } from '../types/api'
 import { UiIcon } from './ui'
 
 /**
@@ -19,13 +19,10 @@ const STATUS_LABEL: Record<EntryListItem['status'], string> = {
   archived: '已归档',
 }
 
-const TYPE_LABEL: Record<EntryListItem['type'], string> = {
+const WORLD_LABEL: Record<WorldKey, string> = {
   journal: '日志',
-  book: '书',
-  movie: '影',
-  music: '乐',
-  travel: '行',
-  photo: '影像',
+  saying: '片语',
+  video: '影像',
 }
 
 /**
@@ -93,7 +90,7 @@ function formatDate(value: string): string {
       <p v-if="entry.summary" class="summary">{{ entry.summary }}</p>
 
       <div class="meta">
-        <span class="type">{{ TYPE_LABEL[entry.type] }}</span>
+        <span class="type">{{ WORLD_LABEL[entry.world] }}</span>
         <code class="slug">{{ entry.slug }}</code>
         <!-- Uncategorised is a normal state, so it is stated rather than left
              blank, which would read as a rendering gap. -->

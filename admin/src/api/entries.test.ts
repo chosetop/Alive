@@ -56,6 +56,12 @@ describe('listEntriesAdmin', () => {
     expect(params.get('category')).toBe('travel')
   })
 
+  it('sends world when the admin list is scoped to one content world', async () => {
+    await listEntriesAdmin({ world: 'journal' })
+
+    expect(requestedUrl().searchParams.get('world')).toBe('journal')
+  })
+
   it('omits q entirely when no search term is given', async () => {
     await listEntriesAdmin({ page: 1 })
 

@@ -11,8 +11,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/postgres"
 	"github.com/p30huiwei/alive/backend/internal/postgres/sqlcgen"
+	"github.com/p30huiwei/alive/backend/internal/taxonomy"
 )
 
 // Repository reads and writes entries.
@@ -21,12 +23,13 @@ import (
 // everything sees domain types and the sentinel errors from model.go, so the
 // driver could be replaced without touching the service.
 type Repository struct {
-	q *sqlcgen.Queries
+	q  *sqlcgen.Queries
+	db *postgres.Pool
 }
 
 // NewRepository wires a repository to a connection pool.
 func NewRepository(pool *postgres.Pool) *Repository {
-	return &Repository{q: sqlcgen.New(pool)}
+	return &Repository{q: sqlcgen.New(pool), db: pool}
 }
 
 // PostgreSQL error codes translated below.
@@ -47,7 +50,8 @@ type CreateParams struct {
 	// CategoryID is 0 for an uncategorised entry, which becomes NULL.
 	CategoryID int64
 
-	Type        Type
+	World       contentworld.Key
+	Kind        string
 	Title       string
 	Slug        string
 	Summary     string
@@ -73,9 +77,6 @@ type CreateParams struct {
 type UpdateParams struct {
 	ID               int64
 	ExpectedRevision int64
-
-	SetType bool
-	Type    Type
 
 	SetTitle bool
 	Title    string
@@ -119,7 +120,8 @@ func (r *Repository) Create(ctx context.Context, params CreateParams) (Entry, er
 	row, err := r.q.CreateEntry(ctx, sqlcgen.CreateEntryParams{
 		AuthorID:    params.AuthorID,
 		CategoryID:  optionalInt64(params.CategoryID),
-		Type:        string(params.Type),
+		World:       string(params.World),
+		Kind:        params.Kind,
 		Title:       params.Title,
 		Slug:        params.Slug,
 		Summary:     optionalString(params.Summary),
@@ -140,7 +142,7 @@ func (r *Repository) Create(ctx context.Context, params CreateParams) (Entry, er
 	// needs them reads the entry back.
 	return entryFromRow(rowFields{
 		ID: row.ID, Revision: row.Revision, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
-		Type: row.Type, Title: row.Title, Slug: row.Slug, Summary: row.Summary,
+		World: row.World, Kind: row.Kind, Title: row.Title, Slug: row.Slug, Summary: row.Summary,
 		ContentMD: row.ContentMd, CoverURL: row.CoverUrl, Status: row.Status,
 		Visibility: row.Visibility, Meta: row.Meta, WordCount: row.WordCount,
 		HappenedAt: row.HappenedAt, PublishedAt: row.PublishedAt,
@@ -148,13 +150,16 @@ func (r *Repository) Create(ctx context.Context, params CreateParams) (Entry, er
 	}), nil
 }
 
-// GetPublicBySlug returns the published, public entry with this slug.
+// GetPublicByWorldSlug returns the published, public entry with this slug.
 //
 // A draft, a private entry and a soft deleted one are all ErrEntryNotFound, and
 // so is a slug that was never used. The filter is in the SQL, so this cannot be
 // bypassed by a caller forgetting a condition.
-func (r *Repository) GetPublicBySlug(ctx context.Context, slug string) (Entry, error) {
-	row, err := r.q.GetPublicEntryBySlug(ctx, slug)
+func (r *Repository) GetPublicByWorldSlug(ctx context.Context, world contentworld.Key, slug string) (Entry, error) {
+	row, err := r.q.GetPublicEntryBySlug(ctx, sqlcgen.GetPublicEntryBySlugParams{
+		World: string(world),
+		Slug:  slug,
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Entry{}, fmt.Errorf("%w: %s", ErrEntryNotFound, slug)
@@ -165,7 +170,7 @@ func (r *Repository) GetPublicBySlug(ctx context.Context, slug string) (Entry, e
 	return entryFromRow(rowFields{
 		ID: row.ID, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
 		CategoryName: row.CategoryName, CategorySlug: row.CategorySlug,
-		Type: row.Type, Title: row.Title, Slug: row.Slug, Summary: row.Summary,
+		World: row.World, Kind: row.Kind, Title: row.Title, Slug: row.Slug, Summary: row.Summary,
 		ContentMD: row.ContentMd, CoverURL: row.CoverUrl, Status: row.Status,
 		Visibility: row.Visibility, Meta: row.Meta, WordCount: row.WordCount,
 		HappenedAt: row.HappenedAt, PublishedAt: row.PublishedAt,
@@ -173,18 +178,21 @@ func (r *Repository) GetPublicBySlug(ctx context.Context, slug string) (Entry, e
 	}), nil
 }
 
-// GetLinkBySlug returns the entry with this slug if it is published and either
+// GetLinkByWorldSlug returns the entry with this slug if it is published and either
 // public or unlisted.
 //
 // The read behind a shared link, and the only one that accepts unlisted. Separate
-// from GetPublicBySlug rather than a flag on it, matching the two SQL statements:
+// from GetPublicByWorldSlug rather than a flag on it, matching the two SQL statements:
 // the lists and counts must stay public-only, and a boolean would make that
 // depend on an argument.
 //
 // Unlisted is not access control. A slug is guessable, so this keeps an entry out
 // of lists and search engines and nothing more.
-func (r *Repository) GetLinkBySlug(ctx context.Context, slug string) (Entry, error) {
-	row, err := r.q.GetLinkEntryBySlug(ctx, slug)
+func (r *Repository) GetLinkByWorldSlug(ctx context.Context, world contentworld.Key, slug string) (Entry, error) {
+	row, err := r.q.GetLinkEntryBySlug(ctx, sqlcgen.GetLinkEntryBySlugParams{
+		World: string(world),
+		Slug:  slug,
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Entry{}, fmt.Errorf("%w: %s", ErrEntryNotFound, slug)
@@ -195,7 +203,7 @@ func (r *Repository) GetLinkBySlug(ctx context.Context, slug string) (Entry, err
 	return entryFromRow(rowFields{
 		ID: row.ID, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
 		CategoryName: row.CategoryName, CategorySlug: row.CategorySlug,
-		Type: row.Type, Title: row.Title, Slug: row.Slug, Summary: row.Summary,
+		World: row.World, Kind: row.Kind, Title: row.Title, Slug: row.Slug, Summary: row.Summary,
 		ContentMD: row.ContentMd, CoverURL: row.CoverUrl, Status: row.Status,
 		Visibility: row.Visibility, Meta: row.Meta, WordCount: row.WordCount,
 		HappenedAt: row.HappenedAt, PublishedAt: row.PublishedAt,
@@ -217,10 +225,11 @@ func (r *Repository) GetLinkBySlug(ctx context.Context, slug string) (Entry, err
 // service resolves the slug first: that way an unknown category is a 404 saying the
 // URL is wrong, not an empty list saying the category is empty. Both queries take
 // the same filter, so the total always describes the list beside it.
-func (r *Repository) ListPublic(ctx context.Context, categoryID int64, limit, offset int) ([]Entry, int64, error) {
+func (r *Repository) ListPublic(ctx context.Context, world contentworld.Key, categoryID int64, limit, offset int) ([]Entry, int64, error) {
 	filter := optionalInt64(categoryID)
 
 	rows, err := r.q.ListPublicEntries(ctx, sqlcgen.ListPublicEntriesParams{
+		World:      string(world),
 		CategoryID: filter,
 		Limit:      int32(limit),
 		Offset:     int32(offset),
@@ -229,7 +238,10 @@ func (r *Repository) ListPublic(ctx context.Context, categoryID int64, limit, of
 		return nil, 0, fmt.Errorf("entry: list public entries: %w", err)
 	}
 
-	total, err := r.q.CountPublicEntries(ctx, filter)
+	total, err := r.q.CountPublicEntries(ctx, sqlcgen.CountPublicEntriesParams{
+		World:      string(world),
+		CategoryID: filter,
+	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("entry: count public entries: %w", err)
 	}
@@ -240,7 +252,7 @@ func (r *Repository) ListPublic(ctx context.Context, categoryID int64, limit, of
 		entries = append(entries, entryFromRow(rowFields{
 			ID: row.ID, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
 			CategoryName: row.CategoryName, CategorySlug: row.CategorySlug,
-			Type: row.Type, Title: row.Title, Slug: row.Slug, Summary: row.Summary,
+			World: row.World, Kind: row.Kind, Title: row.Title, Slug: row.Slug, Summary: row.Summary,
 			CoverURL: row.CoverUrl, Status: row.Status, Visibility: row.Visibility,
 			Meta: row.Meta, WordCount: row.WordCount, HappenedAt: row.HappenedAt,
 			PublishedAt: row.PublishedAt, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
@@ -255,8 +267,11 @@ func (r *Repository) ListPublic(ctx context.Context, categoryID int64, limit, of
 // Drafts count: one holds its slug so that publishing it later cannot collide
 // with something written in the meantime. Soft deleted rows do not, matching the
 // partial unique index.
-func (r *Repository) SlugExists(ctx context.Context, slug string) (bool, error) {
-	exists, err := r.q.EntrySlugExists(ctx, slug)
+func (r *Repository) SlugExists(ctx context.Context, world contentworld.Key, slug string) (bool, error) {
+	exists, err := r.q.EntrySlugExists(ctx, sqlcgen.EntrySlugExistsParams{
+		World: string(world),
+		Slug:  slug,
+	})
 	if err != nil {
 		return false, fmt.Errorf("entry: check slug: %w", err)
 	}
@@ -269,8 +284,9 @@ func (r *Repository) SlugExists(ctx context.Context, slug string) (bool, error) 
 // The exclusion is what lets an update resubmit an entry's own slug: without it,
 // every save that included the unchanged slug would be refused as a conflict with
 // itself.
-func (r *Repository) SlugExistsExcluding(ctx context.Context, slug string, excludedID int64) (bool, error) {
+func (r *Repository) SlugExistsExcluding(ctx context.Context, world contentworld.Key, slug string, excludedID int64) (bool, error) {
 	exists, err := r.q.EntrySlugExistsExcluding(ctx, sqlcgen.EntrySlugExistsExcludingParams{
+		World:      string(world),
 		Slug:       slug,
 		ExcludedID: excludedID,
 	})
@@ -289,8 +305,6 @@ func (r *Repository) Update(ctx context.Context, params UpdateParams) (Entry, er
 	row, err := r.q.UpdateEntry(ctx, sqlcgen.UpdateEntryParams{
 		ID:               params.ID,
 		ExpectedRevision: params.ExpectedRevision,
-		SetType:          params.SetType,
-		Type:             string(params.Type),
 		SetTitle:         params.SetTitle,
 		Title:            params.Title,
 		SetSlug:          params.SetSlug,
@@ -320,7 +334,7 @@ func (r *Repository) Update(ctx context.Context, params UpdateParams) (Entry, er
 
 	return entryFromRow(rowFields{
 		ID: row.ID, Revision: row.Revision, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
-		Type: row.Type, Title: row.Title,
+		World: row.World, Kind: row.Kind, Title: row.Title,
 		Slug: row.Slug, Summary: row.Summary, ContentMD: row.ContentMd,
 		CoverURL: row.CoverUrl, Status: row.Status, Visibility: row.Visibility,
 		Meta: row.Meta, WordCount: row.WordCount, HappenedAt: row.HappenedAt,
@@ -382,7 +396,7 @@ func (r *Repository) Publish(ctx context.Context, id, expectedRevision int64, pu
 
 	return entryFromRow(rowFields{
 		ID: row.ID, Revision: row.Revision, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
-		Type: row.Type, Title: row.Title,
+		World: row.World, Kind: row.Kind, Title: row.Title,
 		Slug: row.Slug, Summary: row.Summary, ContentMD: row.ContentMd,
 		CoverURL: row.CoverUrl, Status: row.Status, Visibility: row.Visibility,
 		Meta: row.Meta, WordCount: row.WordCount, HappenedAt: row.HappenedAt,
@@ -402,7 +416,7 @@ func (r *Repository) Unpublish(ctx context.Context, id, expectedRevision int64) 
 
 	return entryFromRow(rowFields{
 		ID: row.ID, Revision: row.Revision, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
-		Type: row.Type, Title: row.Title,
+		World: row.World, Kind: row.Kind, Title: row.Title,
 		Slug: row.Slug, Summary: row.Summary, ContentMD: row.ContentMd,
 		CoverURL: row.CoverUrl, Status: row.Status, Visibility: row.Visibility,
 		Meta: row.Meta, WordCount: row.WordCount, HappenedAt: row.HappenedAt,
@@ -422,7 +436,7 @@ func (r *Repository) Archive(ctx context.Context, id, expectedRevision int64) (E
 
 	return entryFromRow(rowFields{
 		ID: row.ID, Revision: row.Revision, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
-		Type: row.Type, Title: row.Title,
+		World: row.World, Kind: row.Kind, Title: row.Title,
 		Slug: row.Slug, Summary: row.Summary, ContentMD: row.ContentMd,
 		CoverURL: row.CoverUrl, Status: row.Status, Visibility: row.Visibility,
 		Meta: row.Meta, WordCount: row.WordCount, HappenedAt: row.HappenedAt,
@@ -444,15 +458,23 @@ func (r *Repository) GetByID(ctx context.Context, id int64) (Entry, error) {
 		return Entry{}, fmt.Errorf("entry: get entry %d: %w", id, err)
 	}
 
-	return entryFromRow(rowFields{
+	found := entryFromRow(rowFields{
 		ID: row.ID, Revision: row.Revision, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
 		CategoryName: row.CategoryName, CategorySlug: row.CategorySlug,
-		Type: row.Type, Title: row.Title,
+		World: row.World, Kind: row.Kind, Title: row.Title,
 		Slug: row.Slug, Summary: row.Summary, ContentMD: row.ContentMd,
 		CoverURL: row.CoverUrl, Status: row.Status, Visibility: row.Visibility,
 		Meta: row.Meta, WordCount: row.WordCount, HappenedAt: row.HappenedAt,
 		PublishedAt: row.PublishedAt, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
-	}), nil
+	})
+
+	tags, err := r.loadTags(ctx, id)
+	if err != nil {
+		return Entry{}, err
+	}
+	found.Tags = tags
+
+	return found, nil
 }
 
 // ListAdmin returns one page of live entries of any status, newest edit first,
@@ -472,11 +494,17 @@ func (r *Repository) GetByID(ctx context.Context, id int64) (Entry, error) {
 //
 // No ContentMD: the query does not select it, and the search deliberately does
 // not read it either.
-func (r *Repository) ListAdmin(ctx context.Context, categoryID int64, status *Status, search *string, limit, offset int) ([]Entry, int64, error) {
+func (r *Repository) ListAdmin(ctx context.Context, world *contentworld.Key, categoryID int64, status *Status, search *string, limit, offset int) ([]Entry, int64, error) {
 	var filter *string
 	if status != nil {
 		s := string(*status)
 		filter = &s
+	}
+
+	var worldFilter *string
+	if world != nil {
+		w := string(*world)
+		worldFilter = &w
 	}
 
 	var pattern *string
@@ -486,6 +514,7 @@ func (r *Repository) ListAdmin(ctx context.Context, categoryID int64, status *St
 	}
 
 	rows, err := r.q.ListAdminEntries(ctx, sqlcgen.ListAdminEntriesParams{
+		World:      worldFilter,
 		CategoryID: optionalInt64(categoryID),
 		Status:     filter,
 		Search:     pattern,
@@ -497,6 +526,7 @@ func (r *Repository) ListAdmin(ctx context.Context, categoryID int64, status *St
 	}
 
 	total, err := r.q.CountAdminEntries(ctx, sqlcgen.CountAdminEntriesParams{
+		World:      worldFilter,
 		CategoryID: optionalInt64(categoryID),
 		Status:     filter,
 		Search:     pattern,
@@ -510,7 +540,7 @@ func (r *Repository) ListAdmin(ctx context.Context, categoryID int64, status *St
 		entries = append(entries, entryFromRow(rowFields{
 			ID: row.ID, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
 			CategoryName: row.CategoryName, CategorySlug: row.CategorySlug,
-			Type: row.Type, Title: row.Title,
+			World: row.World, Kind: row.Kind, Title: row.Title,
 			Slug: row.Slug, Summary: row.Summary, CoverURL: row.CoverUrl,
 			Status: row.Status, Visibility: row.Visibility, Meta: row.Meta,
 			WordCount: row.WordCount, HappenedAt: row.HappenedAt,
@@ -575,7 +605,8 @@ type rowFields struct {
 	CategoryID   *int64
 	CategoryName *string
 	CategorySlug *string
-	Type         string
+	World        string
+	Kind         string
 	Title        string
 	Slug         string
 	Summary      *string
@@ -600,7 +631,8 @@ func entryFromRow(row rowFields) Entry {
 		CategoryID:   derefInt64(row.CategoryID),
 		CategoryName: derefString(row.CategoryName),
 		CategorySlug: derefString(row.CategorySlug),
-		Type:         Type(row.Type),
+		World:        contentworld.Key(row.World),
+		Kind:         row.Kind,
 		Title:        row.Title,
 		Slug:         row.Slug,
 		Summary:      derefString(row.Summary),
@@ -615,6 +647,25 @@ func entryFromRow(row rowFields) Entry {
 		CreatedAt:    row.CreatedAt,
 		UpdatedAt:    row.UpdatedAt,
 	}
+}
+
+func (r *Repository) loadTags(ctx context.Context, entryID int64) ([]taxonomy.Tag, error) {
+	rows, err := r.q.ListTagsByEntryID(ctx, entryID)
+	if err != nil {
+		return nil, fmt.Errorf("entry: list tags for entry %d: %w", entryID, err)
+	}
+
+	tags := make([]taxonomy.Tag, 0, len(rows))
+	for _, row := range rows {
+		tags = append(tags, taxonomy.Tag{
+			ID:        row.ID,
+			Name:      row.Name,
+			Slug:      row.Slug,
+			CreatedAt: row.CreatedAt,
+			UpdatedAt: row.UpdatedAt,
+		})
+	}
+	return tags, nil
 }
 
 // translateWriteError turns a driver error from a write into a domain error.
@@ -643,6 +694,8 @@ func translateWriteError(op string, err error, slug string) error {
 		// means the two definitions have drifted apart. Named individually because
 		// the constraint name is the fastest route to which one.
 		switch pgErr.ConstraintName {
+		case "entries_world_check":
+			return ErrInvalidWorld
 		case "entries_slug_format_check":
 			return fmt.Errorf("%w: %s", ErrInvalidSlug, slug)
 		case "entries_published_title_check":
@@ -651,8 +704,6 @@ func translateWriteError(op string, err error, slug string) error {
 			return ErrInvalidSlug
 		case "entries_published_content_check":
 			return ErrEmptyContent
-		case "entries_type_check":
-			return ErrInvalidType
 		case "entries_status_check", "entries_published_at_check":
 			return ErrInvalidStatus
 		case "entries_visibility_check":

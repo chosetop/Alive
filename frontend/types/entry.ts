@@ -6,14 +6,13 @@
  * optional-everything type would let a page read `entry.id` off a public list
  * item, which the server never sends.
  */
+import type { WorldKey } from './world'
 
 /**
  * Six values, enforced by a database CHECK constraint. Only `journal` has an
  * implemented `meta` structure so far; adding a seventh value requires a
  * migration server-side.
  */
-export type EntryType = 'journal' | 'book' | 'movie' | 'music' | 'travel' | 'photo'
-
 /**
  * `draft` and `archived` are distinct on purpose: a draft is a todo queue, an
  * archived entry is not.
@@ -35,14 +34,15 @@ export type EntryCategoryRef = {
 }
 
 /**
- * `GET /entries` item.
+ * `GET /journals` item.
  *
  * No `content_md` (the list does not render bodies) and no `id` (readers
  * address entries by slug; entry ids run consecutively across drafts, so
  * exposing them would report how much unpublished work exists).
  */
 export type EntryListItem = {
-  type: EntryType
+  world: WorldKey
+  kind: string
   title: string
   slug: string
   summary: string
@@ -57,7 +57,7 @@ export type EntryListItem = {
 }
 
 /**
- * `GET /entries/:slug`.
+ * `GET /journals/:slug`.
  *
  * List shape plus `content_md` and `updated_at`. No `status`/`visibility`:
  * this endpoint only ever returns published entries, so both would be
@@ -78,7 +78,8 @@ export type EntryDetail = EntryListItem & {
  */
 export type EntryAuthorView = {
   id: number
-  type: EntryType
+  world: WorldKey
+  kind: string
   title: string
   slug: string
   summary: string
@@ -110,7 +111,7 @@ export type AdminEntryListItem = EntryListItem & {
   updated_at: string
 }
 
-/** Query for `GET /entries`. `category` is a slug, not an id. */
+/** Query for `GET /journals`. `category` is a slug, not an id. */
 export type EntryListQuery = {
   page?: number
   page_size?: number
@@ -130,9 +131,9 @@ export type AdminEntryListQuery = {
 }
 
 /**
- * Body for `POST /entries`. `title`, `slug` and `content_md` are required;
- * the rest carry server-side defaults (type `journal`, status `draft`,
- * visibility `public`).
+ * Body for `POST /entries`. `title`, `slug`, `content_md` and `world` are
+ * required; the rest carry server-side defaults (status `draft`, visibility
+ * `public`).
  *
  * `slug` must match `^[a-z0-9]+(-[a-z0-9]+)*$` and is supplied by the client,
  * not derived from the title.
@@ -141,7 +142,7 @@ export type EntryCreateBody = {
   title: string
   slug: string
   content_md: string
-  type?: EntryType
+  world: WorldKey
   status?: EntryStatus
   visibility?: EntryVisibility
   summary?: string
@@ -174,7 +175,6 @@ export type EntryUpdateBody = {
   summary?: string | null
   content_md?: string | null
   cover_url?: string | null
-  type?: EntryType | null
   visibility?: EntryVisibility | null
   /** 0 clears the category. */
   category_id?: number | null

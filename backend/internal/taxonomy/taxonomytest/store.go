@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/taxonomy"
 )
 
@@ -92,7 +93,7 @@ func (s *Store) Create(ctx context.Context, params taxonomy.CreateParams) (taxon
 	// service treats a conflict from the write as equivalent to one from the
 	// pre-check, so that path has to be reachable here.
 	for _, existing := range s.categories {
-		if existing.Slug == params.Slug {
+		if existing.World == params.World && existing.Slug == params.Slug {
 			return taxonomy.Category{}, fmt.Errorf("%w: %s", taxonomy.ErrSlugTaken, params.Slug)
 		}
 	}
@@ -102,6 +103,7 @@ func (s *Store) Create(ctx context.Context, params taxonomy.CreateParams) (taxon
 
 	stored := taxonomy.Category{
 		ID:          id,
+		World:       params.World,
 		Name:        params.Name,
 		Slug:        params.Slug,
 		Description: params.Description,
@@ -126,13 +128,13 @@ func (s *Store) GetByID(ctx context.Context, id int64) (taxonomy.Category, error
 }
 
 // GetBySlug returns the category holding this slug.
-func (s *Store) GetBySlug(ctx context.Context, slug string) (taxonomy.Category, error) {
+func (s *Store) GetBySlug(ctx context.Context, world contentworld.Key, slug string) (taxonomy.Category, error) {
 	if s.FailGetBySlug != nil {
 		return taxonomy.Category{}, s.FailGetBySlug
 	}
 
 	for _, candidate := range s.categories {
-		if candidate.Slug == slug {
+		if candidate.World == world && candidate.Slug == slug {
 			return candidate, nil
 		}
 	}
@@ -144,20 +146,20 @@ func (s *Store) GetBySlug(ctx context.Context, slug string) (taxonomy.Category, 
 //
 // The order is reproduced rather than left to map iteration, which is randomised
 // in Go. Without it a test asserting on order would pass or fail at random.
-func (s *Store) List(ctx context.Context) ([]taxonomy.Category, error) {
+func (s *Store) List(ctx context.Context, world contentworld.Key) ([]taxonomy.Category, error) {
 	if s.FailList != nil {
 		return nil, s.FailList
 	}
-	return s.sorted(), nil
+	return s.sortedByWorld(world), nil
 }
 
 // ListWithCounts returns every category with the count from EntryCounts.
-func (s *Store) ListWithCounts(ctx context.Context) ([]taxonomy.CategoryWithCount, error) {
+func (s *Store) ListWithCounts(ctx context.Context, world contentworld.Key) ([]taxonomy.CategoryWithCount, error) {
 	if s.FailListWithCounts != nil {
 		return nil, s.FailListWithCounts
 	}
 
-	ordered := s.sorted()
+	ordered := s.sortedByWorld(world)
 	out := make([]taxonomy.CategoryWithCount, 0, len(ordered))
 	for _, category := range ordered {
 		out = append(out, taxonomy.CategoryWithCount{
@@ -234,7 +236,7 @@ func (s *Store) Delete(ctx context.Context, id int64) (bool, error) {
 }
 
 // SlugExists reports whether any stored category holds this slug.
-func (s *Store) SlugExists(ctx context.Context, slug string) (bool, error) {
+func (s *Store) SlugExists(ctx context.Context, world contentworld.Key, slug string) (bool, error) {
 	s.SlugExistsCalls++
 
 	if s.FailSlugExists != nil {
@@ -245,7 +247,7 @@ func (s *Store) SlugExists(ctx context.Context, slug string) (bool, error) {
 	}
 
 	for _, candidate := range s.categories {
-		if candidate.Slug == slug {
+		if candidate.World == world && candidate.Slug == slug {
 			return true, nil
 		}
 	}
@@ -257,7 +259,7 @@ func (s *Store) SlugExists(ctx context.Context, slug string) (bool, error) {
 //
 // The exclusion is the point: an update resubmitting a category's own slug must
 // not be refused as a conflict with itself.
-func (s *Store) SlugExistsExcluding(ctx context.Context, slug string, excludedID int64) (bool, error) {
+func (s *Store) SlugExistsExcluding(ctx context.Context, world contentworld.Key, slug string, excludedID int64) (bool, error) {
 	s.SlugExistsExcludingCalls++
 
 	if s.FailSlugExistsExcluding != nil {
@@ -268,7 +270,7 @@ func (s *Store) SlugExistsExcluding(ctx context.Context, slug string, excludedID
 	}
 
 	for id, candidate := range s.categories {
-		if id != excludedID && candidate.Slug == slug {
+		if id != excludedID && candidate.World == world && candidate.Slug == slug {
 			return true, nil
 		}
 	}
@@ -310,6 +312,17 @@ func (s *Store) sorted() []taxonomy.Category {
 		return out[i].ID < out[j].ID
 	})
 
+	return out
+}
+
+func (s *Store) sortedByWorld(world contentworld.Key) []taxonomy.Category {
+	ordered := s.sorted()
+	out := make([]taxonomy.Category, 0, len(ordered))
+	for _, category := range ordered {
+		if category.World == world {
+			out = append(out, category)
+		}
+	}
 	return out
 }
 

@@ -63,6 +63,13 @@ describe('the route table', () => {
     expect(shellFor('/entries/new')).toBe(WritingLayout)
   })
 
+  it('serves the world-specific create route from the writing shell', () => {
+    const resolved = resolver().resolve('/entries/new/journal')
+
+    expect(resolved.name).toBe('entry-new-world')
+    expect(shellFor('/entries/new/journal')).toBe(WritingLayout)
+  })
+
   it('passes the id to the editor as a prop', () => {
     // The editor takes its subject as a prop rather than reading the route, so
     // the record has to opt in.
@@ -85,7 +92,7 @@ describe('the route table', () => {
 
     // Not duplicated auth logic -- duplicated metadata read by one guard. If a
     // record ever lost the flag, its pages would be reachable without a session.
-    for (const path of ['/dashboard', '/entries', '/categories', '/entries/new', '/entries/41']) {
+    for (const path of ['/dashboard', '/entries', '/categories', '/entries/new', '/entries/new/journal', '/entries/41']) {
       expect(router.resolve(path).meta.requiresAuth, `${path} must require auth`).toBe(true)
     }
   })
@@ -100,6 +107,7 @@ describe('the route table', () => {
       .map((child) => child.name)
 
     expect(utilityChildren).not.toContain('entry-new')
+    expect(utilityChildren).not.toContain('entry-new-world')
     expect(utilityChildren).not.toContain('entry-edit')
   })
 })

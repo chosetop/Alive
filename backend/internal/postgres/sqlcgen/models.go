@@ -18,6 +18,7 @@ type Category struct {
 	SortOrder   int32
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	World       string
 }
 
 type Entry struct {
@@ -40,6 +41,34 @@ type Entry struct {
 	DeletedAt   *time.Time
 	CategoryID  *int64
 	Revision    int64
+	World       string
+	Kind        string
+}
+
+type EntryMedium struct {
+	EntryID   int64
+	MediaID   int64
+	CreatedAt time.Time
+	Role      string
+}
+
+type EntryTag struct {
+	EntryID   int64
+	TagID     int64
+	CreatedAt time.Time
+}
+
+type Medium struct {
+	ID              int64
+	AuthorID        int64
+	ObjectKey       string
+	MimeType        string
+	ByteSize        int64
+	Width           *int32
+	Height          *int32
+	DurationSeconds *int32
+	CreatedAt       time.Time
+	Url             string
 }
 
 type Session struct {
@@ -58,6 +87,24 @@ type SiteSetting struct {
 	DefaultTheme string
 	Revision     int64
 	UpdatedAt    time.Time
+}
+
+type SiteWorld struct {
+	World       string
+	Status      string
+	NavLabel    string
+	SortOrder   int32
+	DefaultView string
+	Revision    int64
+	UpdatedAt   time.Time
+}
+
+type Tag struct {
+	ID        int64
+	Name      string
+	Slug      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type User struct {

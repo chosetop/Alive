@@ -35,7 +35,20 @@ type Config struct {
 	CORS           CORSConfig
 	Session        SessionConfig
 	RateLimit      RateLimitConfig
+	OSS            OSSConfig
 	TrustedProxies []string
+}
+
+type OSSConfig struct {
+	Enabled         bool
+	Region          string
+	Endpoint        string
+	Bucket          string
+	AccessKeyID     string
+	AccessKeySecret string
+	PublicBaseURL   string
+	PresignTTL      time.Duration
+	MaxUploadBytes  int64
 }
 
 // IsDevelopment reports whether verbose, human-oriented behaviour is allowed.
@@ -229,6 +242,12 @@ func Load() (*Config, error) {
 
 	rateLimitEnabled, err := parseBool("RATE_LIMIT_ENABLED", lookup("RATE_LIMIT_ENABLED", "true"))
 	collect(err)
+	ossEnabled, err := parseBool("OSS_ENABLED", lookup("OSS_ENABLED", "false"))
+	collect(err)
+	ossTTL, err := parseDuration("OSS_PRESIGN_TTL", lookup("OSS_PRESIGN_TTL", "10m"))
+	collect(err)
+	maxUpload, err := parseInt("MEDIA_MAX_UPLOAD_BYTES", lookup("MEDIA_MAX_UPLOAD_BYTES", "104857600"))
+	collect(err)
 
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("invalid configuration: %w", errors.Join(errs...))
@@ -271,6 +290,7 @@ func Load() (*Config, error) {
 			LoginWindow:   loginWindow,
 			Enabled:       rateLimitEnabled,
 		},
+		OSS:            OSSConfig{Enabled: ossEnabled, Region: lookup("OSS_REGION", ""), Endpoint: lookup("OSS_ENDPOINT", ""), Bucket: lookup("OSS_BUCKET", ""), AccessKeyID: lookup("OSS_ACCESS_KEY_ID", ""), AccessKeySecret: lookup("OSS_ACCESS_KEY_SECRET", ""), PublicBaseURL: lookup("OSS_PUBLIC_BASE_URL", ""), PresignTTL: ossTTL, MaxUploadBytes: int64(maxUpload)},
 		TrustedProxies: trustedProxies,
 	}
 
@@ -359,6 +379,20 @@ func (c *Config) validate() error {
 	if c.Env == EnvProduction && len(c.TrustedProxies) == 0 {
 		errs = append(errs, errors.New(
 			"TRUSTED_PROXIES must list at least one proxy network in production; refusing to trust forwarded client addresses implicitly"))
+	}
+	if c.OSS.PresignTTL <= 0 {
+		errs = append(errs, errors.New("OSS_PRESIGN_TTL must be positive"))
+	}
+	if c.OSS.MaxUploadBytes < 1 || c.OSS.MaxUploadBytes > 104857600 {
+		errs = append(errs, fmt.Errorf("MEDIA_MAX_UPLOAD_BYTES must be in 1..104857600, got %d", c.OSS.MaxUploadBytes))
+	}
+	if c.OSS.Enabled {
+		if c.OSS.Region == "" || c.OSS.Bucket == "" || c.OSS.AccessKeyID == "" || c.OSS.AccessKeySecret == "" || c.OSS.PublicBaseURL == "" {
+			errs = append(errs, errors.New("OSS_REGION, OSS_BUCKET, OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET and OSS_PUBLIC_BASE_URL are required when OSS_ENABLED=true"))
+		}
+		if u, err := url.Parse(c.OSS.PublicBaseURL); err != nil || u.Scheme != "https" || u.Host == "" {
+			errs = append(errs, errors.New("OSS_PUBLIC_BASE_URL must be an https URL when OSS_ENABLED=true"))
+		}
 	}
 
 	return errors.Join(errs...)

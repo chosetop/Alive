@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"maps"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/p30huiwei/alive/backend/internal/dbtest"
 	"github.com/p30huiwei/alive/backend/internal/postgres"
 	"github.com/p30huiwei/alive/backend/internal/postgres/sqlcgen"
@@ -69,7 +72,8 @@ func insertEntry(t *testing.T, q *sqlcgen.Queries, pool *postgres.Pool, authorID
 
 	row, err := q.CreateEntry(ctx, sqlcgen.CreateEntryParams{
 		AuthorID:    authorID,
-		Type:        "journal",
+		World:       "journal",
+		Kind:        "",
 		Title:       "Title for " + seed.slug,
 		Slug:        seed.slug,
 		ContentMd:   "# body",
@@ -96,6 +100,70 @@ func insertEntry(t *testing.T, q *sqlcgen.Queries, pool *postgres.Pool, authorID
 	return row.ID
 }
 
+func pgErrorCode(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code
+	}
+	return ""
+}
+
+func insertWorldCategory(t *testing.T, pool *postgres.Pool, world, slug string) int64 {
+	t.Helper()
+
+	row := pool.QueryRow(context.Background(), `
+		INSERT INTO categories (name, slug, description, sort_order, world)
+		VALUES ($1, $2, NULL, 0, $3)
+		RETURNING id
+	`, fmt.Sprintf("%s name", slug), slug, world)
+
+	var id int64
+	if err := row.Scan(&id); err != nil {
+		t.Fatalf("insertWorldCategory(%s, %s): %v", world, slug, err)
+	}
+	return id
+}
+
+func insertWorldEntry(
+	t *testing.T,
+	pool *postgres.Pool,
+	authorID int64,
+	world string,
+	categoryID *int64,
+	slug string,
+) (int64, error) {
+	t.Helper()
+
+	publishedAt := time.Now().UTC()
+	row := pool.QueryRow(context.Background(), `
+		INSERT INTO entries (
+			author_id,
+			category_id,
+			world,
+			kind,
+			title,
+			slug,
+			content_md,
+			status,
+			visibility,
+			meta,
+			word_count,
+			published_at
+		) VALUES (
+			$1, $2, $3, '', $4, $5, '# body', 'published', 'public', '{}'::jsonb, 2, $6
+		)
+		RETURNING id
+	`, authorID, categoryID, world, "Title for "+slug, slug, publishedAt)
+
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 func TestCreateEntry(t *testing.T) {
 	q, _ := newTestQueries(t)
 	ctx := context.Background()
@@ -106,7 +174,8 @@ func TestCreateEntry(t *testing.T) {
 
 	created, err := q.CreateEntry(ctx, sqlcgen.CreateEntryParams{
 		AuthorID:   authorID,
-		Type:       "journal",
+		World:      "journal",
+		Kind:       "",
 		Title:      "京都的春天",
 		Slug:       dbtest.Slug(t, "kyoto-spring"),
 		Summary:    &summary,
@@ -146,7 +215,8 @@ func TestCreateEntry(t *testing.T) {
 	t.Run("defaults apply when meta is empty", func(t *testing.T) {
 		row, err := q.CreateEntry(ctx, sqlcgen.CreateEntryParams{
 			AuthorID:   authorID,
-			Type:       "journal",
+			World:      "journal",
+			Kind:       "",
 			Title:      "minimal",
 			Slug:       dbtest.Slug(t, "minimal"),
 			Status:     "draft",
@@ -165,13 +235,131 @@ func TestCreateEntry(t *testing.T) {
 	})
 }
 
+func TestEntrySlugUniquenessByWorld(t *testing.T) {
+	q, pool := newTestQueries(t)
+	authorID := seedAuthor(t, q, "entry-world-slug-author")
+
+	slug := dbtest.Slug(t, "shared-entry-world-slug")
+
+	if _, err := insertWorldEntry(t, pool, authorID, "journal", nil, slug); err != nil {
+		t.Fatalf("insert journal entry: %v", err)
+	}
+	if _, err := insertWorldEntry(t, pool, authorID, "saying", nil, slug); err != nil {
+		t.Fatalf("insert same slug in another world: %v", err)
+	}
+	if _, err := insertWorldEntry(t, pool, authorID, "journal", nil, slug); pgErrorCode(err) != "23505" {
+		t.Fatalf("duplicate slug in same world error code = %q, want 23505 (err=%v)", pgErrorCode(err), err)
+	}
+}
+
+func TestCategorySlugUniquenessByWorld(t *testing.T) {
+	_, pool := newTestQueries(t)
+	dbtest.CleanupCategories(t, pool)
+
+	slug := dbtest.Slug(t, "shared-category-world-slug")
+
+	insertWorldCategory(t, pool, "journal", slug)
+	insertWorldCategory(t, pool, "video", slug)
+
+	row := pool.QueryRow(context.Background(), `
+		INSERT INTO categories (name, slug, description, sort_order, world)
+		VALUES ($1, $2, NULL, 0, $3)
+		RETURNING id
+	`, fmt.Sprintf("%s duplicate", slug), slug, "journal")
+
+	var duplicateID int64
+	err := row.Scan(&duplicateID)
+	if pgErrorCode(err) != "23505" {
+		t.Fatalf("duplicate category slug in same world error code = %q, want 23505 (err=%v)", pgErrorCode(err), err)
+	}
+}
+
+func TestEntryCannotUseCategoryFromAnotherWorld(t *testing.T) {
+	q, pool := newTestQueries(t)
+	dbtest.CleanupCategories(t, pool)
+
+	authorID := seedAuthor(t, q, "cross-world-category-author")
+	categoryID := insertWorldCategory(t, pool, "saying", dbtest.Slug(t, "saying-category"))
+
+	_, err := insertWorldEntry(t, pool, authorID, "journal", &categoryID, dbtest.Slug(t, "journal-entry"))
+	if pgErrorCode(err) != "23503" {
+		t.Fatalf("cross-world category error code = %q, want 23503 (err=%v)", pgErrorCode(err), err)
+	}
+}
+
+func TestEntryWorldIsImmutable(t *testing.T) {
+	q, pool := newTestQueries(t)
+	authorID := seedAuthor(t, q, "entry-world-immutable-author")
+
+	entryID, err := insertWorldEntry(t, pool, authorID, "journal", nil, dbtest.Slug(t, "immutable-entry"))
+	if err != nil {
+		t.Fatalf("insert entry: %v", err)
+	}
+
+	if _, err := pool.Exec(context.Background(),
+		"UPDATE entries SET world = 'video' WHERE id = $1", entryID); err == nil {
+		t.Fatal("UPDATE entries SET world succeeded, want rejection")
+	}
+}
+
+func TestCategoryWorldIsImmutable(t *testing.T) {
+	_, pool := newTestQueries(t)
+	dbtest.CleanupCategories(t, pool)
+
+	categoryID := insertWorldCategory(t, pool, "journal", dbtest.Slug(t, "immutable-category"))
+
+	if _, err := pool.Exec(context.Background(),
+		"UPDATE categories SET world = 'video' WHERE id = $1", categoryID); err == nil {
+		t.Fatal("UPDATE categories SET world succeeded, want rejection")
+	}
+}
+
+func TestSiteWorldSeedsDefaultViews(t *testing.T) {
+	_, pool := newTestQueries(t)
+
+	rows, err := pool.Query(context.Background(), `
+		SELECT world, default_view
+		FROM site_worlds
+		ORDER BY sort_order, world
+	`)
+	if err != nil {
+		t.Fatalf("query site_worlds: %v", err)
+	}
+	defer rows.Close()
+
+	got := make(map[string]string)
+	for rows.Next() {
+		var world string
+		var defaultView string
+		if err := rows.Scan(&world, &defaultView); err != nil {
+			t.Fatalf("scan site_worlds row: %v", err)
+		}
+		got[world] = defaultView
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate site_worlds: %v", err)
+	}
+
+	want := map[string]string{
+		"journal": "",
+		"saying":  "stream",
+		"video":   "",
+	}
+	if !maps.Equal(got, want) {
+		t.Fatalf("site_worlds default views = %#v, want %#v", got, want)
+	}
+}
+
 // createEntry supplies the non-draft defaults that the schema already requires
 // while leaving title, slug and content_md exactly as the caller supplied them.
 func createEntry(t *testing.T, q *sqlcgen.Queries, params sqlcgen.CreateEntryParams) sqlcgen.CreateEntryRow {
 	t.Helper()
 
-	if params.Type == "" {
-		params.Type = "journal"
+	if params.World == "" {
+		params.World = "journal"
+	}
+	if params.Kind == "" {
+		params.Kind = ""
 	}
 	if params.Visibility == "" {
 		params.Visibility = "public"
@@ -263,7 +451,10 @@ func TestPublicEntryVisibility(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				slug := slugs[tc.name]
 
-				got, err := q.GetPublicEntryBySlug(ctx, slug)
+				got, err := q.GetPublicEntryBySlug(ctx, sqlcgen.GetPublicEntryBySlugParams{
+					World: "journal",
+					Slug:  slug,
+				})
 				switch {
 				case tc.visible && err != nil:
 					t.Fatalf("want the row, got error: %v", err)
@@ -277,7 +468,7 @@ func TestPublicEntryVisibility(t *testing.T) {
 	})
 
 	t.Run("ListPublicEntries shows the published public row and none of the others", func(t *testing.T) {
-		rows, err := q.ListPublicEntries(ctx, sqlcgen.ListPublicEntriesParams{Limit: 200, Offset: 0})
+		rows, err := q.ListPublicEntries(ctx, sqlcgen.ListPublicEntriesParams{World: "journal", Limit: 200, Offset: 0})
 		if err != nil {
 			t.Fatalf("ListPublicEntries: %v", err)
 		}
@@ -304,12 +495,12 @@ func TestPublicEntryVisibility(t *testing.T) {
 		// Both read the whole table, so this compares them with each other rather
 		// than against a fixed number: the count must equal the rows the list
 		// returns when the page is large enough to hold them all.
-		rows, err := q.ListPublicEntries(ctx, sqlcgen.ListPublicEntriesParams{Limit: 1000, Offset: 0})
+		rows, err := q.ListPublicEntries(ctx, sqlcgen.ListPublicEntriesParams{World: "journal", Limit: 1000, Offset: 0})
 		if err != nil {
 			t.Fatalf("ListPublicEntries: %v", err)
 		}
 		// nil category: count every category, matching the unfiltered list above.
-		total, err := q.CountPublicEntries(ctx, nil)
+		total, err := q.CountPublicEntries(ctx, sqlcgen.CountPublicEntriesParams{World: "journal"})
 		if err != nil {
 			t.Fatalf("CountPublicEntries: %v", err)
 		}
@@ -373,7 +564,7 @@ func TestListPublicEntriesOrdering(t *testing.T) {
 	}
 
 	t.Run("orders by happened_at, falling back to published_at", func(t *testing.T) {
-		rows, err := q.ListPublicEntries(ctx, sqlcgen.ListPublicEntriesParams{Limit: 200, Offset: 0})
+		rows, err := q.ListPublicEntries(ctx, sqlcgen.ListPublicEntriesParams{World: "journal", Limit: 200, Offset: 0})
 		if err != nil {
 			t.Fatalf("ListPublicEntries: %v", err)
 		}
@@ -407,6 +598,7 @@ func TestListPublicEntriesOrdering(t *testing.T) {
 		seen := make(map[string]int)
 		for offset := int32(0); ; offset += 2 {
 			rows, err := q.ListPublicEntries(ctx, sqlcgen.ListPublicEntriesParams{
+				World: "journal",
 				Limit: 2, Offset: offset,
 			})
 			if err != nil {
@@ -437,7 +629,10 @@ func TestListPublicEntriesOrdering(t *testing.T) {
 		// Asserted by type rather than by value: ListPublicEntriesRow has no such
 		// field, so a query that started selecting it would break this build.
 		//   _ = rows[0].ContentMd
-		detail, err := q.GetPublicEntryBySlug(ctx, recentSlug)
+		detail, err := q.GetPublicEntryBySlug(ctx, sqlcgen.GetPublicEntryBySlugParams{
+			World: "journal",
+			Slug:  recentSlug,
+		})
 		if err != nil {
 			t.Fatalf("GetPublicEntryBySlug: %v", err)
 		}
@@ -472,7 +667,10 @@ func TestEntrySlugExists(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := q.EntrySlugExists(ctx, tc.slug)
+			got, err := q.EntrySlugExists(ctx, sqlcgen.EntrySlugExistsParams{
+				World: "journal",
+				Slug:  tc.slug,
+			})
 			if err != nil {
 				t.Fatalf("EntrySlugExists: %v", err)
 			}

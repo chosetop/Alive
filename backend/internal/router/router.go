@@ -16,10 +16,13 @@ import (
 	"github.com/p30huiwei/alive/backend/internal/auth"
 	"github.com/p30huiwei/alive/backend/internal/authhttp"
 	"github.com/p30huiwei/alive/backend/internal/config"
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
+	"github.com/p30huiwei/alive/backend/internal/contentworldhttp"
 	"github.com/p30huiwei/alive/backend/internal/entry"
 	"github.com/p30huiwei/alive/backend/internal/entryhttp"
 	"github.com/p30huiwei/alive/backend/internal/health"
 	"github.com/p30huiwei/alive/backend/internal/httpx"
+	"github.com/p30huiwei/alive/backend/internal/mediahttp"
 	"github.com/p30huiwei/alive/backend/internal/middleware"
 	"github.com/p30huiwei/alive/backend/internal/postgres"
 	"github.com/p30huiwei/alive/backend/internal/site"
@@ -45,16 +48,22 @@ type Dependencies struct {
 
 	// EntryService is required. Same arrangement as AuthService: the adapter is
 	// built here, not passed in.
-	EntryService *entry.Service
+	EntryService     *entry.Service
+	EntryTagReplacer entryhttp.TagReplacer
+	MediaService     mediahttp.Service
 
 	// TaxonomyService is required. Required rather than optional even though the
 	// category endpoints could be left off: the entry list's ?category= filter
 	// resolves through it, and an optional service would mean that filter silently
 	// answering with every entry on the site.
 	TaxonomyService *taxonomy.Service
+	TagService      *taxonomy.TagService
 
 	// SiteService owns the singleton site settings, including the default theme.
 	SiteService *site.Service
+
+	// WorldService owns lifecycle and browse-mode settings for the closed world registry.
+	WorldService *contentworld.Service
 }
 
 // New builds the fully wired HTTP handler.
@@ -77,6 +86,9 @@ func New(deps Dependencies) *gin.Engine {
 	}
 	if deps.SiteService == nil {
 		panic("router: SiteService is required")
+	}
+	if deps.WorldService == nil {
+		panic("router: WorldService is required")
 	}
 
 	if !deps.Config.IsDevelopment() {
@@ -139,8 +151,8 @@ func New(deps Dependencies) *gin.Engine {
 	// POST   /api/v1/entries/:id/publish  requires a session
 	// POST   /api/v1/entries/:id/unpublish
 	// POST   /api/v1/entries/:id/archive
-	// GET    /api/v1/entries              public, paginated
-	// GET    /api/v1/entries/:slug        public
+	// GET    /api/v1/journals             public, paginated
+	// GET    /api/v1/journals/:slug       public
 	//
 	// GET /api/v1/admin/entries           requires a session, every status
 	// GET /api/v1/admin/entries/:id       requires a session, every status
@@ -162,8 +174,15 @@ func New(deps Dependencies) *gin.Engine {
 		categoryFromSlug(deps.TaxonomyService),
 		deps.Logger,
 	)
+	entryHandler.SetTagReplacer(deps.EntryTagReplacer)
+	if deps.MediaService != nil {
+		entryHandler.SetPrimaryVideoResolver(deps.MediaService)
+	}
 	entryHandler.Register(api, authHandler.RequireAuth())
 	entryHandler.RegisterAdmin(api, authHandler.RequireAuth())
+	if deps.MediaService != nil {
+		mediahttp.NewHandler(deps.MediaService, authorFromSession).Register(api, authHandler.RequireAuth())
+	}
 
 	// POST   /api/v1/categories       requires a session
 	// PATCH  /api/v1/categories/:id   requires a session
@@ -178,10 +197,20 @@ func New(deps Dependencies) *gin.Engine {
 	taxonomyHandler := taxonomyhttp.NewHandler(deps.TaxonomyService, deps.Logger)
 	taxonomyHandler.Register(api, authHandler.RequireAuth())
 	taxonomyHandler.RegisterAdmin(api, authHandler.RequireAuth())
+	if deps.TagService != nil {
+		tagHandler := taxonomyhttp.NewTagHandler(deps.TagService)
+		tagHandler.RegisterPublic(api)
+		tagHandler.RegisterAdmin(api, authHandler.RequireAuth())
+	}
 
 	// GET   /api/v1/site       public site settings
 	// PATCH /api/v1/admin/site requires a session and an expected revision
 	sitehttp.NewHandler(deps.SiteService, deps.Logger).Register(api, authHandler.RequireAuth())
+
+	// GET   /api/v1/worlds              public open-world navigation settings
+	// GET   /api/v1/admin/worlds        requires a session, every world status
+	// PATCH /api/v1/admin/worlds/:key   requires a session and an expected revision
+	contentworldhttp.NewHandler(deps.WorldService, deps.Logger).Register(api, authHandler.RequireAuth())
 
 	return engine
 }
@@ -192,16 +221,16 @@ func New(deps Dependencies) *gin.Engine {
 // side that may recognise a taxonomy error: entryhttp does not import taxonomy, and
 // the whole point of the resolver type is that it does not have to.
 //
-// An unknown slug is a 404 rather than an empty list. /entries?category=nope and
-// /entries?category=travel-with-no-posts-yet are different situations, and a client
+// An unknown slug is a 404 rather than an empty list. /journals?category=nope and
+// /journals?category=travel-with-no-posts-yet are different situations, and a client
 // that cannot tell them apart shows "no posts in this category" for a typo.
 //
 // Every other error falls through as-is and becomes a 500, which is what a failed
 // query is. Flattening either case to an id of 0 would answer a request for one
 // category with every entry on the site.
 func categoryFromSlug(service *taxonomy.Service) entryhttp.CategoryResolver {
-	return func(c *gin.Context, slug string) (int64, error) {
-		id, err := service.ResolveSlug(c.Request.Context(), slug)
+	return func(c *gin.Context, world contentworld.Key, slug string) (int64, error) {
+		id, err := service.ResolveSlug(c.Request.Context(), world, slug)
 		if err != nil {
 			// One case to map, not two. A malformed slug never arrives as
 			// ErrInvalidSlug: the service answers it as not-found without a query,

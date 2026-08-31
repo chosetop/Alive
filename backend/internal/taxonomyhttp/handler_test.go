@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/taxonomy"
 	"github.com/p30huiwei/alive/backend/internal/taxonomy/taxonomytest"
 	"github.com/p30huiwei/alive/backend/internal/taxonomyhttp"
@@ -172,7 +173,7 @@ func numberField(t *testing.T, object map[string]json.RawMessage, name string) i
 	return value
 }
 
-const validCreateBody = `{"name":"旅行","slug":"travel","description":"places","sort_order":10}`
+const validCreateBody = `{"world":"journal","name":"旅行","slug":"travel","description":"places","sort_order":10}`
 
 func TestCreateReturns201WithEveryField(t *testing.T) {
 	handler, store := newTestServer(t)
@@ -188,6 +189,9 @@ func TestCreateReturns201WithEveryField(t *testing.T) {
 	}
 	if got := stringField(t, data, "slug"); got != "travel" {
 		t.Errorf("slug = %q, want travel", got)
+	}
+	if got := stringField(t, data, "world"); got != "journal" {
+		t.Errorf("world = %q, want journal", got)
 	}
 	if got := numberField(t, data, "sort_order"); got != 10 {
 		t.Errorf("sort_order = %d, want 10", got)
@@ -206,6 +210,20 @@ func TestCreateReturns201WithEveryField(t *testing.T) {
 	}
 	if _, present := data["created_at"]; !present {
 		t.Error("the write response carries no created_at")
+	}
+}
+
+func TestPublicAndAdminListsRequireAWorldFilter(t *testing.T) {
+	handler, _ := newTestServer(t)
+
+	for _, path := range []string{"/api/v1/categories", "/api/v1/admin/categories"} {
+		rec := do(t, handler, http.MethodGet, path, "")
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s status = %d, want 400\nbody: %s", path, rec.Code, rec.Body.String())
+		}
+		if fields := errorFields(t, rec); fields["world"] == "" {
+			t.Fatalf("%s fields = %v, want world error", path, fields)
+		}
 	}
 }
 
@@ -239,7 +257,7 @@ func TestCreateRefusesABadSlugNamingTheField(t *testing.T) {
 	handler, _ := newTestServer(t)
 
 	rec := do(t, handler, http.MethodPost, "/api/v1/categories",
-		`{"name":"旅行","slug":"Not A Slug"}`)
+		`{"world":"journal","name":"旅行","slug":"Not A Slug"}`)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400\nbody: %s", rec.Code, rec.Body.String())
@@ -254,7 +272,7 @@ func TestCreateRefusesABadSlugNamingTheField(t *testing.T) {
 // client can act on that difference.
 func TestCreateRefusesADuplicateSlugWith409(t *testing.T) {
 	handler, store := newTestServer(t)
-	store.Seed(taxonomy.Category{Name: "existing", Slug: "travel"})
+	store.Seed(taxonomy.Category{World: contentworld.Journal, Name: "existing", Slug: "travel"})
 
 	rec := do(t, handler, http.MethodPost, "/api/v1/categories", validCreateBody)
 	if rec.Code != http.StatusConflict {
@@ -270,10 +288,10 @@ func TestCreateRefusesADuplicateSlugWith409(t *testing.T) {
 // edited is not part of that.
 func TestPublicListCarriesCountsAndNoTimestamps(t *testing.T) {
 	handler, store := newTestServer(t)
-	store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel", SortOrder: 10})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel", SortOrder: 10})
 	store.EntryCounts[1] = 4
 
-	rec := do(t, handler, http.MethodGet, "/api/v1/categories", "")
+	rec := do(t, handler, http.MethodGet, "/api/v1/categories?world=journal", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
 	}
@@ -302,9 +320,9 @@ func TestPublicListCarriesCountsAndNoTimestamps(t *testing.T) {
 // client has to read past, so the envelope must not carry one.
 func TestPublicListIsNotPaginated(t *testing.T) {
 	handler, store := newTestServer(t)
-	store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel"})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel"})
 
-	rec := do(t, handler, http.MethodGet, "/api/v1/categories", "")
+	rec := do(t, handler, http.MethodGet, "/api/v1/categories?world=journal", "")
 
 	if _, present := decodeEnvelope(t, rec)["meta"]; present {
 		t.Errorf("the category list carries pagination meta: %s", rec.Body.String())
@@ -317,7 +335,7 @@ func TestPublicListIsNotPaginated(t *testing.T) {
 func TestEmptyListsSerialiseAsAnArray(t *testing.T) {
 	handler, _ := newTestServer(t)
 
-	for _, path := range []string{"/api/v1/categories", "/api/v1/admin/categories"} {
+	for _, path := range []string{"/api/v1/categories?world=journal", "/api/v1/admin/categories?world=journal"} {
 		t.Run(path, func(t *testing.T) {
 			rec := do(t, handler, http.MethodGet, path, "")
 			if rec.Code != http.StatusOK {
@@ -335,10 +353,10 @@ func TestEmptyListsSerialiseAsAnArray(t *testing.T) {
 // TestAdminListCarriesTimestampsAndNoCounts is the other half of the split.
 func TestAdminListCarriesTimestampsAndNoCounts(t *testing.T) {
 	handler, store := newTestServer(t)
-	store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel"})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel"})
 	store.EntryCounts[1] = 4
 
-	rec := do(t, handler, http.MethodGet, "/api/v1/admin/categories", "")
+	rec := do(t, handler, http.MethodGet, "/api/v1/admin/categories?world=journal", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
 	}
@@ -361,11 +379,11 @@ func TestAdminListCarriesTimestampsAndNoCounts(t *testing.T) {
 // order, so passing means the order was produced rather than preserved.
 func TestListsReturnDisplayOrder(t *testing.T) {
 	handler, store := newTestServer(t)
-	store.Seed(taxonomy.Category{ID: 3, Name: "third", Slug: "third", SortOrder: 20})
-	store.Seed(taxonomy.Category{ID: 1, Name: "first", Slug: "first", SortOrder: 10})
-	store.Seed(taxonomy.Category{ID: 2, Name: "second", Slug: "second", SortOrder: 10})
+	store.Seed(taxonomy.Category{ID: 3, World: contentworld.Journal, Name: "third", Slug: "third", SortOrder: 20})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "first", Slug: "first", SortOrder: 10})
+	store.Seed(taxonomy.Category{ID: 2, World: contentworld.Journal, Name: "second", Slug: "second", SortOrder: 10})
 
-	for _, path := range []string{"/api/v1/categories", "/api/v1/admin/categories"} {
+	for _, path := range []string{"/api/v1/categories?world=journal", "/api/v1/admin/categories?world=journal"} {
 		t.Run(path, func(t *testing.T) {
 			items := dataArray(t, do(t, handler, http.MethodGet, path, ""))
 			for i, want := range []string{"first", "second", "third"} {
@@ -380,7 +398,7 @@ func TestListsReturnDisplayOrder(t *testing.T) {
 func TestUpdateAppliesOnlySubmittedFields(t *testing.T) {
 	handler, store := newTestServer(t)
 	store.Seed(taxonomy.Category{
-		ID: 1, Name: "旅行", Slug: "travel",
+		ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel",
 		Description: "keep me", SortOrder: 10,
 	})
 
@@ -403,7 +421,7 @@ func TestUpdateAppliesOnlySubmittedFields(t *testing.T) {
 // clears a field, and this is the assertion that keeps that reachable over HTTP.
 func TestUpdateClearsADescriptionWithAnEmptyString(t *testing.T) {
 	handler, store := newTestServer(t)
-	store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel", Description: "remove me"})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel", Description: "remove me"})
 
 	rec := do(t, handler, http.MethodPatch, "/api/v1/categories/1", `{"description":""}`)
 	if rec.Code != http.StatusOK {
@@ -421,7 +439,7 @@ func TestUpdateClearsADescriptionWithAnEmptyString(t *testing.T) {
 // the one a client is most likely to get wrong. An explicit null must not clear.
 func TestUpdateWithNullLeavesTheFieldAlone(t *testing.T) {
 	handler, store := newTestServer(t)
-	store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel", Description: "keep me"})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel", Description: "keep me"})
 
 	rec := do(t, handler, http.MethodPatch, "/api/v1/categories/1",
 		`{"name":"远行","description":null}`)
@@ -438,7 +456,7 @@ func TestUpdateWithNullLeavesTheFieldAlone(t *testing.T) {
 
 func TestUpdateRefusesABodyThatChangesNothing(t *testing.T) {
 	handler, store := newTestServer(t)
-	store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel"})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel"})
 
 	rec := do(t, handler, http.MethodPatch, "/api/v1/categories/1", `{}`)
 	if rec.Code != http.StatusBadRequest {
@@ -468,7 +486,7 @@ func TestUpdateRefusesAnotherCategorysSlugWith409(t *testing.T) {
 		t.Fatalf("setup create failed: %s", rec.Body.String())
 	}
 	if rec = do(t, handler, http.MethodPost, "/api/v1/categories",
-		`{"name":"杂记","slug":"notes"}`); rec.Code != http.StatusCreated {
+		`{"world":"journal","name":"杂记","slug":"notes"}`); rec.Code != http.StatusCreated {
 		t.Fatalf("setup create failed: %s", rec.Body.String())
 	}
 
@@ -484,7 +502,7 @@ func TestUpdateRefusesAnotherCategorysSlugWith409(t *testing.T) {
 // category, and the second must say it is gone rather than report success again.
 func TestDeleteReturns204ThenNotFound(t *testing.T) {
 	handler, store := newTestServer(t)
-	store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel"})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel"})
 
 	rec := do(t, handler, http.MethodDelete, "/api/v1/categories/1", "")
 	if rec.Code != http.StatusNoContent {
@@ -506,7 +524,7 @@ func TestDeleteReturns204ThenNotFound(t *testing.T) {
 // rather than slug, because the slug is one of the things being edited.
 func TestGetByIDReturnsTheAdminShape(t *testing.T) {
 	handler, store := newTestServer(t)
-	store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel", Description: "places"})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel", Description: "places"})
 
 	rec := do(t, handler, http.MethodGet, "/api/v1/admin/categories/1", "")
 	if rec.Code != http.StatusOK {
@@ -536,7 +554,7 @@ func TestGetByIDOfAMissingCategoryIs404(t *testing.T) {
 // as "that category is gone" for a request that never identified one.
 func TestANonNumericIDIs400NotNotFound(t *testing.T) {
 	handler, store := newTestServer(t)
-	store.Seed(taxonomy.Category{ID: 1, Name: "旅行", Slug: "travel"})
+	store.Seed(taxonomy.Category{ID: 1, World: contentworld.Journal, Name: "旅行", Slug: "travel"})
 
 	for _, tc := range []struct {
 		name, method, path, body string
@@ -606,7 +624,7 @@ func TestStoreFailureIsNotReportedAsNotFound(t *testing.T) {
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 	).Register(engine.Group("/api/v1"), func(c *gin.Context) { c.Next() })
 
-	rec := do(t, engine, http.MethodGet, "/api/v1/categories", "")
+	rec := do(t, engine, http.MethodGet, "/api/v1/categories?world=journal", "")
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500\nbody: %s", rec.Code, rec.Body.String())

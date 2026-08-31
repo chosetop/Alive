@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/p30huiwei/alive/backend/internal/apperr"
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/entry"
 	"github.com/p30huiwei/alive/backend/internal/entry/entrytest"
 	"github.com/p30huiwei/alive/backend/internal/entryhttp"
@@ -76,7 +77,7 @@ func newTestServer(t *testing.T, authorID int64) (http.Handler, *entrytest.Store
 // That is what keeps this a test of the handler and not of taxonomy: no categories
 // table, no service, and no import of the package the adapter is not allowed to
 // depend on.
-func testCategoryResolver(_ *gin.Context, slug string) (int64, error) {
+func testCategoryResolver(_ *gin.Context, _ contentworld.Key, slug string) (int64, error) {
 	if slug != testCategorySlug {
 		return 0, apperr.NotFound("no category matches this slug")
 	}
@@ -200,6 +201,12 @@ func stringField(t *testing.T, object map[string]json.RawMessage, name string) s
 	return value
 }
 
+// hasField reports whether a decoded JSON object carries the named key.
+func hasField(object map[string]json.RawMessage, name string) bool {
+	_, ok := object[name]
+	return ok
+}
+
 func intField(t *testing.T, object map[string]json.RawMessage, name string) int {
 	t.Helper()
 	raw, ok := object[name]
@@ -258,6 +265,7 @@ func TestPublicEndpointsHideEverythingUnpublished(t *testing.T) {
 	for i, tc := range visibilityCases {
 		store.Seed(entry.Entry{
 			ID: int64(i + 1), Slug: tc.slug, Title: tc.name,
+			World:  contentworld.Journal,
 			Status: tc.status, Visibility: tc.vis,
 			ContentMD: "the body of " + tc.slug,
 		})
@@ -266,7 +274,7 @@ func TestPublicEndpointsHideEverythingUnpublished(t *testing.T) {
 	t.Run("detail", func(t *testing.T) {
 		for _, tc := range visibilityCases {
 			t.Run(tc.name, func(t *testing.T) {
-				rec := do(t, handler, http.MethodGet, "/api/v1/entries/"+tc.slug, "")
+				rec := do(t, handler, http.MethodGet, "/api/v1/journals/"+tc.slug, "")
 
 				if tc.byLink {
 					if rec.Code != http.StatusOK {
@@ -298,8 +306,8 @@ func TestPublicEndpointsHideEverythingUnpublished(t *testing.T) {
 	})
 
 	t.Run("an unused slug answers exactly as a hidden entry does", func(t *testing.T) {
-		hidden := do(t, handler, http.MethodGet, "/api/v1/entries/a-draft", "")
-		unused := do(t, handler, http.MethodGet, "/api/v1/entries/never-used", "")
+		hidden := do(t, handler, http.MethodGet, "/api/v1/journals/a-draft", "")
+		unused := do(t, handler, http.MethodGet, "/api/v1/journals/never-used", "")
 
 		if hidden.Code != unused.Code {
 			t.Errorf("status %d for a draft and %d for an unused slug; the two must match",
@@ -311,7 +319,7 @@ func TestPublicEndpointsHideEverythingUnpublished(t *testing.T) {
 	})
 
 	t.Run("list carries only the published public entry", func(t *testing.T) {
-		rec := do(t, handler, http.MethodGet, "/api/v1/entries", "")
+		rec := do(t, handler, http.MethodGet, "/api/v1/journals", "")
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
 		}
@@ -345,11 +353,12 @@ func TestListOmitsContentMD(t *testing.T) {
 
 	store.Seed(entry.Entry{
 		ID: 1, Slug: "published-public", Title: "visible",
+		World:  contentworld.Journal,
 		Status: entry.StatusPublished, Visibility: entry.VisibilityPublic,
 		ContentMD: "SHOULD-NOT-APPEAR-IN-A-LIST",
 	})
 
-	rec := do(t, handler, http.MethodGet, "/api/v1/entries", "")
+	rec := do(t, handler, http.MethodGet, "/api/v1/journals", "")
 
 	items := dataArray(t, rec)
 	if len(items) != 1 {
@@ -363,7 +372,7 @@ func TestListOmitsContentMD(t *testing.T) {
 	}
 
 	// And the detail response does carry it, or the field would be unreachable.
-	detail := do(t, handler, http.MethodGet, "/api/v1/entries/published-public", "")
+	detail := do(t, handler, http.MethodGet, "/api/v1/journals/published-public", "")
 	if got := stringField(t, dataObject(t, detail), "content_md"); got != "SHOULD-NOT-APPEAR-IN-A-LIST" {
 		t.Errorf("detail content_md = %q, want the body", got)
 	}
@@ -378,6 +387,7 @@ func TestListPagination(t *testing.T) {
 	for i := 1; i <= 3; i++ {
 		store.Seed(entry.Entry{
 			ID: int64(i), Slug: "entry-" + strconv.Itoa(i), Title: "visible",
+			World:  contentworld.Journal,
 			Status: entry.StatusPublished, Visibility: entry.VisibilityPublic,
 			HappenedAt: time.Date(2020+i, 1, 1, 0, 0, 0, 0, time.UTC),
 		})
@@ -410,7 +420,7 @@ func TestListPagination(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rec := do(t, handler, http.MethodGet, "/api/v1/entries"+tc.query, "")
+			rec := do(t, handler, http.MethodGet, "/api/v1/journals"+tc.query, "")
 
 			if rec.Code != tc.wantStatus {
 				t.Fatalf("status = %d, want %d\nbody: %s", rec.Code, tc.wantStatus, rec.Body.String())
@@ -457,7 +467,7 @@ func TestListPagination(t *testing.T) {
 func TestEmptyListIsAnArray(t *testing.T) {
 	handler, _ := newTestServer(t, testAuthorID)
 
-	rec := do(t, handler, http.MethodGet, "/api/v1/entries", "")
+	rec := do(t, handler, http.MethodGet, "/api/v1/journals", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
@@ -468,9 +478,135 @@ func TestEmptyListIsAnArray(t *testing.T) {
 	}
 }
 
+func TestSayingsEndpointsUseTheSayingShape(t *testing.T) {
+	handler, store := newTestServer(t, testAuthorID)
+
+	store.Seed(entry.Entry{
+		ID:         1,
+		Slug:       "bbbbbbbbbb",
+		World:      contentworld.Saying,
+		Status:     entry.StatusPublished,
+		Visibility: entry.VisibilityPublic,
+		ContentMD:  "前一条片语",
+		Meta:       entry.Meta(`{"source":"先写的"}`),
+	})
+	store.Seed(entry.Entry{
+		ID:         2,
+		Slug:       "abcdefghjk",
+		World:      contentworld.Saying,
+		Status:     entry.StatusPublished,
+		Visibility: entry.VisibilityPublic,
+		ContentMD:  "第一句\n第二句",
+		Meta:       entry.Meta(`{"source":"随口一说","author":"我"}`),
+	})
+	store.Seed(entry.Entry{
+		ID:         3,
+		Slug:       "cccccccccc",
+		World:      contentworld.Journal,
+		Status:     entry.StatusPublished,
+		Visibility: entry.VisibilityPublic,
+		ContentMD:  "这条日志不该出现在片语列表里",
+	})
+	store.Seed(entry.Entry{
+		ID:         4,
+		Slug:       "zzzzzzzzzz",
+		World:      contentworld.Saying,
+		Status:     entry.StatusPublished,
+		Visibility: entry.VisibilityPublic,
+		ContentMD:  "后一条片语",
+	})
+
+	rec := do(t, handler, http.MethodGet, "/api/v1/sayings", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
+	}
+
+	items := dataArray(t, rec)
+	if len(items) != 3 {
+		t.Fatalf("list returned %d items, want 3\nbody: %s", len(items), rec.Body.String())
+	}
+
+	seen := make(map[string]map[string]json.RawMessage, len(items))
+	for _, item := range items {
+		shortID := stringField(t, item, "short_id")
+		seen[shortID] = item
+		for _, field := range []string{"title", "happened_at", "published_at", "cover_url"} {
+			if hasField(item, field) {
+				t.Errorf("list response unexpectedly carries %q for %s", field, shortID)
+			}
+		}
+	}
+	for _, shortID := range []string{"bbbbbbbbbb", "abcdefghjk", "zzzzzzzzzz"} {
+		if _, ok := seen[shortID]; !ok {
+			t.Fatalf("list is missing %s", shortID)
+		}
+	}
+	if _, ok := seen["cccccccccc"]; ok {
+		t.Fatal("journal entry leaked into the sayings list")
+	}
+
+	item := seen["abcdefghjk"]
+	if got := stringField(t, item, "content_md"); got != "第一句\n第二句" {
+		t.Fatalf("content_md = %q, want the saying body", got)
+	}
+
+	detail := do(t, handler, http.MethodGet, "/api/v1/sayings/abcdefghjk", "")
+	if detail.Code != http.StatusOK {
+		t.Fatalf("detail status = %d, want 200\nbody: %s", detail.Code, detail.Body.String())
+	}
+
+	data := dataObject(t, detail)
+	if got := stringField(t, data, "short_id"); got != "abcdefghjk" {
+		t.Fatalf("detail short_id = %q, want %q", got, "abcdefghjk")
+	}
+	if got := stringField(t, data, "content_md"); got != "第一句\n第二句" {
+		t.Fatalf("detail content_md = %q, want the saying body", got)
+	}
+	for _, field := range []string{"title", "happened_at", "published_at", "cover_url"} {
+		if hasField(data, field) {
+			t.Errorf("detail response unexpectedly carries %q", field)
+		}
+	}
+	if prev := data["previous"]; prev == nil {
+		t.Fatal("detail response is missing previous")
+	} else {
+		var link map[string]json.RawMessage
+		if err := json.Unmarshal(prev, &link); err != nil {
+			t.Fatalf("previous is not an object: %v", err)
+		}
+		if got := stringField(t, link, "short_id"); got != "zzzzzzzzzz" {
+			t.Fatalf("previous.short_id = %q, want %q", got, "zzzzzzzzzz")
+		}
+	}
+	if next := data["next"]; next == nil {
+		t.Fatal("detail response is missing next")
+	} else {
+		var link map[string]json.RawMessage
+		if err := json.Unmarshal(next, &link); err != nil {
+			t.Fatalf("next is not an object: %v", err)
+		}
+		if got := stringField(t, link, "short_id"); got != "bbbbbbbbbb" {
+			t.Fatalf("next.short_id = %q, want %q", got, "bbbbbbbbbb")
+		}
+	}
+}
+
+func TestSayingShortIDRejectsInvalidPathsBeforeLookup(t *testing.T) {
+	handler, _ := newTestServer(t, testAuthorID)
+
+	rec := do(t, handler, http.MethodGet, "/api/v1/sayings/not-valid", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400\nbody: %s", rec.Code, rec.Body.String())
+	}
+	if code := errorCode(t, rec); code != "INVALID_INPUT" {
+		t.Fatalf("code = %q, want INVALID_INPUT", code)
+	}
+}
+
 // validCreateBody is a create request with every required field, for tests that
 // vary one thing at a time.
 const validCreateBody = `{
+	"world": "journal",
 	"title": "京都的春天",
 	"slug": "kyoto-spring",
 	"content_md": "在鸭川边坐了一整个下午。"
@@ -482,7 +618,7 @@ const validCreateBody = `{
 func TestCreateEmptyDraft(t *testing.T) {
 	handler, _ := newTestServer(t, testAuthorID)
 
-	rec := do(t, handler, http.MethodPost, "/api/v1/entries", `{}`)
+	rec := do(t, handler, http.MethodPost, "/api/v1/entries", `{"world":"journal"}`)
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201\nbody: %s", rec.Code, rec.Body.String())
@@ -517,8 +653,11 @@ func TestCreate(t *testing.T) {
 	if got := stringField(t, data, "status"); got != "draft" {
 		t.Errorf("status = %q, want draft", got)
 	}
-	if got := stringField(t, data, "type"); got != "journal" {
-		t.Errorf("type = %q, want journal", got)
+	if got := stringField(t, data, "world"); got != "journal" {
+		t.Errorf("world = %q, want journal", got)
+	}
+	if got := stringField(t, data, "kind"); got != "" {
+		t.Errorf("kind = %q, want empty", got)
 	}
 	if got := stringField(t, data, "visibility"); got != "public" {
 		t.Errorf("visibility = %q, want public", got)
@@ -550,6 +689,19 @@ func TestCreate(t *testing.T) {
 	})
 }
 
+func TestUpdateRefusesWorldChanges(t *testing.T) {
+	handler, store := newTestServer(t, testAuthorID)
+	store.Seed(entry.Entry{ID: 7, Revision: 1, World: contentworld.Journal, Status: entry.StatusDraft})
+
+	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7", `{"revision":1,"world":"video"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400\nbody: %s", rec.Code, rec.Body.String())
+	}
+	if fields := errorFields(t, rec); fields["world"] == "" {
+		t.Fatalf("fields = %v, want world validation", fields)
+	}
+}
+
 // TestCreateIgnoresClientSuppliedOwnership covers the two fields a client must
 // not be able to set. An author_id in the body would let one account write
 // entries attributed to another, and a word_count would let a client report a
@@ -558,6 +710,7 @@ func TestCreateIgnoresClientSuppliedOwnership(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 
 	rec := do(t, handler, http.MethodPost, "/api/v1/entries", `{
+		"world": "journal",
 		"title": "attempt",
 		"slug": "attempt",
 		"content_md": "one two three",
@@ -585,10 +738,10 @@ func TestCreateAcceptsHappenedAtAndMeta(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 
 	rec := do(t, handler, http.MethodPost, "/api/v1/entries", `{
+		"world": "journal",
 		"title": "京都",
 		"slug": "kyoto",
 		"content_md": "body",
-		"type": "travel",
 		"happened_at": "2023-04-03T12:00:00Z",
 		"meta": {"place": "京都", "rating": 5}
 	}`)
@@ -651,12 +804,12 @@ func TestCreateRejectsInvalidInput(t *testing.T) {
 		{"malformed JSON", `{"title":`, ""},
 
 		// Caught by the domain, and each names its field.
-		{"uppercase slug", `{"title":"t","slug":"Kyoto","content_md":"b"}`, "slug"},
-		{"slug with a space", `{"title":"t","slug":"kyoto spring","content_md":"b"}`, "slug"},
-		{"chinese slug", `{"title":"t","slug":"京都","content_md":"b"}`, "slug"},
-		{"unknown type", `{"title":"t","slug":"s","content_md":"b","type":"joural"}`, "type"},
-		{"unknown visibility", `{"title":"t","slug":"s","content_md":"b","visibility":"hidden"}`, "visibility"},
-		{"meta is an array", `{"title":"t","slug":"s","content_md":"b","meta":[1]}`, "meta"},
+		{"uppercase slug", `{"world":"journal","title":"t","slug":"Kyoto","content_md":"b"}`, "slug"},
+		{"slug with a space", `{"world":"journal","title":"t","slug":"kyoto spring","content_md":"b"}`, "slug"},
+		{"chinese slug", `{"world":"journal","title":"t","slug":"京都","content_md":"b"}`, "slug"},
+		{"unknown world", `{"world":"joural","title":"t","slug":"s","content_md":"b"}`, "world"},
+		{"unknown visibility", `{"world":"journal","title":"t","slug":"s","content_md":"b","visibility":"hidden"}`, "visibility"},
+		{"meta is an array", `{"world":"journal","title":"t","slug":"s","content_md":"b","meta":[1]}`, "meta"},
 	}
 
 	for _, tc := range cases {
@@ -741,6 +894,7 @@ func TestUpdateWritesOnlySubmittedFields(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 	store.Seed(entry.Entry{
 		ID: 7, Slug: "original", Title: "Original", ContentMD: "the original body",
+		World:   contentworld.Journal,
 		Summary: "the original summary", WordCount: 3,
 		Status: entry.StatusPublished, Visibility: entry.VisibilityPublic,
 	})
@@ -773,7 +927,7 @@ func TestUpdateWritesOnlySubmittedFields(t *testing.T) {
 // newer edit.
 func TestUpdateRequiresRevision(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
-	store.Seed(entry.Entry{ID: 7, Revision: 1, Slug: "original", Title: "Original"})
+	store.Seed(entry.Entry{ID: 7, Revision: 1, World: contentworld.Journal, Slug: "original", Title: "Original"})
 
 	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7", `{"title":"Renamed"}`)
 
@@ -792,7 +946,7 @@ func TestUpdateRequiresRevision(t *testing.T) {
 // editor when another save wins first.
 func TestUpdateStaleRevision(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
-	store.Seed(entry.Entry{ID: 7, Revision: 2, Slug: "original", Title: "Newer"})
+	store.Seed(entry.Entry{ID: 7, Revision: 2, World: contentworld.Journal, Slug: "original", Title: "Newer"})
 
 	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7",
 		`{"revision":1,"title":"Stale"}`)
@@ -812,6 +966,7 @@ func TestUpdateClearsAFieldWithAnEmptyValue(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 	store.Seed(entry.Entry{
 		ID: 7, Slug: "original", Title: "Original", Summary: "to be removed",
+		World:  contentworld.Journal,
 		Status: entry.StatusDraft, Visibility: entry.VisibilityPublic,
 	})
 
@@ -835,6 +990,7 @@ func TestUpdateRecomputesTheWordCount(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 	store.Seed(entry.Entry{
 		ID: 7, Slug: "original", Title: "Original", ContentMD: "one", WordCount: 1,
+		World:  contentworld.Journal,
 		Status: entry.StatusDraft, Visibility: entry.VisibilityPublic,
 	})
 
@@ -854,7 +1010,7 @@ func TestUpdateRecomputesTheWordCount(t *testing.T) {
 // route that does publish.
 func TestUpdateRefusesStatus(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
-	store.Seed(entry.Entry{ID: 7, Slug: "original", Title: "Original", Status: entry.StatusDraft})
+	store.Seed(entry.Entry{ID: 7, World: contentworld.Journal, Slug: "original", Title: "Original", Status: entry.StatusDraft})
 
 	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7", `{"revision":1,"status":"published"}`)
 
@@ -873,7 +1029,7 @@ func TestUpdateRefusesStatus(t *testing.T) {
 // 200 here would look like a save that worked.
 func TestUpdateRefusesAnEmptyBody(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
-	store.Seed(entry.Entry{ID: 7, Slug: "original", Title: "Original"})
+	store.Seed(entry.Entry{ID: 7, World: contentworld.Journal, Slug: "original", Title: "Original"})
 
 	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7", `{"revision":1}`)
 
@@ -889,7 +1045,7 @@ func TestUpdateRefusesAnEmptyBody(t *testing.T) {
 // check. Without it every save that resubmitted the unchanged slug would be a 409.
 func TestUpdateKeepingItsOwnSlugIsNotAConflict(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
-	store.Seed(entry.Entry{ID: 7, Slug: "keeps-this", Title: "Original"})
+	store.Seed(entry.Entry{ID: 7, World: contentworld.Journal, Slug: "keeps-this", Title: "Original"})
 
 	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7",
 		`{"revision":1,"slug":"keeps-this","title":"Renamed"}`)
@@ -906,8 +1062,8 @@ func TestUpdateKeepingItsOwnSlugIsNotAConflict(t *testing.T) {
 // 409 rather than 400: the request is well formed and another slug would work.
 func TestUpdateRefusesASlugAnotherEntryHolds(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
-	store.Seed(entry.Entry{ID: 7, Slug: "mine", Title: "Mine"})
-	store.Seed(entry.Entry{ID: 8, Slug: "taken", Title: "Theirs"})
+	store.Seed(entry.Entry{ID: 7, World: contentworld.Journal, Slug: "mine", Title: "Mine"})
+	store.Seed(entry.Entry{ID: 8, World: contentworld.Journal, Slug: "taken", Title: "Theirs"})
 
 	rec := do(t, handler, http.MethodPatch, "/api/v1/entries/7", `{"revision":1,"slug":"taken"}`)
 
@@ -974,6 +1130,7 @@ func TestDeleteRemovesTheEntryFromEveryRead(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 	store.Seed(entry.Entry{
 		ID: 7, Slug: "goes-away", Title: "Goes away",
+		World:  contentworld.Journal,
 		Status: entry.StatusPublished, Visibility: entry.VisibilityPublic,
 	})
 
@@ -998,7 +1155,7 @@ func TestDeleteRemovesTheEntryFromEveryRead(t *testing.T) {
 	})
 
 	t.Run("gone from the public read", func(t *testing.T) {
-		if rec := do(t, handler, http.MethodGet, "/api/v1/entries/goes-away", ""); rec.Code != http.StatusNotFound {
+		if rec := do(t, handler, http.MethodGet, "/api/v1/journals/goes-away", ""); rec.Code != http.StatusNotFound {
 			t.Errorf("status = %d, want 404", rec.Code)
 		}
 	})
@@ -1018,6 +1175,7 @@ func TestPublishStampsPublishedAtOnceOnly(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 	store.Seed(entry.Entry{
 		ID: 7, Slug: "to-publish", Title: "To publish", ContentMD: "body",
+		World:  contentworld.Journal,
 		Status: entry.StatusDraft, Visibility: entry.VisibilityPublic,
 	})
 
@@ -1036,7 +1194,7 @@ func TestPublishStampsPublishedAtOnceOnly(t *testing.T) {
 
 	// A draft is invisible; publishing is what puts it on the site.
 	t.Run("now on the public read", func(t *testing.T) {
-		if rec := do(t, handler, http.MethodGet, "/api/v1/entries/to-publish", ""); rec.Code != http.StatusOK {
+		if rec := do(t, handler, http.MethodGet, "/api/v1/journals/to-publish", ""); rec.Code != http.StatusOK {
 			t.Errorf("status = %d, want 200", rec.Code)
 		}
 	})
@@ -1057,6 +1215,7 @@ func TestPublishIncomplete(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 	store.Seed(entry.Entry{
 		ID: 7, Revision: 1, Slug: "incomplete", Title: "Incomplete",
+		World:  contentworld.Journal,
 		Status: entry.StatusDraft, Visibility: entry.VisibilityPublic,
 	})
 
@@ -1079,6 +1238,7 @@ func TestPublishStaleRevision(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 	store.Seed(entry.Entry{
 		ID: 7, Revision: 2, Slug: "complete", Title: "Complete", ContentMD: "body",
+		World:  contentworld.Journal,
 		Status: entry.StatusDraft, Visibility: entry.VisibilityPublic,
 	})
 
@@ -1099,6 +1259,7 @@ func TestUnpublishLeavesPublishedAt(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 	store.Seed(entry.Entry{
 		ID: 7, Slug: "to-withdraw", Title: "To withdraw",
+		World:  contentworld.Journal,
 		Status: entry.StatusPublished, Visibility: entry.VisibilityPublic,
 		PublishedAt: fixedTime.Add(-72 * time.Hour),
 	})
@@ -1117,7 +1278,7 @@ func TestUnpublishLeavesPublishedAt(t *testing.T) {
 	}
 
 	t.Run("off the public read at once", func(t *testing.T) {
-		if rec := do(t, handler, http.MethodGet, "/api/v1/entries/to-withdraw", ""); rec.Code != http.StatusNotFound {
+		if rec := do(t, handler, http.MethodGet, "/api/v1/journals/to-withdraw", ""); rec.Code != http.StatusNotFound {
 			t.Errorf("status = %d, want 404", rec.Code)
 		}
 	})
@@ -1130,6 +1291,7 @@ func TestArchiveIsNeitherADraftNorADelete(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
 	store.Seed(entry.Entry{
 		ID: 7, Slug: "to-retire", Title: "To retire",
+		World:  contentworld.Journal,
 		Status: entry.StatusPublished, Visibility: entry.VisibilityPublic,
 		PublishedAt: fixedTime.Add(-72 * time.Hour),
 	})
@@ -1148,7 +1310,7 @@ func TestArchiveIsNeitherADraftNorADelete(t *testing.T) {
 	}
 
 	t.Run("off the public read", func(t *testing.T) {
-		if rec := do(t, handler, http.MethodGet, "/api/v1/entries/to-retire", ""); rec.Code != http.StatusNotFound {
+		if rec := do(t, handler, http.MethodGet, "/api/v1/journals/to-retire", ""); rec.Code != http.StatusNotFound {
 			t.Errorf("status = %d, want 404", rec.Code)
 		}
 	})
@@ -1176,6 +1338,7 @@ func TestAdminReadsSeeEveryStatus(t *testing.T) {
 	for i, tc := range visibilityCases {
 		store.Seed(entry.Entry{
 			ID: int64(i + 1), Slug: tc.slug, Title: tc.name,
+			World:  contentworld.Journal,
 			Status: tc.status, Visibility: tc.vis,
 			ContentMD: "the body of " + tc.slug,
 			// Distinct edit times, so the ordering assertion below is not comparing
@@ -1235,6 +1398,7 @@ func TestAdminListFiltersByStatus(t *testing.T) {
 	for i, tc := range visibilityCases {
 		store.Seed(entry.Entry{
 			ID: int64(i + 1), Slug: tc.slug, Title: tc.name,
+			World:  contentworld.Journal,
 			Status: tc.status, Visibility: tc.vis,
 		})
 	}
@@ -1263,10 +1427,10 @@ func TestAdminListFiltersByStatus(t *testing.T) {
 
 func TestAdminListFiltersByCategorySlug(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
-	store.Seed(entry.Entry{ID: 1, Slug: "travel", Title: "Travel", CategoryID: testCategoryID, Status: entry.StatusDraft})
-	store.Seed(entry.Entry{ID: 2, Slug: "work", Title: "Work", CategoryID: 8, Status: entry.StatusDraft})
+	store.Seed(entry.Entry{ID: 1, World: contentworld.Journal, Slug: "travel", Title: "Travel", CategoryID: testCategoryID, Status: entry.StatusDraft})
+	store.Seed(entry.Entry{ID: 2, World: contentworld.Journal, Slug: "work", Title: "Work", CategoryID: 8, Status: entry.StatusDraft})
 
-	rec := do(t, handler, http.MethodGet, "/api/v1/admin/entries?category="+testCategorySlug, "")
+	rec := do(t, handler, http.MethodGet, "/api/v1/admin/entries?world=journal&category="+testCategorySlug, "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
 	}
@@ -1278,8 +1442,8 @@ func TestAdminListFiltersByCategorySlug(t *testing.T) {
 
 func TestAdminDashboardReturnsMetrics(t *testing.T) {
 	handler, store := newTestServer(t, testAuthorID)
-	store.Seed(entry.Entry{ID: 1, Slug: "published", Status: entry.StatusPublished, WordCount: 120})
-	store.Seed(entry.Entry{ID: 2, Slug: "draft", Status: entry.StatusDraft, WordCount: 35})
+	store.Seed(entry.Entry{ID: 1, World: contentworld.Journal, Slug: "published", Status: entry.StatusPublished, WordCount: 120})
+	store.Seed(entry.Entry{ID: 2, World: contentworld.Journal, Slug: "draft", Status: entry.StatusDraft, WordCount: 35})
 
 	rec := do(t, handler, http.MethodGet, "/api/v1/admin/dashboard", "")
 	if rec.Code != http.StatusOK {
@@ -1302,9 +1466,9 @@ func TestAdminDashboardReturnsMetrics(t *testing.T) {
 // have the owner believe their content was lost.
 func TestStoreFailureIsNotReportedAsNotFound(t *testing.T) {
 	store := entrytest.NewStore()
-	// FailGetLinkBySlug, not FailGetBySlug: the public detail read goes through the
+	// FailGetLinkByWorldSlug, not FailGetByWorldSlug: the public detail read goes through the
 	// link read now, which is what makes an unlisted entry reachable by URL.
-	store.FailGetLinkBySlug = errors.New("connection refused")
+	store.FailGetLinkByWorldSlug = errors.New("connection refused")
 
 	engine := gin.New()
 	entryhttp.NewHandler(
@@ -1314,7 +1478,7 @@ func TestStoreFailureIsNotReportedAsNotFound(t *testing.T) {
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 	).Register(engine.Group("/api/v1"), func(c *gin.Context) { c.Next() })
 
-	rec := do(t, engine, http.MethodGet, "/api/v1/entries/any-slug", "")
+	rec := do(t, engine, http.MethodGet, "/api/v1/journals/any-slug", "")
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500\nbody: %s", rec.Code, rec.Body.String())
@@ -1344,6 +1508,7 @@ func TestAdminListSearchesByQuery(t *testing.T) {
 	} {
 		store.Seed(entry.Entry{
 			ID: int64(i + 1), Slug: tc.slug, Title: tc.title, Summary: tc.summary,
+			World:  contentworld.Journal,
 			Status: tc.status, Visibility: entry.VisibilityPublic,
 			UpdatedAt: fixedTime.Add(-time.Duration(i) * time.Minute),
 		})

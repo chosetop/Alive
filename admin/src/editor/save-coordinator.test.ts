@@ -491,6 +491,8 @@ function entryAtRevision(revision: number): EntryDetail {
   return {
     id: 42,
     revision,
+    world: 'journal',
+    kind: '',
     type: 'journal',
     title: '标题',
     slug: 'title',

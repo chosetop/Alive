@@ -7,19 +7,24 @@
 package entryhttp
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/p30huiwei/alive/backend/internal/apperr"
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/entry"
 	"github.com/p30huiwei/alive/backend/internal/httpx"
+	"github.com/p30huiwei/alive/backend/internal/media"
 )
 
-// CategoryResolver turns a category slug into its id.
+// CategoryResolver turns a category slug into its id within one world.
 //
 // Declared here, at the consumer, rather than importing the taxonomy adapter or
 // the taxonomy service. The two adapters then have no dependency between them, and
@@ -34,7 +39,7 @@ import (
 // Nil is allowed: the ?category= filter is then refused rather than silently
 // ignored, because ignoring it would answer a filtered request with the unfiltered
 // list.
-type CategoryResolver func(c *gin.Context, slug string) (int64, error)
+type CategoryResolver func(c *gin.Context, world contentworld.Key, slug string) (int64, error)
 
 // AuthorResolver reports which account a request is acting as.
 //
@@ -45,13 +50,25 @@ type CategoryResolver func(c *gin.Context, slug string) (int64, error)
 // The second result is false when the request carries no identity.
 type AuthorResolver func(c *gin.Context) (int64, bool)
 
+type TagReplacer interface {
+	ReplaceTags(context.Context, int64, int64, int64, []int64) (int64, error)
+}
+type PrimaryVideoResolver interface {
+	GetPrimaryVideoByEntry(context.Context, int64) (media.Media, error)
+}
+
 // Handler serves the entry endpoints.
 type Handler struct {
-	service  *entry.Service
-	author   AuthorResolver
-	category CategoryResolver
-	logger   *slog.Logger
+	service      *entry.Service
+	author       AuthorResolver
+	category     CategoryResolver
+	logger       *slog.Logger
+	tags         TagReplacer
+	primaryVideo PrimaryVideoResolver
 }
+
+func (h *Handler) SetTagReplacer(replacer TagReplacer)                   { h.tags = replacer }
+func (h *Handler) SetPrimaryVideoResolver(resolver PrimaryVideoResolver) { h.primaryVideo = resolver }
 
 // NewHandler wires a handler to the service.
 //
@@ -102,11 +119,59 @@ func (h *Handler) Register(api *gin.RouterGroup, requireAuth gin.HandlerFunc) {
 	// two routes above write only 'published' and 'draft'.
 	group.POST("/:id/archive", requireAuth, h.Archive)
 
-	// Registered after the id routes purely for readability; gin's tree resolves
-	// static and parameter segments regardless of order. These two are last because
-	// they are the only public ones.
-	group.GET("", h.List)
-	group.GET("/:slug", h.GetBySlug)
+	api.GET("/journals", h.List)
+	api.GET("/journals/:slug", h.GetBySlug)
+	api.GET("/sayings", h.ListSayings)
+	api.GET("/sayings/:shortID", h.GetSayingByShortID)
+	api.GET("/videos", h.ListVideos)
+	api.GET("/videos/:slug", h.GetVideoBySlug)
+}
+
+func (h *Handler) ListVideos(c *gin.Context) {
+	page, err := intQuery(c, "page")
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+	pageSize, err := intQuery(c, "page_size")
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+	categoryID, err := h.resolveCategory(c, contentworld.Video)
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+	result, err := h.service.ListPublic(c.Request.Context(), contentworld.Video, categoryID, page, pageSize)
+	if err != nil {
+		httpx.Error(c, apperr.From(err))
+		return
+	}
+	items := make([]entrySummary, 0, len(result.Entries))
+	for _, item := range result.Entries {
+		items = append(items, newEntrySummary(item))
+	}
+	httpx.List(c, items, paginationMeta{Page: result.Page, PageSize: result.PageSize, Total: result.Total})
+}
+
+func (h *Handler) GetVideoBySlug(c *gin.Context) {
+	found, err := h.service.GetLinkByWorldSlug(c.Request.Context(), contentworld.Video, c.Param("slug"))
+	if err != nil {
+		if errors.Is(err, entry.ErrEntryNotFound) {
+			httpx.Error(c, apperr.NotFound("no video matches this slug"))
+			return
+		}
+		httpx.Error(c, apperr.From(err))
+		return
+	}
+	detail := newPublicEntryDetail(found)
+	if h.primaryVideo != nil {
+		if video, resolveErr := h.primaryVideo.GetPrimaryVideoByEntry(c.Request.Context(), found.ID); resolveErr == nil && video.URL != "" {
+			detail.PrimaryMedia = &primaryMedia{URL: video.URL, MIMEType: video.MimeType}
+		}
+	}
+	httpx.OK(c, detail)
 }
 
 // RegisterAdmin adds the authenticated read routes under the admin group.
@@ -128,6 +193,7 @@ func (h *Handler) RegisterAdmin(api *gin.RouterGroup, requireAuth gin.HandlerFun
 
 	group.GET("", h.ListAdmin)
 	group.GET("/:id", h.GetByID)
+	group.PUT("/:id/tags", h.ReplaceTags)
 	api.GET("/admin/dashboard", requireAuth, h.Dashboard)
 }
 
@@ -170,6 +236,7 @@ func (h *Handler) Create(c *gin.Context) {
 
 // List returns one page of published public entries, newest happening first.
 func (h *Handler) List(c *gin.Context) {
+	world := contentworld.Journal
 	page, err := intQuery(c, "page")
 	if err != nil {
 		httpx.Error(c, err)
@@ -185,7 +252,7 @@ func (h *Handler) List(c *gin.Context) {
 	// empty page. Those are different answers: one says the URL is wrong, the other
 	// says the category is empty, and a reader cannot act on the first if it is
 	// reported as the second.
-	categoryID, err := h.resolveCategory(c)
+	categoryID, err := h.resolveCategory(c, world)
 	if err != nil {
 		httpx.Error(c, err)
 		return
@@ -195,7 +262,7 @@ func (h *Handler) List(c *gin.Context) {
 	// past the end is an empty page, because the collection shrinks when an entry
 	// is unpublished and a client that asked for page 4 a moment ago did nothing
 	// wrong.
-	result, err := h.service.ListPublic(c.Request.Context(), categoryID, page, pageSize)
+	result, err := h.service.ListPublic(c.Request.Context(), world, categoryID, page, pageSize)
 	if err != nil {
 		h.logger.ErrorContext(c.Request.Context(), "list entries failed",
 			slog.String("error", err.Error()),
@@ -220,7 +287,7 @@ func (h *Handler) List(c *gin.Context) {
 
 // GetBySlug returns one published entry that is public or unlisted, body included.
 //
-// GetLinkBySlug rather than GetPublicBySlug, which is what makes an unlisted entry
+// GetLinkByWorldSlug rather than GetPublicByWorldSlug, which is what makes an unlisted entry
 // reachable: a link to one opens, while the list this sits beside still excludes it.
 //
 // Unlisted is not access control. A slug is human readable and therefore guessable,
@@ -228,7 +295,8 @@ func (h *Handler) List(c *gin.Context) {
 // nobody who has the URL. An entry a stranger must not read is private, and private
 // is absent from both reads.
 func (h *Handler) GetBySlug(c *gin.Context) {
-	found, err := h.service.GetLinkBySlug(c.Request.Context(), c.Param("slug"))
+	world := contentworld.Journal
+	found, err := h.service.GetLinkByWorldSlug(c.Request.Context(), world, c.Param("slug"))
 	if err != nil {
 		if errors.Is(err, entry.ErrEntryNotFound) {
 			// 404 for a draft, a private entry, a deleted one and a slug that never
@@ -247,6 +315,78 @@ func (h *Handler) GetBySlug(c *gin.Context) {
 	}
 
 	httpx.OK(c, newPublicEntryDetail(found))
+}
+
+// ListSayings returns one page of published public sayings, newest first.
+func (h *Handler) ListSayings(c *gin.Context) {
+	world := contentworld.Saying
+	page, err := intQuery(c, "page")
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+	pageSize, err := intQuery(c, "page_size")
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	categoryID, err := h.resolveCategory(c, world)
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	result, err := h.service.ListPublic(c.Request.Context(), world, categoryID, page, pageSize)
+	if err != nil {
+		h.logger.ErrorContext(c.Request.Context(), "list sayings failed",
+			slog.String("error", err.Error()),
+		)
+		httpx.Error(c, apperr.From(err))
+		return
+	}
+
+	httpx.List(c, newSayingListItems(result.Entries), paginationMeta{
+		Page:     result.Page,
+		PageSize: result.PageSize,
+		Total:    result.Total,
+	})
+}
+
+// GetSayingByShortID returns one public or unlisted saying by its permanent id.
+func (h *Handler) GetSayingByShortID(c *gin.Context) {
+	world := contentworld.Saying
+	shortID := c.Param("shortID")
+	if err := validateSayingShortID(shortID); err != nil {
+		httpx.Error(c, invalidField("short_id",
+			"must be 10 characters from 23456789abcdefghjkmnpqrstuvwxyz", err))
+		return
+	}
+
+	found, err := h.service.GetLinkByWorldSlug(c.Request.Context(), world, shortID)
+	if err != nil {
+		if errors.Is(err, entry.ErrEntryNotFound) {
+			httpx.Error(c, apperr.NotFound("no entry matches this short id"))
+			return
+		}
+
+		h.logger.ErrorContext(c.Request.Context(), "read saying failed",
+			slog.String("error", err.Error()),
+		)
+		httpx.Error(c, apperr.From(err))
+		return
+	}
+
+	previous, next, err := h.sayingNeighbors(c.Request.Context(), shortID)
+	if err != nil {
+		h.logger.ErrorContext(c.Request.Context(), "read saying neighbors failed",
+			slog.String("error", err.Error()),
+		)
+		httpx.Error(c, apperr.From(err))
+		return
+	}
+
+	httpx.OK(c, newSayingDetail(found, previous, next))
 }
 
 // Update applies a partial change to one entry.
@@ -273,6 +413,11 @@ func (h *Handler) Update(c *gin.Context) {
 	if req.Status != nil {
 		httpx.Error(c, apperr.InvalidInput("status cannot be changed here").
 			WithField("status", "use POST /entries/:id/publish or /unpublish"))
+		return
+	}
+	if req.World != nil {
+		httpx.Error(c, apperr.InvalidInput("world cannot be changed after creation").
+			WithField("world", "cannot be changed after creation"))
 		return
 	}
 
@@ -415,17 +560,36 @@ func (h *Handler) ListAdmin(c *gin.Context) {
 		status = &s
 	}
 
+	var world *contentworld.Key
+	if raw := c.Query("world"); raw != "" {
+		w := contentworld.Key(raw)
+		if _, ok := contentworld.Lookup(w); !ok {
+			httpx.Error(c, apperr.InvalidInput("this request needs a valid world filter").
+				WithField("world", "must be one of journal, saying, video"))
+			return
+		}
+		world = &w
+	}
+
 	// The directory search. Absent, blank, and whitespace-only all mean "no text
 	// filter"; the service trims and drops it, so the zero value needs no special
 	// case here. Not validated: unlike status, a query that matches nothing is a
 	// real answer rather than a malformed request.
-	categoryID, err := h.resolveCategory(c)
-	if err != nil {
-		httpx.Error(c, err)
-		return
+	var categoryID int64
+	if c.Query("category") != "" {
+		if world == nil {
+			httpx.Error(c, apperr.InvalidInput("this request needs a world filter").
+				WithField("world", "must be one of journal, saying, video"))
+			return
+		}
+		categoryID, err = h.resolveCategory(c, *world)
+		if err != nil {
+			httpx.Error(c, err)
+			return
+		}
 	}
 
-	result, err := h.service.ListAdmin(c.Request.Context(), categoryID, status, c.Query("q"), page, pageSize)
+	result, err := h.service.ListAdmin(c.Request.Context(), world, categoryID, status, c.Query("q"), page, pageSize)
 	if err != nil {
 		if errors.Is(err, entry.ErrInvalidStatus) {
 			httpx.Error(c, invalidField("status",
@@ -551,9 +715,14 @@ func (h *Handler) writeEntryError(c *gin.Context, op string, err error) {
 		httpx.Error(c, invalidField("content_md",
 			"must be present before publishing", err))
 
-	case errors.Is(err, entry.ErrInvalidType):
-		httpx.Error(c, invalidField("type",
-			"must be one of journal, book, movie, music, travel, photo", err))
+	case errors.Is(err, entry.ErrInvalidWorld):
+		httpx.Error(c, invalidField("world",
+			"must be one of journal, saying, video", err))
+
+	case errors.Is(err, entry.ErrWorldNotOpen):
+		httpx.Error(c, apperr.Conflict("this world is not open for public publishing").
+			WithField("world", "open the world before publishing public content").
+			WithCause(err))
 
 	case errors.Is(err, entry.ErrInvalidStatus):
 		httpx.Error(c, invalidField("status",
@@ -589,7 +758,7 @@ func (h *Handler) writeEntryError(c *gin.Context, op string, err error) {
 // An empty ?category= is treated as absent rather than refused. A frontend that
 // builds its query string from form state sends category= for "all categories", and
 // answering 400 there would break the one case the filter exists to serve.
-func (h *Handler) resolveCategory(c *gin.Context) (int64, error) {
+func (h *Handler) resolveCategory(c *gin.Context, world contentworld.Key) (int64, error) {
 	slug := c.Query("category")
 	if slug == "" {
 		return 0, nil
@@ -603,12 +772,100 @@ func (h *Handler) resolveCategory(c *gin.Context) (int64, error) {
 		return 0, apperr.Internal("this filter is not available")
 	}
 
-	id, err := h.category(c, slug)
+	id, err := h.category(c, world, slug)
 	if err != nil {
 		return 0, err
 	}
 
 	return id, nil
+}
+
+// sayingNeighbors loads the published rows for the saying world and finds the
+// rows that neighbour one short id in the site's published ordering.
+func (h *Handler) sayingNeighbors(ctx context.Context, shortID string) (*entry.Entry, *entry.Entry, error) {
+	status := entry.StatusPublished
+	var (
+		all []entry.Entry
+	)
+
+	for page := 1; ; page++ {
+		world := contentworld.Saying
+		result, err := h.service.ListAdmin(ctx, &world, 0, &status, "", page, entry.MaxPageSize)
+		if err != nil {
+			return nil, nil, err
+		}
+		all = append(all, result.Entries...)
+		if len(result.Entries) == 0 || len(all) >= int(result.Total) {
+			break
+		}
+	}
+
+	sortEntriesForSaying(all)
+
+	for i := range all {
+		if all[i].Slug != shortID {
+			continue
+		}
+		var previous, next *entry.Entry
+		if i > 0 {
+			previous = &all[i-1]
+		}
+		if i+1 < len(all) {
+			next = &all[i+1]
+		}
+		return previous, next, nil
+	}
+
+	return nil, nil, nil
+}
+
+func sortEntriesForSaying(entries []entry.Entry) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		return sayingOrderLess(entries[i], entries[j])
+	})
+}
+
+func sayingOrderLess(a, b entry.Entry) bool {
+	ak := sayingOrderKeyFor(a)
+	bk := sayingOrderKeyFor(b)
+	if !ak.when.Equal(bk.when) {
+		return ak.when.After(bk.when)
+	}
+	return ak.id > bk.id
+}
+
+type sayingOrderKey struct {
+	when time.Time
+	id   int64
+}
+
+func sayingOrderKeyFor(e entry.Entry) sayingOrderKey {
+	when := e.PublishedAt
+	if when.IsZero() {
+		when = e.CreatedAt
+	}
+	return sayingOrderKey{when: when, id: e.ID}
+}
+
+const sayingShortIDLength = 10
+
+var sayingShortIDAlphabet = map[rune]struct{}{
+	'2': {}, '3': {}, '4': {}, '5': {}, '6': {}, '7': {}, '8': {}, '9': {},
+	'a': {}, 'b': {}, 'c': {}, 'd': {}, 'e': {}, 'f': {}, 'g': {}, 'h': {},
+	'j': {}, 'k': {}, 'm': {}, 'n': {}, 'p': {}, 'q': {}, 'r': {}, 's': {},
+	't': {}, 'u': {}, 'v': {}, 'w': {}, 'x': {}, 'y': {}, 'z': {},
+}
+
+func validateSayingShortID(shortID string) error {
+	if len(shortID) != sayingShortIDLength {
+		return errors.New("invalid short id length")
+	}
+	for _, r := range shortID {
+		if _, ok := sayingShortIDAlphabet[r]; !ok {
+			return errors.New("invalid short id alphabet")
+		}
+	}
+	return nil
 }
 
 // entryID reads the :id path parameter.

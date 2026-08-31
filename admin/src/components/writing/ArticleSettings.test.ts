@@ -7,6 +7,8 @@ import ArticleSettings from './ArticleSettings.vue'
 const entry: EntryDetail = {
   id: 42,
   revision: 3,
+  world: 'journal',
+  kind: '',
   type: 'journal',
   title: '一篇文章',
   slug: 'an-article',
@@ -28,6 +30,7 @@ const entry: EntryDetail = {
 const categories: Category[] = [
   {
     id: 7,
+    world: 'journal',
     name: '随笔',
     slug: 'notes',
     description: '',
@@ -66,6 +69,14 @@ describe('ArticleSettings', () => {
     await wrapper.get('#e-slug').setValue('new-slug')
 
     expect(wrapper.emitted('update')).toEqual([[{ slug: 'new-slug' }]])
+  })
+
+  it('does not render the legacy type control', () => {
+    const wrapper = mount(ArticleSettings, {
+      props: { open: true, entry, categories },
+    })
+
+    expect(wrapper.find('#e-type').exists()).toBe(false)
   })
 
   it('requires explicit confirmation before emitting delete', async () => {

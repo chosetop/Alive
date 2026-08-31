@@ -3,15 +3,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import Categories from './Categories.vue'
 
-const api = vi.hoisted(() => ({ listCategoriesAdmin: vi.fn() }))
+const api = vi.hoisted(() => ({
+  listCategoriesAdmin: vi.fn(),
+  createCategory: vi.fn(),
+  updateCategory: vi.fn(),
+  deleteCategory: vi.fn(),
+}))
 
 vi.mock('../api', () => ({
   buildCategoryPatch: vi.fn(),
   categoriesApi: {
     listCategoriesAdmin: api.listCategoriesAdmin,
-    createCategory: vi.fn(),
-    updateCategory: vi.fn(),
-    deleteCategory: vi.fn(),
+    createCategory: api.createCategory,
+    updateCategory: api.updateCategory,
+    deleteCategory: api.deleteCategory,
   },
   isEmptyPatch: vi.fn(),
   toUserMessage: () => '出现了意外错误，请稍后重试。',
@@ -27,6 +32,16 @@ function mountCategories(): VueWrapper {
 
 beforeEach(() => {
   api.listCategoriesAdmin.mockResolvedValue([])
+  api.createCategory.mockResolvedValue({
+    id: 1,
+    world: 'journal',
+    name: '旅行',
+    slug: 'travel',
+    description: '',
+    sort_order: 0,
+    created_at: '2026-08-29T00:00:00Z',
+    updated_at: '2026-08-29T00:00:00Z',
+  })
 })
 
 afterEach(() => {
@@ -46,5 +61,26 @@ describe('Categories', () => {
 
     await wrapper.get('[data-primary-action]').trigger('click')
     expect(wrapper.find('form').exists()).toBe(true)
+  })
+
+  it('loads and creates categories inside the selected world', async () => {
+    const wrapper = mountCategories()
+    await flushPromises()
+
+    expect(api.listCategoriesAdmin).toHaveBeenCalledWith({ world: 'journal' })
+
+    await wrapper.get('[data-primary-action]').trigger('click')
+    await wrapper.get('#cat-name').setValue('旅行')
+    await wrapper.get('#cat-slug').setValue('travel')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(api.createCategory).toHaveBeenCalledWith({
+      world: 'journal',
+      name: '旅行',
+      slug: 'travel',
+      description: '',
+      sort_order: 0,
+    })
   })
 })

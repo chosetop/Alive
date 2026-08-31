@@ -211,3 +211,27 @@ func CleanupCategories(t *testing.T, pool *postgres.Pool) {
 	clean()
 	t.Cleanup(clean)
 }
+
+// CleanupTags deletes the tags this process created, and their join rows,
+// before and after the calling test.
+func CleanupTags(t *testing.T, pool *postgres.Pool) {
+	t.Helper()
+
+	clean := func() {
+		pattern := Prefix() + "%"
+		if _, err := pool.Exec(context.Background(),
+			`DELETE FROM entry_tags
+			 USING tags
+			 WHERE entry_tags.tag_id = tags.id
+			   AND tags.slug LIKE $1`, pattern); err != nil {
+			t.Fatalf("clean up test tag joins: %v", err)
+		}
+		if _, err := pool.Exec(context.Background(),
+			"DELETE FROM tags WHERE slug LIKE $1", pattern); err != nil {
+			t.Fatalf("clean up test tags: %v", err)
+		}
+	}
+
+	clean()
+	t.Cleanup(clean)
+}

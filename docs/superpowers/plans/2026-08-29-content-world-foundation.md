@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Supported world keys are exactly `journal`, `saying`, and `video` in this iteration.
-- `world` is chosen at Entry and Category creation and cannot be patched later.
+- `world` is chosen at Entry and Category creation and cannot be patched later. Migration `000010` keeps a database default only as a temporary compatibility seam for the pre-cutover sqlc writers; Task 3 removes that seam after all callers send `world` explicitly.
 - `kind` is present in storage and responses but is `""` for the first three worlds.
 - Category slugs are unique within one world, not globally.
 - Entry slugs are unique within one world, not globally.
@@ -127,26 +127,19 @@ type Definition struct {
 The up migration performs this exact sequence:
 
 ```sql
-ALTER TABLE entries DROP CONSTRAINT entries_type_check;
-ALTER TABLE entries RENAME COLUMN type TO world;
-UPDATE entries SET world = 'journal';
-ALTER TABLE entries ALTER COLUMN world DROP DEFAULT;
+UPDATE entries SET type = 'journal';
+ALTER TABLE entries ADD COLUMN world VARCHAR(32) NOT NULL DEFAULT 'journal';
 ALTER TABLE entries ADD CONSTRAINT entries_world_check
   CHECK (world IN ('journal', 'saying', 'video'));
 ALTER TABLE entries ADD COLUMN kind VARCHAR(32) NOT NULL DEFAULT '';
 
 DROP INDEX uk_entries_slug;
 CREATE UNIQUE INDEX uk_entries_world_slug
-  ON entries (world, slug) WHERE deleted_at IS NULL;
-DROP INDEX idx_entries_type;
+  ON entries (world, slug) WHERE deleted_at IS NULL AND slug <> '';
 CREATE INDEX idx_entries_world
   ON entries (world, published_at DESC)
   WHERE deleted_at IS NULL AND status = 'published';
 
-DROP INDEX idx_entries_public_feed;
-DROP INDEX idx_entries_timeline;
-DROP INDEX idx_entries_public_timeline;
-DROP INDEX idx_entries_category;
 CREATE INDEX idx_entries_world_public_timeline
   ON entries (world, COALESCE(happened_at, published_at) DESC, id DESC)
   WHERE deleted_at IS NULL
@@ -159,7 +152,6 @@ CREATE INDEX idx_entries_world_category_public
     AND visibility = 'public';
 
 ALTER TABLE categories ADD COLUMN world VARCHAR(32) NOT NULL DEFAULT 'journal';
-ALTER TABLE categories ALTER COLUMN world DROP DEFAULT;
 ALTER TABLE categories ADD CONSTRAINT categories_world_check
   CHECK (world IN ('journal', 'saying', 'video'));
 ALTER TABLE categories DROP CONSTRAINT categories_slug_key;
@@ -174,7 +166,7 @@ ALTER TABLE entries ADD CONSTRAINT entries_category_world_fkey
 
 Add a shared `prevent_world_change()` trigger function and attach it to `entries` and `categories`. Create `site_worlds` with `world`, `status`, `nav_label`, `sort_order`, `default_view`, `revision`, and `updated_at`. Seed Journal as `open`, Saying and Video as `unopened`; use labels `日志`, `片语`, `影像`, sort orders 10/20/30, and Saying default view `stream`.
 
-The down migration first aborts with a clear exception when duplicate live Entry slugs or duplicate Category slugs exist across worlds. Otherwise it drops the immutable triggers and world-aware indexes/foreign key, sets every row to `journal`, renames `world` back to `type`, restores the original checks, global slug uniqueness, original public indexes, and original Category foreign key, then drops `kind`, Category `world`, `site_worlds`, and the trigger function. It does not reconstruct discarded test type semantics.
+The down migration first aborts with a clear exception when duplicate live Entry slugs or duplicate Category slugs exist across worlds. Otherwise it drops the immutable triggers and world-aware indexes/foreign key, drops `world` and `kind` while retaining the legacy `type` column and indexes, restores global slug uniqueness and the original Category foreign key, then drops Category `world`, `site_worlds`, and the trigger function. It does not reconstruct discarded test type semantics.
 
 - [ ] **Step 5: Apply the migration to the test database and rerun tests**
 

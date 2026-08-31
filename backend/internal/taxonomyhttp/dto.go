@@ -3,6 +3,7 @@ package taxonomyhttp
 import (
 	"time"
 
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/taxonomy"
 )
 
@@ -16,6 +17,7 @@ import (
 // column widths they match, and a binding tag would answer with gin's own message
 // instead of this API's error envelope.
 type createCategoryRequest struct {
+	World       string `json:"world"`
 	Name        string `json:"name" binding:"required"`
 	Slug        string `json:"slug" binding:"required"`
 	Description string `json:"description"`
@@ -35,6 +37,7 @@ type createCategoryRequest struct {
 // request by accident.
 func (r createCategoryRequest) toInput() taxonomy.CreateInput {
 	in := taxonomy.CreateInput{
+		World:       contentworld.Key(r.World),
 		Name:        r.Name,
 		Slug:        r.Slug,
 		Description: r.Description,
@@ -87,6 +90,7 @@ func (r updateCategoryRequest) toInput() taxonomy.UpdateInput {
 // No created_at or updated_at: a reader has no use for when a menu label was
 // edited.
 type publicCategory struct {
+	World       string `json:"world"`
 	ID          int64  `json:"id"`
 	Name        string `json:"name"`
 	Slug        string `json:"slug"`
@@ -105,6 +109,7 @@ type publicCategory struct {
 // was last changed; the count belongs to the public list, and producing it here
 // would mean the extra join on every write response.
 type adminCategory struct {
+	World       string    `json:"world"`
 	ID          int64     `json:"id"`
 	Name        string    `json:"name"`
 	Slug        string    `json:"slug"`
@@ -117,6 +122,7 @@ type adminCategory struct {
 // newPublicCategory converts a counted domain category into the public shape.
 func newPublicCategory(c taxonomy.CategoryWithCount) publicCategory {
 	return publicCategory{
+		World:       string(c.World),
 		ID:          c.ID,
 		Name:        c.Name,
 		Slug:        c.Slug,
@@ -141,6 +147,7 @@ func newPublicCategories(categories []taxonomy.CategoryWithCount) []publicCatego
 // newAdminCategory converts a domain category into the admin shape.
 func newAdminCategory(c taxonomy.Category) adminCategory {
 	return adminCategory{
+		World:       string(c.World),
 		ID:          c.ID,
 		Name:        c.Name,
 		Slug:        c.Slug,

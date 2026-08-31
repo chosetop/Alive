@@ -8,6 +8,7 @@
  * list carries `entry_count` and no timestamps, the admin reads carry
  * timestamps and no count.
  */
+import type { WorldKey } from './world'
 
 /**
  * `GET /categories` item. Public, unpaginated — so the response has no `meta`
@@ -15,6 +16,7 @@
  */
 export type Category = {
   id: number
+  world: WorldKey
   name: string
   slug: string
   description: string
@@ -37,6 +39,7 @@ export type Category = {
  */
 export type AdminCategory = {
   id: number
+  world: WorldKey
   name: string
   slug: string
   description: string
@@ -47,6 +50,7 @@ export type AdminCategory = {
 
 /** Body for `POST /categories`. */
 export type CategoryCreateBody = {
+  world: WorldKey
   /** Required, max 64 characters. */
   name: string
   /** Required, max 64, same format as an entry slug. */
@@ -68,4 +72,8 @@ export type CategoryUpdateBody = {
   description?: string | null
   /** `0` moves the category to the front. */
   sort_order?: number | null
+}
+
+export type CategoryListQuery = {
+  world?: WorldKey
 }

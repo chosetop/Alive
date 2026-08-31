@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/entry"
 )
 
@@ -112,24 +113,21 @@ func TestValidateForPublish(t *testing.T) {
 	}
 }
 
-func TestTypeValid(t *testing.T) {
-	valid := []entry.Type{
-		entry.TypeJournal, entry.TypeBook, entry.TypeMovie,
-		entry.TypeMusic, entry.TypeTravel, entry.TypePhoto,
-	}
-	for _, kind := range valid {
-		if !kind.Valid() {
-			t.Errorf("%q.Valid() = false, want true", kind)
+func TestValidateWorld(t *testing.T) {
+	valid := []string{"journal", "saying", "video"}
+	for _, world := range valid {
+		if err := entry.ValidateWorld(contentworld.Key(world)); err != nil {
+			t.Errorf("ValidateWorld(%q) = %v, want nil", world, err)
 		}
 	}
 
 	// The typo case, and the reason the CHECK constraint exists. Without one, this
 	// value inserts and the row then disappears from every query filtering by
-	// type, reporting no error anywhere.
-	invalid := []entry.Type{"", "joural", "Journal", "JOURNAL", "note", "journal "}
-	for _, kind := range invalid {
-		if kind.Valid() {
-			t.Errorf("%q.Valid() = true, want false", kind)
+	// world, reporting no error anywhere.
+	invalid := []string{"", "joural", "Journal", "JOURNAL", "note", "journal "}
+	for _, world := range invalid {
+		if err := entry.ValidateWorld(contentworld.Key(world)); !errors.Is(err, entry.ErrInvalidWorld) {
+			t.Errorf("ValidateWorld(%q) = %v, want ErrInvalidWorld", world, err)
 		}
 	}
 }

@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS entry_media;
+DROP TABLE IF EXISTS media;

@@ -470,3 +470,14 @@ func TestRateLimitValidatedWhileDisabled(t *testing.T) {
 		t.Errorf("error = %q, want it to name RATE_LIMIT_LOGIN_ATTEMPTS", err)
 	}
 }
+
+func TestLoadOSSConfigDefaultsDisabled(t *testing.T) {
+	setMinimalEnv(t)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.OSS.Enabled {
+		t.Fatal("OSS should be disabled by default")
+	}
+}

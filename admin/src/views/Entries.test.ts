@@ -21,7 +21,15 @@ function page() {
 async function render(query: Record<string, string> = {}) {
   api.entriesApi.listEntriesAdmin.mockResolvedValue(page())
   api.categoriesApi.listCategoriesAdmin.mockResolvedValue([
-    { id: 1, name: '旅行', slug: 'travel', description: '', created_at: '', updated_at: '' },
+    {
+      id: 1,
+      world: 'journal',
+      name: '旅行',
+      slug: 'travel',
+      description: '',
+      created_at: '',
+      updated_at: '',
+    },
   ])
 
   const router = createRouter({
@@ -49,6 +57,7 @@ describe('Entries filters', () => {
 
     expect(api.entriesApi.listEntriesAdmin).toHaveBeenLastCalledWith({
       page: 1,
+      world: 'journal',
       status: 'draft',
       q: '山中',
       category: 'travel',
@@ -65,6 +74,7 @@ describe('Entries filters', () => {
     expect(router.currentRoute.value.query).toMatchObject({ q: 'mountain', category: 'travel' })
     expect(api.entriesApi.listEntriesAdmin).toHaveBeenLastCalledWith({
       page: 1,
+      world: 'journal',
       q: 'mountain',
       category: 'travel',
     })

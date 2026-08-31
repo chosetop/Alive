@@ -9,98 +9,19 @@ import (
 )
 
 type Querier interface {
-	// Retire one entry: off the site, but not deleted.
-	//
-	// Distinct from both of the above. A draft is unfinished and an archived entry is
-	// finished and withdrawn, and the difference matters in the admin list: drafts are
-	// a work queue, archived entries are not. Distinct from a soft delete too, since
-	// this one is still listed and still editable.
-	//
-	// published_at survives here for the same reason it survives unpublishing.
 	ArchiveEntry(ctx context.Context, arg ArchiveEntryParams) (ArchiveEntryRow, error)
-	// Whether any category already holds this slug.
-	//
-	// Asked before an insert so the caller gets a conflict naming the field rather
-	// than a constraint violation. It does not replace categories_slug_key: two
-	// concurrent creates can both read false, and the constraint is what settles it.
-	CategorySlugExists(ctx context.Context, slug string) (bool, error)
-	// Whether a category other than this one holds the slug.
-	//
-	// The exclusion is what lets an edit form submit a category's own slug back
-	// unchanged without being refused as a conflict with itself.
+	CategorySlugExists(ctx context.Context, arg CategorySlugExistsParams) (bool, error)
 	CategorySlugExistsExcluding(ctx context.Context, arg CategorySlugExistsExcludingParams) (bool, error)
-	// The total for the admin list, under the same filter.
-	//
-	// The search predicate is duplicated from ListAdminEntries rather than shared,
-	// because sqlc generates from literal SQL and has no include mechanism. The two
-	// must stay identical: a total computed under a different filter than the page
-	// would report a pagination control the page cannot honour.
 	CountAdminEntries(ctx context.Context, arg CountAdminEntriesParams) (int64, error)
-	// The total for the pagination block, under the same filter as the list.
-	//
-	// A separate statement rather than a window function on the list query. With
-	// count(*) OVER () the total arrives only when at least one row does, so the
-	// last page plus one would report a total of zero.
-	//
-	// No join here: the count needs no category name, only the same filter.
-	CountPublicEntries(ctx context.Context, categoryID *int64) (int64, error)
-	// Queries for categories.
-	//
-	// Unlike entries, there is no visibility rule to enforce here and no soft
-	// delete to filter on. A category is a name, a slug and a sort order; it carries
-	// no content of its own, so the reads are the same set of rows for everyone and
-	// a delete is a delete.
-	//
-	// What is not the same for everyone is the count attached to each category. The
-	// public list counts only entries a public reader could reach, so the number
-	// beside a category matches what opening it will show. ListCategoriesWithCounts
-	// carries that filter; ListCategories has no count at all.
-	// Insert one category.
-	//
-	// sort_order arrives from the caller rather than defaulting here, so that the
-	// domain owns what "unspecified" means.
-	CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error)
-	// Queries for entries.
-	//
-	// The visibility rule is in SQL, not in Go. Every public read carries
-	// "deleted_at IS NULL AND status = 'published' AND visibility = 'public'" as
-	// part of the statement, so a caller cannot reach an unpublished row by
-	// forgetting a filter. The three conditions also match the partial index
-	// idx_entries_public_feed exactly, so the planner uses it for these queries.
-	//
-	// The admin queries, which do see drafts, are separate statements rather than a
-	// flag on these. A boolean that switches the visibility filter on and off is one
-	// wrong argument away from publishing every draft. They are named Admin* and
-	// appear at the end of this file; no query serves both audiences.
-	//
-	// GetLinkEntryBySlug is the one public read that accepts 'unlisted' as well as
-	// 'public'. It is a separate statement for the reason above, not a parameter on
-	// GetPublicEntryBySlug: an entry reachable by link must stay out of the lists,
-	// and a shared query with a flag would make that depend on the argument.
-	//
-	// The reads LEFT JOIN categories to carry the category name and slug, so one
-	// response needs one query. The writes cannot: RETURNING sees only the row being
-	// written, so they hand back category_id alone and a caller that needs the name
-	// reads the entry back. That asymmetry is in the generated types too, which is
-	// why the domain has two conversion paths.
-	// Insert one entry.
-	//
-	// published_at is a parameter rather than a now() call, because "first
-	// published" is a decision the service makes: it is set when an entry is created
-	// as published, and never rewritten afterwards. Passing now() here would move it
-	// on every write.
-	//
-	// word_count likewise arrives computed. Counting words in SQL would tie the
-	// definition of a word to Postgres' text functions, and the domain owns that
-	// rule.
-	// category_id is nullable and NULL means uncategorised, which is a normal state
-	// rather than missing data. The foreign key refuses an id no category holds, so a
-	// typo here is a constraint violation the repository translates, not a row
-	// pointing at nothing.
+	CountPublicEntries(ctx context.Context, arg CountPublicEntriesParams) (int64, error)
+	CountPublicEntriesByTag(ctx context.Context, slug string) (int64, error)
+	CreateCategory(ctx context.Context, arg CreateCategoryParams) (CreateCategoryRow, error)
 	CreateEntry(ctx context.Context, arg CreateEntryParams) (CreateEntryRow, error)
+	CreateMedia(ctx context.Context, arg CreateMediaParams) (CreateMediaRow, error)
 	// token_hash is supplied by the caller, already hashed. The plaintext token
 	// never reaches the database.
 	CreateSession(ctx context.Context, arg CreateSessionParams) (CreateSessionRow, error)
+	CreateTag(ctx context.Context, arg CreateTagParams) (Tag, error)
 	// Queries for the owner account and its sessions.
 	//
 	// These return database facts and nothing more. Whether a session has expired
@@ -110,19 +31,7 @@ type Querier interface {
 	// password_hash is written but not returned. A hash has no use above the
 	// repository except during a login comparison, which GetUserByUsername serves.
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
-	// Deleted rows are not part of the active writing library. Word counts are
-	// persisted on entries, so this aggregate does not load Markdown bodies.
 	DashboardMetrics(ctx context.Context) (DashboardMetricsRow, error)
-	// Delete one category, returning its id so the caller can tell a hit from a miss.
-	//
-	// A physical delete, unlike an entry. A category is a name and a slug, so
-	// recreating one costs nothing, and a deleted_at here would add a condition to
-	// every read of a table that has no other reason to need one.
-	//
-	// Entries referencing it are not touched by this statement. The foreign key is
-	// ON DELETE SET NULL, so they become uncategorised. That makes this delete
-	// succeed quietly even when the category is in use: nothing afterwards records
-	// which category those rows pointed at.
 	DeleteCategory(ctx context.Context, id int64) (int64, error)
 	// Periodic cleanup, driven by a CLI command. Returns the number of rows removed
 	// so the command can report it.
@@ -134,54 +43,17 @@ type Querier interface {
 	// session in one round trip instead of a lookup followed by a delete by id.
 	// DeleteSession stays for callers that already hold the id.
 	DeleteSessionByHash(ctx context.Context, tokenHash []byte) error
-	// Whether a live entry already holds this slug.
-	//
-	// Used to answer a conflict before attempting the insert, so the caller gets a
-	// clear 409 rather than a constraint violation. It does not replace the unique
-	// index: two concurrent creates can both see false here, and the index is what
-	// settles it. The repository translates that violation to the same conflict.
-	//
-	// Matches uk_entries_slug: deleted rows do not hold their slug.
-	EntrySlugExists(ctx context.Context, slug string) (bool, error)
-	// Whether a live entry other than this one holds the slug.
-	//
-	// The exclusion is what makes a no-op slug change work: submitting an entry's own
-	// slug back must not be refused as a conflict with itself.
+	DeleteTag(ctx context.Context, id int64) (int64, error)
+	EntryOwnedByAuthor(ctx context.Context, arg EntryOwnedByAuthorParams) (bool, error)
+	EntrySlugExists(ctx context.Context, arg EntrySlugExistsParams) (bool, error)
 	EntrySlugExistsExcluding(ctx context.Context, arg EntrySlugExistsExcludingParams) (bool, error)
-	// The admin detail read, addressed by id rather than slug.
-	//
-	// By id because a draft is edited before its slug is settled, and because a slug
-	// may change during editing while the thing being edited does not.
 	GetAdminEntryByID(ctx context.Context, id int64) (GetAdminEntryByIDRow, error)
-	// Read one category by id. Used after a write and by the admin edit form.
-	GetCategoryByID(ctx context.Context, id int64) (Category, error)
-	// Read one category by slug.
-	//
-	// This is how a category page resolves its URL segment, and how a list request
-	// filtered by category turns ?category=travel into an id. Resolving first means
-	// an unknown slug is a 404 rather than an empty list, which are different
-	// answers: one says the URL is wrong, the other says the category is empty.
-	GetCategoryBySlug(ctx context.Context, slug string) (Category, error)
-	// The detail read behind a shared link: public or unlisted.
-	//
-	// This is what GET /entries/:slug uses, so that an unlisted entry can be opened
-	// by anyone holding its URL while staying out of every list, count and sitemap.
-	// The lists above are unchanged and still say visibility = 'public'.
-	//
-	// Note what unlisted does and does not buy. A slug is human readable and
-	// guessable, so this is "not advertised", not access control: it keeps an entry
-	// off the front page and out of search engines, and that is all. An entry that
-	// must not be readable by a stranger is 'private', which no public statement
-	// accepts.
-	GetLinkEntryBySlug(ctx context.Context, slug string) (GetLinkEntryBySlugRow, error)
-	// The strictly public detail read, addressed by slug.
-	//
-	// Returns content_md: the detail endpoints are the ones that need the body.
-	//
-	// Kept alongside GetLinkEntryBySlug rather than replaced by it. This one is what
-	// a sitemap generator or a feed builder should ask, because those enumerate what
-	// is meant to be found, and an unlisted entry is not.
-	GetPublicEntryBySlug(ctx context.Context, slug string) (GetPublicEntryBySlugRow, error)
+	GetCategoryByID(ctx context.Context, id int64) (GetCategoryByIDRow, error)
+	GetCategoryBySlug(ctx context.Context, arg GetCategoryBySlugParams) (GetCategoryBySlugRow, error)
+	GetLinkEntryBySlug(ctx context.Context, arg GetLinkEntryBySlugParams) (GetLinkEntryBySlugRow, error)
+	GetMediaByID(ctx context.Context, id int64) (GetMediaByIDRow, error)
+	GetPrimaryVideoByEntry(ctx context.Context, entryID int64) (GetPrimaryVideoByEntryRow, error)
+	GetPublicEntryBySlug(ctx context.Context, arg GetPublicEntryBySlugParams) (GetPublicEntryBySlugRow, error)
 	// The authentication lookup. One round trip returns the session and its user,
 	// because this runs on every protected request and a second query would double
 	// that cost.
@@ -191,6 +63,8 @@ type Querier interface {
 	// an unknown token and a known but expired one.
 	GetSessionByHash(ctx context.Context, tokenHash []byte) (GetSessionByHashRow, error)
 	GetSiteSettings(ctx context.Context) (GetSiteSettingsRow, error)
+	GetTagByID(ctx context.Context, id int64) (Tag, error)
+	GetTagBySlug(ctx context.Context, slug string) (Tag, error)
 	GetUserByID(ctx context.Context, id int64) (GetUserByIDRow, error)
 	// The login lookup, and the only query that exposes password_hash.
 	//
@@ -198,140 +72,31 @@ type Querier interface {
 	// case-insensitive. Wrapping the column in lower() would also make the query
 	// unable to use the unique index.
 	GetUserByUsername(ctx context.Context, username string) (User, error)
-	// The admin reads.
-	//
-	// Separate statements from the public ones above, not the same queries with the
-	// filter parameterised. These see every status and every visibility, and the only
-	// thing keeping a draft off the front page is that the public queries cannot
-	// express this. A shared query with a boolean would put that guarantee in the
-	// hands of whoever passes the argument.
-	//
-	// Soft deleted rows are excluded here too. There is no endpoint that shows them
-	// and no restore, so a deleted entry is out of reach from every route.
-	// The admin list: every status, ordered by last edit.
-	//
-	// updated_at DESC, not happened_at: this list is a work queue, so what was
-	// touched last belongs at the top. The public list answers a different question
-	// and sorts differently. Matches idx_entries_admin.
-	//
-	// The status filter is a nullable argument: NULL means every status. That is not
-	// the same hazard as parameterising the visibility filter, because no draft is
-	// being kept from anyone here. Every row this statement can return is already
-	// visible to the caller.
-	//
-	// No content_md, for the same reason the public list omits it.
+	GetWorld(ctx context.Context, world string) (SiteWorld, error)
 	ListAdminEntries(ctx context.Context, arg ListAdminEntriesParams) ([]ListAdminEntriesRow, error)
-	// Every category, in display order.
-	//
-	// sort_order first, then id as the tie-break so that categories sharing a
-	// sort_order have a stable order rather than whatever the planner returns. No
-	// pagination: this is a navigation structure, and one that needs paging is one
-	// nobody can navigate.
-	ListCategories(ctx context.Context) ([]Category, error)
-	// Every category with the number of entries a public reader can see in it.
-	//
-	// LEFT JOIN, not an inner one, so a category with nothing in it still appears
-	// with a count of zero. Whether to show an empty category is a display decision,
-	// and hiding it here would leave the frontend unable to make it.
-	//
-	// The count conditions sit in the JOIN clause rather than in a WHERE. In a WHERE
-	// they would discard the whole category row when no entry matched, turning the
-	// LEFT JOIN back into an inner one.
-	//
-	// Same three conditions as the public entry reads: not deleted, published,
-	// public. An unlisted entry is deliberately not counted, since it is absent from
-	// the list the count describes.
-	ListCategoriesWithCounts(ctx context.Context) ([]ListCategoriesWithCountsRow, error)
-	// The public list, newest happening first.
-	//
-	// No content_md in the column list. A list of twenty entries carrying twenty
-	// Markdown bodies is a response tens of times larger than the page needs, and
-	// nothing on a list view renders the body.
-	//
-	// Ordered by happened_at, not created_at: the timeline records when things
-	// happened, not when they were typed. Entries with no happened_at fall back to
-	// published_at rather than sorting to the end, because that is the date the
-	// reader is shown for them, and a list sorted by one date while labelled with
-	// another puts a 2026 entry below the 2024 block.
-	//
-	// COALESCE cannot be NULL on these rows: entries_published_at_check requires
-	// published_at on every published entry, which is why there is no NULLS LAST.
-	// id DESC breaks ties, which is what stops a row appearing on two pages when
-	// several share a date.
-	//
-	// idx_entries_public_timeline (000005) indexes this exact expression. Changing
-	// the ORDER BY without changing that index turns the list into a full sort.
-	// The category filter is a nullable id: NULL means every category. The caller
-	// passes an id, not a slug, because the service resolves the slug first — that
-	// way an unknown category is a 404 saying the URL is wrong, rather than an empty
-	// list saying the category has nothing in it.
-	//
-	// One thing this shape cannot express is "only the uncategorised ones", since
-	// that would need a third state alongside "this category" and "all". No endpoint
-	// asks for it: uncategorised is not a navigable page, having neither a name nor a
-	// slug. Adding it later means a separate statement, not another argument.
+	ListAllWorlds(ctx context.Context) ([]SiteWorld, error)
+	ListCategories(ctx context.Context, world string) ([]ListCategoriesRow, error)
+	ListCategoriesWithCounts(ctx context.Context, world string) ([]ListCategoriesWithCountsRow, error)
+	ListMediaForEntry(ctx context.Context, entryID int64) ([]ListMediaForEntryRow, error)
+	ListOpenWorlds(ctx context.Context) ([]SiteWorld, error)
 	ListPublicEntries(ctx context.Context, arg ListPublicEntriesParams) ([]ListPublicEntriesRow, error)
-	// Publish one entry, stamping published_at only if it has never been set.
-	//
-	// Both changes are in one statement because entries_published_at_check refuses a
-	// row with status 'published' and a NULL published_at. Two statements would leave
-	// the row invalid between them, and the constraint would reject the first.
-	//
-	// COALESCE is the whole rule: an entry published, withdrawn and published again
-	// keeps its original date, so fixing a typo years later does not move a
-	// three-year-old entry to the top of the feed.
+	ListPublicEntriesByTag(ctx context.Context, arg ListPublicEntriesByTagParams) ([]ListPublicEntriesByTagRow, error)
+	ListTags(ctx context.Context, arg ListTagsParams) ([]ListTagsRow, error)
+	ListTagsByEntryID(ctx context.Context, entryID int64) ([]Tag, error)
 	PublishEntry(ctx context.Context, arg PublishEntryParams) (PublishEntryRow, error)
-	// Mark one entry deleted, returning its id so the caller can tell a hit from a
-	// miss.
-	//
-	// deleted_at IS NULL in the WHERE makes this report no row on a second call
-	// rather than moving the timestamp. The first delete is the one that happened,
-	// and a repeat must not rewrite when.
-	//
-	// The row stays. Content is not regenerable, and every read filters on
-	// deleted_at, so the row is unreachable without being gone. Note that the slug
-	// is released: uk_entries_slug is partial on deleted_at IS NULL, so a later
-	// entry may take it.
 	SoftDeleteEntry(ctx context.Context, arg SoftDeleteEntryParams) (int64, error)
+	TagNameExists(ctx context.Context, name string) (bool, error)
+	TagSlugExists(ctx context.Context, slug string) (bool, error)
 	// Sliding renewal. The service calls this only when a session is past the
 	// halfway point of its lifetime, so an active session is not one write per
 	// request.
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
-	// Return one entry to draft.
-	//
-	// published_at is deliberately untouched: it records the first publication, which
-	// is a fact that withdrawing does not undo. Clearing it would make a
-	// re-publication look like a first one and move the entry to the top of the feed.
 	UnpublishEntry(ctx context.Context, arg UnpublishEntryParams) (UnpublishEntryRow, error)
-	// Apply a partial update to one category.
-	//
-	// The same paired-flag shape as UpdateEntry, and for the same reason: description
-	// is nullable, so "clear the description" and "leave it alone" both arrive as
-	// NULL under COALESCE and would become one statement.
-	//
-	// updated_at is left to the categories_set_updated_at trigger.
-	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (Category, error)
-	// Apply a partial update to one live entry.
-	//
-	// Every field is a pair: a boolean saying whether the caller asked for this
-	// field, and the value to write. The boolean is not redundant with a NULL value,
-	// and this is why COALESCE is not used here: summary, cover_url and happened_at
-	// are nullable, so "clear this field" and "leave this field alone" both arrive as
-	// NULL under COALESCE and become the same statement. With the flag, clearing a
-	// summary is set_summary = true and summary = NULL, which is distinct from
-	// set_summary = false.
-	//
-	// status is absent on purpose. Publishing carries the published_at rule, and
-	// PublishEntry below owns it; allowing status here would put that rule in two
-	// places, and the CHECK constraint would reject the write anyway once status
-	// became 'published' with a NULL published_at.
-	//
-	// word_count travels with content_md rather than being its own parameter: it is
-	// derived from the body, so accepting it separately would let the two disagree.
-	//
-	// updated_at is left to the entries_set_updated_at trigger from 000001.
+	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (UpdateCategoryRow, error)
 	UpdateEntry(ctx context.Context, arg UpdateEntryParams) (UpdateEntryRow, error)
 	UpdateSiteTheme(ctx context.Context, arg UpdateSiteThemeParams) (UpdateSiteThemeRow, error)
+	UpdateTag(ctx context.Context, arg UpdateTagParams) (Tag, error)
+	UpdateWorld(ctx context.Context, arg UpdateWorldParams) (SiteWorld, error)
 }
 
 var _ Querier = (*Queries)(nil)

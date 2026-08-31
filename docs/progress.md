@@ -1,6 +1,6 @@
 # Alive 施工进度
 
-最后更新：2026-08-27（后台 iOS 风格视觉重构设计规格已完成，待审阅）
+最后更新：2026-08-31（内容世界、片语、标签聚合、影像公开浏览与影像管理基础已落地）
 
 本文档记录已完成的内容、当前状态和待办项。设计依据见 `architecture.md`，认证方案见 `stage-auth-plan.md`。
 
@@ -31,6 +31,12 @@
 | 3B | `admin/` 内容管理（分类 + 文章列表 + Milkdown 编辑器） | 完成 |
 | 4A-0 | `frontend/` 工程初始化 + SSR 认证骨架 | 完成 |
 | 4A | `frontend/` 前台页面（列表 / 详情 / 分类）+ 设计系统 | 完成 |
+| 5A | 内容世界基础（world registry、生命周期、按世界隔离） | 完成 |
+| 5B | 管理端 Journal-first 新建与世界设置 | 完成 |
+| 5C | 公开端 Journal 路由与 API 切换 | 完成 |
+| 5D | mixed home、sitemap、片语/影像公共页面 | 完成（公开浏览基础） |
+| 5E | 跨世界标签聚合与编辑器标签选择 | 完成（公开聚合、CAS 替换） |
+| 5F | 媒体记录、直接上传与影像公开播放基础 | 完成（OSS 凭证、媒资登记、主视频关联与管理端控件） |
 
 **Stage 1（users + auth）与 Stage 2（Entry + Categories）的后端 API 均已完成**，共 19 个业务端点加 2 个探针。
 
@@ -151,11 +157,13 @@ GET /api/v1/categories →  500
 
 **接口契约见 `docs/api.md`**，那份是按当前实现逐条核对过的。`architecture.md` 写的是设计意图与理由，两份的路径已于 2026-08-25 统一为 `/api/v1/*`，但只有 `api.md` 对着运行中的服务核对过字段与状态码，冲突以它为准。
 
-前台还没有的东西：`sitemap.xml`、`feed.xml`、按类型的页面（书架、影单）、归档页。都不阻塞已有页面。
+前台仍未实现 `feed.xml` 与归档页；`sitemap.xml`、mixed home、片语页面和影像页面已落地。Journal 已切换到 `/journal` 与 `/journal/:slug`，影像使用 `/videos` 与 `/videos/:slug`。
+
+内容世界基础已完成：后端 migration 000010、`site_worlds` 生命周期接口、文章与分类的 world 隔离、管理端 Journal-first 创建，以及公开端 Journal API/路由切换。管理端发布拦截、目录 world filter、mixed home 与 sitemap 已补齐。
 
 后端还剩的三件事：session 绝对过期、Argon2id 参数、trusted proxy，各自在 3.3 到 3.5。**其中 trusted proxy 是部署前必须做的**，见 3.5。
 
-`tags`、`media`、`archives`、`site` 四组接口尚未开始，见 3.8。`tags` 会落在 `internal/taxonomy` 里 —— 那个包从一开始就是为「categories 今天、tags 以后」写的。
+标签与媒体基础接口已实现；剩余是 feed、归档等后续能力。标签仍落在 `internal/taxonomy`，媒体由 `internal/media` 与 `internal/storage` 承担。影像上传链路包含 OSS 预签名、直传、登记、条目媒资列表与 primary video 的 revision-CAS 关联；管理端按世界显示日志图片上传或影像视频上传控件，片语不提供媒资入口。
 
 ### 3.3 待办：绝对过期
 
@@ -344,7 +352,7 @@ frontend/                 Nuxt 3.21.11 + TS（4A 完成，见第 13 节）
 
 `taxonomy` 没有 Clock，`entry` 有。这不是遗漏：分类的 `created_at` 来自列默认值、`updated_at` 来自触发器，这个包里没有任何东西需要盖时间戳。文章的 `published_at` 才需要。
 
-`internal/media` 与 `internal/storage` **尚未创建**，连空目录都没有。
+`internal/media` 与 `internal/storage` 已创建并接入 OSS 适配、媒资登记、条目媒资列表和 primary video 关联。
 
 `admin/src/components/` 是空目录：3A 没有任何一处需要复用的片段，为「架构完整」先摆几个组件进去只会造出还没有第二个调用点的抽象。
 

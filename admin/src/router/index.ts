@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { resolveAdminWorld } from '../content-worlds/registry'
 import AdminLayout from '../layouts/AdminLayout.vue'
 import WritingLayout from '../layouts/WritingLayout.vue'
 import { useAuthStore } from '../stores/auth'
@@ -52,6 +53,11 @@ export const routes: RouteRecordRaw[] = [
         name: 'categories',
         component: () => import('../views/Categories.vue'),
       },
+      {
+        path: 'worlds',
+        name: 'worlds',
+        component: () => import('../views/Worlds.vue'),
+      },
     ],
   },
   {
@@ -82,7 +88,29 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'new',
         name: 'entry-new',
+        component: () => import('../views/NewEntry.vue'),
+      },
+      {
+        path: 'new/saying',
+        name: 'saying-editor-new',
+        component: () => import('../views/SayingEditor.vue'),
+      },
+      {
+        path: 'new/video',
+        name: 'video-editor-new',
         component: () => import('../views/EntryEditor.vue'),
+        props: { world: 'video' },
+      },
+      {
+        path: 'new/:world',
+        name: 'entry-new-world',
+        component: () => import('../views/EntryEditor.vue'),
+        props: (route) => ({ world: String(route.params.world) }),
+        beforeEnter: (to) => {
+          const world = resolveAdminWorld(String(to.params.world))
+          if (world === null || world.editorRouteName === null) return { name: 'not-found' }
+          return true
+        },
       },
       {
         path: 'blank',

@@ -2,8 +2,10 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 
 import { fromFormDateTime, toFormDateTime } from '../../api'
-import type { Category, EntryDetail, EntryPatchFields, EntryType, EntryVisibility } from '../../types/api'
+import type { Category, EntryDetail, EntryPatchFields, EntryVisibility } from '../../types/api'
 import { UiButton, UiIcon, UiIconButton } from '../ui'
+import MediaUpload from './MediaUpload.vue'
+import VideoUpload from './VideoUpload.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -18,20 +20,12 @@ const props = withDefaults(
 const emit = defineEmits<{
   'update:open': [boolean]
   update: [EntryPatchFields]
+  revision: [number]
   delete: []
 }>()
 
 const confirmingDelete = ref(false)
 const returnFocus = shallowRef<HTMLElement | null>(null)
-
-const TYPES: ReadonlyArray<{ value: EntryType; label: string }> = [
-  { value: 'journal', label: '日志' },
-  { value: 'book', label: '书' },
-  { value: 'movie', label: '影' },
-  { value: 'music', label: '乐' },
-  { value: 'travel', label: '行' },
-  { value: 'photo', label: '影像' },
-]
 
 const VISIBILITIES: ReadonlyArray<{ value: EntryVisibility; label: string }> = [
   { value: 'public', label: '公开' },
@@ -88,12 +82,6 @@ function confirmDelete(): void {
 
       <label class="field" for="e-slug">slug</label>
       <input id="e-slug" :value="entry.slug" :disabled="disabled" @input="update({ slug: ($event.target as HTMLInputElement).value })" />
-
-      <label class="field" for="e-type">类型</label>
-      <select id="e-type" :value="entry.type" :disabled="disabled" @change="update({ type: ($event.target as HTMLSelectElement).value as EntryType })">
-        <option v-for="type in TYPES" :key="type.value" :value="type.value">{{ type.label }}</option>
-      </select>
-
       <label class="field" for="e-category">分类</label>
       <select id="e-category" :value="entry.category_id" :disabled="disabled" @change="update({ category_id: Number(($event.target as HTMLSelectElement).value) })">
         <option value="0">未分类</option>
@@ -105,6 +93,8 @@ function confirmDelete(): void {
 
       <label class="field" for="e-cover">封面 URL</label>
       <input id="e-cover" type="url" :value="entry.cover_url" placeholder="https://…" :disabled="disabled" @input="update({ cover_url: ($event.target as HTMLInputElement).value })" />
+      <MediaUpload v-if="entry.id > 0 && entry.world === 'journal'" :entry-id="entry.id" :disabled="disabled" @uploaded="update({ cover_url: $event.url })" />
+      <VideoUpload v-if="entry.id > 0 && entry.world === 'video'" :entry-id="entry.id" :revision="entry.revision" :disabled="disabled" @revision="emit('revision', $event)" />
 
       <label class="field" for="e-happened">发生时间</label>
       <input id="e-happened" type="datetime-local" :value="toFormDateTime(entry.happened_at)" :disabled="disabled" @input="update({ happened_at: ($event.target as HTMLInputElement).value === '' ? '0001-01-01T00:00:00Z' : fromFormDateTime(($event.target as HTMLInputElement).value) })" />

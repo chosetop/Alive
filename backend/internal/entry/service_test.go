@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/p30huiwei/alive/backend/internal/contentworld"
+	"github.com/p30huiwei/alive/backend/internal/contentworld/contentworldtest"
 	"github.com/p30huiwei/alive/backend/internal/entry"
 	"github.com/p30huiwei/alive/backend/internal/entry/entrytest"
 )
@@ -20,7 +22,12 @@ func newTestService(t *testing.T) (*entry.Service, *entrytest.Store) {
 	t.Helper()
 
 	store := entrytest.NewStore()
-	service := entry.NewService(store, entry.WithClock(func() time.Time { return fixedTime }))
+	worlds := contentworld.NewService(contentworldtest.NewStore())
+	service := entry.NewService(
+		store,
+		entry.WithClock(func() time.Time { return fixedTime }),
+		entry.WithWorldService(worlds),
+	)
 	return service, store
 }
 
@@ -29,6 +36,7 @@ func newTestService(t *testing.T) (*entry.Service, *entrytest.Store) {
 func validInput() entry.CreateInput {
 	return entry.CreateInput{
 		AuthorID:  1,
+		World:     contentworld.Journal,
 		Title:     "京都的春天",
 		Slug:      "kyoto-spring",
 		ContentMD: "在鸭川边坐了一整个下午。",
@@ -48,11 +56,17 @@ func TestCreateDefaults(t *testing.T) {
 	if created.Status != entry.StatusDraft {
 		t.Errorf("status = %q, want %q", created.Status, entry.StatusDraft)
 	}
-	if created.Type != entry.TypeJournal {
-		t.Errorf("type = %q, want %q", created.Type, entry.TypeJournal)
+	if created.World != contentworld.Journal {
+		t.Errorf("world = %q, want %q", created.World, contentworld.Journal)
+	}
+	if created.Kind != "" {
+		t.Errorf("kind = %q, want empty", created.Kind)
 	}
 	if created.Visibility != entry.VisibilityPublic {
 		t.Errorf("visibility = %q, want %q", created.Visibility, entry.VisibilityPublic)
+	}
+	if store.LastCreate.World != contentworld.Journal {
+		t.Errorf("stored world = %q, want %q", store.LastCreate.World, contentworld.Journal)
 	}
 	if string(store.LastCreate.Meta) != "{}" {
 		t.Errorf("meta = %q, want %q", store.LastCreate.Meta, "{}")
@@ -74,7 +88,7 @@ func TestCreateDefaults(t *testing.T) {
 func TestCreateIncompleteDraft(t *testing.T) {
 	service, store := newTestService(t)
 
-	created, err := service.Create(context.Background(), entry.CreateInput{AuthorID: 1})
+	created, err := service.Create(context.Background(), entry.CreateInput{AuthorID: 1, World: contentworld.Journal})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -93,7 +107,7 @@ func TestCreateAllowsMultipleEmptySlugDrafts(t *testing.T) {
 	service, _ := newTestService(t)
 
 	for i := 0; i < 2; i++ {
-		created, err := service.Create(context.Background(), entry.CreateInput{AuthorID: 1})
+		created, err := service.Create(context.Background(), entry.CreateInput{AuthorID: 1, World: contentworld.Journal})
 		if err != nil {
 			t.Fatalf("Create empty-slug draft %d: %v", i+1, err)
 		}
@@ -105,7 +119,7 @@ func TestCreateAllowsMultipleEmptySlugDrafts(t *testing.T) {
 
 func TestUpdateAcceptsIncompleteDraftFields(t *testing.T) {
 	service, store := newTestService(t)
-	store.Seed(entry.Entry{ID: 7, Revision: 1, Status: entry.StatusDraft})
+	store.Seed(entry.Entry{ID: 7, Revision: 1, World: contentworld.Journal, Status: entry.StatusDraft})
 
 	updated, err := service.Update(context.Background(), 7, entry.UpdateInput{
 		ExpectedRevision: 1,
@@ -125,8 +139,8 @@ func TestUpdateAcceptsIncompleteDraftFields(t *testing.T) {
 
 func TestUpdateClearsSlugBesideAnEmptySlugDraft(t *testing.T) {
 	service, store := newTestService(t)
-	store.Seed(entry.Entry{ID: 7, Revision: 1, Status: entry.StatusDraft})
-	store.Seed(entry.Entry{ID: 8, Revision: 1, Slug: "second", Status: entry.StatusDraft})
+	store.Seed(entry.Entry{ID: 7, Revision: 1, World: contentworld.Journal, Status: entry.StatusDraft})
+	store.Seed(entry.Entry{ID: 8, Revision: 1, World: contentworld.Journal, Slug: "second", Status: entry.StatusDraft})
 
 	updated, err := service.Update(context.Background(), 8, entry.UpdateInput{
 		ExpectedRevision: 1,
@@ -142,7 +156,13 @@ func TestUpdateClearsSlugBesideAnEmptySlugDraft(t *testing.T) {
 
 func TestPublishIncomplete(t *testing.T) {
 	service, store := newTestService(t)
-	store.Seed(entry.Entry{ID: 7, Revision: 1, Status: entry.StatusDraft, Visibility: entry.VisibilityPublic})
+	store.Seed(entry.Entry{
+		ID:         7,
+		Revision:   1,
+		World:      contentworld.Journal,
+		Status:     entry.StatusDraft,
+		Visibility: entry.VisibilityPublic,
+	})
 
 	_, err := service.Publish(context.Background(), 7, 1)
 	if !errors.Is(err, entry.ErrInvalidTitle) {
@@ -157,9 +177,64 @@ func TestPublishIncomplete(t *testing.T) {
 	}
 }
 
+func TestPublishRefusesPublicEntryInAnUnopenedWorld(t *testing.T) {
+	store := entrytest.NewStore()
+	worldStore := contentworldtest.NewStore()
+	service := entry.NewService(
+		store,
+		entry.WithClock(func() time.Time { return fixedTime }),
+		entry.WithWorldService(contentworld.NewService(worldStore)),
+	)
+
+	store.Seed(entry.Entry{
+		ID:         7,
+		Revision:   1,
+		World:      contentworld.Saying,
+		Title:      "一句",
+		Slug:       "one-line",
+		ContentMD:  "只是一句。",
+		Status:     entry.StatusDraft,
+		Visibility: entry.VisibilityPublic,
+	})
+
+	_, err := service.Publish(context.Background(), 7, 1)
+	if !errors.Is(err, entry.ErrWorldNotOpen) {
+		t.Fatalf("Publish = %v, want ErrWorldNotOpen", err)
+	}
+}
+
+func TestPublishAllowsUnlistedEntryInAnUnopenedWorld(t *testing.T) {
+	store := entrytest.NewStore()
+	worldStore := contentworldtest.NewStore()
+	service := entry.NewService(
+		store,
+		entry.WithClock(func() time.Time { return fixedTime }),
+		entry.WithWorldService(contentworld.NewService(worldStore)),
+	)
+
+	store.Seed(entry.Entry{
+		ID:         8,
+		Revision:   1,
+		World:      contentworld.Saying,
+		Title:      "一句",
+		Slug:       "private-line",
+		ContentMD:  "只是一句。",
+		Status:     entry.StatusDraft,
+		Visibility: entry.VisibilityUnlisted,
+	})
+
+	published, err := service.Publish(context.Background(), 8, 1)
+	if err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if published.Status != entry.StatusPublished {
+		t.Fatalf("status = %q, want published", published.Status)
+	}
+}
+
 func TestUpdateVersionConflict(t *testing.T) {
 	service, store := newTestService(t)
-	store.Seed(entry.Entry{ID: 7, Revision: 1, Status: entry.StatusDraft})
+	store.Seed(entry.Entry{ID: 7, Revision: 1, World: contentworld.Journal, Status: entry.StatusDraft})
 	store.FailUpdate = entry.ErrVersionConflict
 
 	_, err := service.Update(context.Background(), 7, entry.UpdateInput{
@@ -204,7 +279,8 @@ func TestCreateRejectsInvalidInput(t *testing.T) {
 		{"chinese slug", func(in *entry.CreateInput) { in.Slug = "京都" }, entry.ErrInvalidSlug},
 		{"slug with space", func(in *entry.CreateInput) { in.Slug = "kyoto spring" }, entry.ErrInvalidSlug},
 
-		{"unknown type", func(in *entry.CreateInput) { in.Type = "joural" }, entry.ErrInvalidType},
+		{"missing world", func(in *entry.CreateInput) { in.World = "" }, entry.ErrInvalidWorld},
+		{"unknown world", func(in *entry.CreateInput) { in.World = contentworld.Key("joural") }, entry.ErrInvalidWorld},
 		{"unknown visibility", func(in *entry.CreateInput) { in.Visibility = "hidden" }, entry.ErrInvalidVisibility},
 
 		{"meta is an array", func(in *entry.CreateInput) { in.Meta = entry.Meta(`[1]`) }, entry.ErrInvalidMeta},
@@ -279,7 +355,7 @@ func TestCreateSlugConflict(t *testing.T) {
 		fresh := entrytest.NewStore()
 		service := entry.NewService(fresh, entry.WithClock(func() time.Time { return fixedTime }))
 
-		fresh.Seed(entry.Entry{Slug: "raced-slug", Status: entry.StatusDraft})
+		fresh.Seed(entry.Entry{World: contentworld.Journal, Slug: "raced-slug", Status: entry.StatusDraft})
 
 		// The pre-check is made to miss, so the refusal comes from the write. This
 		// is the path that a seeded row alone would never reach.
@@ -312,7 +388,7 @@ func TestCreateRequiresAuthor(t *testing.T) {
 		t.Fatal("Create succeeded with no author, want an error")
 	}
 	for _, sentinel := range []error{
-		entry.ErrInvalidTitle, entry.ErrInvalidSlug, entry.ErrInvalidType,
+		entry.ErrInvalidTitle, entry.ErrInvalidSlug, entry.ErrInvalidWorld,
 	} {
 		if errors.Is(err, sentinel) {
 			t.Errorf("error is %v, which would be answered as a bad request", sentinel)
@@ -323,31 +399,35 @@ func TestCreateRequiresAuthor(t *testing.T) {
 	}
 }
 
-func TestGetPublicBySlug(t *testing.T) {
+func TestGetPublicByWorldSlug(t *testing.T) {
 	service, store := newTestService(t)
 	ctx := context.Background()
 
 	store.Seed(entry.Entry{
 		Slug: "published-public", Title: "visible",
+		World:  contentworld.Journal,
 		Status: entry.StatusPublished, Visibility: entry.VisibilityPublic,
 	})
 	store.Seed(entry.Entry{
 		Slug: "a-draft", Title: "hidden",
+		World:  contentworld.Journal,
 		Status: entry.StatusDraft, Visibility: entry.VisibilityPublic,
 	})
 	store.Seed(entry.Entry{
 		Slug: "private-one", Title: "hidden",
+		World:  contentworld.Journal,
 		Status: entry.StatusPublished, Visibility: entry.VisibilityPrivate,
 	})
 	store.Seed(entry.Entry{
 		Slug: "unlisted-one", Title: "hidden",
+		World:  contentworld.Journal,
 		Status: entry.StatusPublished, Visibility: entry.VisibilityUnlisted,
 	})
 
 	t.Run("returns a published public entry", func(t *testing.T) {
-		got, err := service.GetPublicBySlug(ctx, "published-public")
+		got, err := service.GetPublicByWorldSlug(ctx, contentworld.Journal, "published-public")
 		if err != nil {
-			t.Fatalf("GetPublicBySlug: %v", err)
+			t.Fatalf("GetPublicByWorldSlug: %v", err)
 		}
 		if got.Slug != "published-public" {
 			t.Errorf("slug = %q, want %q", got.Slug, "published-public")
@@ -359,9 +439,9 @@ func TestGetPublicBySlug(t *testing.T) {
 	hidden := []string{"a-draft", "private-one", "unlisted-one", "never-used"}
 	for _, slug := range hidden {
 		t.Run("not readable: "+slug, func(t *testing.T) {
-			_, err := service.GetPublicBySlug(ctx, slug)
+			_, err := service.GetPublicByWorldSlug(ctx, contentworld.Journal, slug)
 			if !errors.Is(err, entry.ErrEntryNotFound) {
-				t.Errorf("GetPublicBySlug(%q) = %v, want ErrEntryNotFound", slug, err)
+				t.Errorf("GetPublicByWorldSlug(%q) = %v, want ErrEntryNotFound", slug, err)
 			}
 		})
 	}
@@ -371,9 +451,9 @@ func TestGetPublicBySlug(t *testing.T) {
 		// that is absent. A distinct error would tell a client which of its guesses
 		// were even shaped like real slugs.
 		before := store.SlugExistsCalls
-		_, err := service.GetPublicBySlug(ctx, "Not A Slug")
+		_, err := service.GetPublicByWorldSlug(ctx, contentworld.Journal, "Not A Slug")
 		if !errors.Is(err, entry.ErrEntryNotFound) {
-			t.Errorf("GetPublicBySlug = %v, want ErrEntryNotFound", err)
+			t.Errorf("GetPublicByWorldSlug = %v, want ErrEntryNotFound", err)
 		}
 		if errors.Is(err, entry.ErrInvalidSlug) {
 			t.Error("error is ErrInvalidSlug; a reader must not be able to tell the two apart")
@@ -407,7 +487,7 @@ func TestListPublicPagination(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			service, _ := newTestService(t)
 
-			page, err := service.ListPublic(context.Background(), 0, tc.page, tc.pageSize)
+			page, err := service.ListPublic(context.Background(), contentworld.Journal, 0, tc.page, tc.pageSize)
 			if err != nil {
 				t.Fatalf("ListPublic: %v", err)
 			}
@@ -430,22 +510,26 @@ func TestListPublicFiltersAndOrders(t *testing.T) {
 
 	store.Seed(entry.Entry{
 		ID: 1, Slug: "older-public", Status: entry.StatusPublished,
+		World:      contentworld.Journal,
 		Visibility: entry.VisibilityPublic, HappenedAt: older,
 	})
 	store.Seed(entry.Entry{
 		ID: 2, Slug: "recent-public", Status: entry.StatusPublished,
+		World:      contentworld.Journal,
 		Visibility: entry.VisibilityPublic, HappenedAt: recent,
 	})
 	store.Seed(entry.Entry{
 		ID: 3, Slug: "a-draft", Status: entry.StatusDraft,
+		World:      contentworld.Journal,
 		Visibility: entry.VisibilityPublic, HappenedAt: recent,
 	})
 	store.Seed(entry.Entry{
 		ID: 4, Slug: "private-one", Status: entry.StatusPublished,
+		World:      contentworld.Journal,
 		Visibility: entry.VisibilityPrivate, HappenedAt: recent,
 	})
 
-	got, err := service.ListPublic(ctx, 0, 1, entry.DefaultPageSize)
+	got, err := service.ListPublic(ctx, contentworld.Journal, 0, 1, entry.DefaultPageSize)
 	if err != nil {
 		t.Fatalf("ListPublic: %v", err)
 	}
@@ -476,13 +560,14 @@ func TestListPublicPastTheEndIsEmptyNotAnError(t *testing.T) {
 
 	store.Seed(entry.Entry{
 		ID: 1, Slug: "only-one", Status: entry.StatusPublished,
+		World:      contentworld.Journal,
 		Visibility: entry.VisibilityPublic,
 	})
 
 	// The collection shrinks when an entry is unpublished, so a page that existed a
 	// moment ago legitimately may not now. A 400 would blame a client that did
 	// nothing wrong.
-	page, err := service.ListPublic(context.Background(), 0, 99, 20)
+	page, err := service.ListPublic(context.Background(), contentworld.Journal, 0, 99, 20)
 	if err != nil {
 		t.Fatalf("ListPublic: %v", err)
 	}
@@ -528,21 +613,21 @@ func TestStoreFailuresReachTheCaller(t *testing.T) {
 		store.FailListPublic = failure
 		service := entry.NewService(store)
 
-		if _, err := service.ListPublic(context.Background(), 0, 1, 20); !errors.Is(err, failure) {
+		if _, err := service.ListPublic(context.Background(), contentworld.Journal, 0, 1, 20); !errors.Is(err, failure) {
 			t.Errorf("ListPublic = %v, want the store's error", err)
 		}
 	})
 
-	t.Run("GetPublicBySlug", func(t *testing.T) {
+	t.Run("GetPublicByWorldSlug", func(t *testing.T) {
 		store := entrytest.NewStore()
-		store.FailGetBySlug = failure
+		store.FailGetByWorldSlug = failure
 		service := entry.NewService(store)
 
 		// An infrastructure failure must not be reported as ErrEntryNotFound: a 404
 		// would tell the owner their entry is gone when the database is unreachable.
-		_, err := service.GetPublicBySlug(context.Background(), "any-slug")
+		_, err := service.GetPublicByWorldSlug(context.Background(), contentworld.Journal, "any-slug")
 		if !errors.Is(err, failure) {
-			t.Errorf("GetPublicBySlug = %v, want the store's error", err)
+			t.Errorf("GetPublicByWorldSlug = %v, want the store's error", err)
 		}
 		if errors.Is(err, entry.ErrEntryNotFound) {
 			t.Error("a store failure was reported as ErrEntryNotFound")
@@ -562,6 +647,7 @@ func TestUpdateSubmitsOnlyNamedFields(t *testing.T) {
 	service, store := newTestService(t)
 	store.Seed(entry.Entry{
 		ID: 7, Slug: "before", Title: "Before", ContentMD: "the old body",
+		World:   contentworld.Journal,
 		Summary: "the old summary", Status: entry.StatusPublished,
 	})
 
@@ -581,7 +667,6 @@ func TestUpdateSubmitsOnlyNamedFields(t *testing.T) {
 		name string
 		set  bool
 	}{
-		{"type", got.SetType},
 		{"slug", got.SetSlug},
 		{"summary", got.SetSummary},
 		{"content_md", got.SetContentMD},
@@ -600,7 +685,7 @@ func TestUpdateSubmitsOnlyNamedFields(t *testing.T) {
 // COALESCE could not express, which is why the SQL uses a flag per field.
 func TestUpdateDistinguishesClearingFromLeavingAlone(t *testing.T) {
 	service, store := newTestService(t)
-	store.Seed(entry.Entry{ID: 7, Slug: "before", Title: "Before", Summary: "present"})
+	store.Seed(entry.Entry{ID: 7, World: contentworld.Journal, Slug: "before", Title: "Before", Summary: "present"})
 
 	t.Run("submitting an empty value clears", func(t *testing.T) {
 		updated, err := service.Update(context.Background(), 7, entry.UpdateInput{
@@ -619,7 +704,7 @@ func TestUpdateDistinguishesClearingFromLeavingAlone(t *testing.T) {
 	})
 
 	t.Run("omitting leaves it alone", func(t *testing.T) {
-		store.Seed(entry.Entry{ID: 8, Slug: "other", Title: "Other", Summary: "keep me"})
+		store.Seed(entry.Entry{ID: 8, World: contentworld.Journal, Slug: "other", Title: "Other", Summary: "keep me"})
 
 		updated, err := service.Update(context.Background(), 8, entry.UpdateInput{
 			ExpectedRevision: 1,
@@ -638,7 +723,7 @@ func TestUpdateDistinguishesClearingFromLeavingAlone(t *testing.T) {
 // never accepted from a caller, so the two cannot disagree.
 func TestUpdateRecomputesWordCountWithTheBody(t *testing.T) {
 	service, store := newTestService(t)
-	store.Seed(entry.Entry{ID: 7, Slug: "before", Title: "Before", ContentMD: "one", WordCount: 1})
+	store.Seed(entry.Entry{ID: 7, World: contentworld.Journal, Slug: "before", Title: "Before", ContentMD: "one", WordCount: 1})
 
 	updated, err := service.Update(context.Background(), 7, entry.UpdateInput{
 		ExpectedRevision: 1,
@@ -674,7 +759,7 @@ func TestUpdateRecomputesWordCountWithTheBody(t *testing.T) {
 // Success here would report a save that did not happen.
 func TestUpdateRefusesAnEmptyInput(t *testing.T) {
 	service, store := newTestService(t)
-	store.Seed(entry.Entry{ID: 7, Slug: "before", Title: "Before"})
+	store.Seed(entry.Entry{ID: 7, World: contentworld.Journal, Slug: "before", Title: "Before"})
 
 	_, err := service.Update(context.Background(), 7, entry.UpdateInput{})
 	if !errors.Is(err, entry.ErrNoUpdateFields) {
@@ -691,7 +776,7 @@ func TestUpdateValidatesOnlyWhatWasSubmitted(t *testing.T) {
 	service, store := newTestService(t)
 	// Seeded with a title that create would refuse, to prove no re-validation of
 	// stored values happens on an unrelated update.
-	store.Seed(entry.Entry{ID: 7, Slug: "before", Title: strings.Repeat("x", 300)})
+	store.Seed(entry.Entry{ID: 7, World: contentworld.Journal, Slug: "before", Title: strings.Repeat("x", 300)})
 
 	t.Run("an unrelated update succeeds", func(t *testing.T) {
 		if _, err := service.Update(context.Background(), 7, entry.UpdateInput{
@@ -707,7 +792,6 @@ func TestUpdateValidatesOnlyWhatWasSubmitted(t *testing.T) {
 		in   entry.UpdateInput
 		want error
 	}{
-		{"bad type", entry.UpdateInput{ExpectedRevision: 1, Type: ptr(entry.Type("recipe"))}, entry.ErrInvalidType},
 		{"bad visibility", entry.UpdateInput{ExpectedRevision: 1, Visibility: ptr(entry.Visibility("secret"))}, entry.ErrInvalidVisibility},
 		{"long title", entry.UpdateInput{ExpectedRevision: 1, Title: ptr(strings.Repeat("x", 256))}, entry.ErrInvalidTitle},
 		{"bad slug", entry.UpdateInput{ExpectedRevision: 1, Slug: ptr("Not A Slug")}, entry.ErrInvalidSlug},
@@ -730,8 +814,8 @@ func TestUpdateValidatesOnlyWhatWasSubmitted(t *testing.T) {
 // whole form would fail.
 func TestUpdateSlugConflictExcludesItself(t *testing.T) {
 	service, store := newTestService(t)
-	store.Seed(entry.Entry{ID: 7, Slug: "mine", Title: "Mine"})
-	store.Seed(entry.Entry{ID: 8, Slug: "theirs", Title: "Theirs"})
+	store.Seed(entry.Entry{ID: 7, World: contentworld.Journal, Slug: "mine", Title: "Mine"})
+	store.Seed(entry.Entry{ID: 8, World: contentworld.Journal, Slug: "theirs", Title: "Theirs"})
 
 	t.Run("its own slug is free", func(t *testing.T) {
 		if _, err := service.Update(context.Background(), 7, entry.UpdateInput{
@@ -772,6 +856,7 @@ func TestSoftDeleteHidesTheEntryAndFreesTheSlug(t *testing.T) {
 	service, store := newTestService(t)
 	store.Seed(entry.Entry{
 		ID: 7, Slug: "freed", Title: "Freed",
+		World:  contentworld.Journal,
 		Status: entry.StatusPublished, Visibility: entry.VisibilityPublic,
 	})
 
@@ -783,8 +868,8 @@ func TestSoftDeleteHidesTheEntryAndFreesTheSlug(t *testing.T) {
 	}
 
 	t.Run("gone from the public read", func(t *testing.T) {
-		if _, err := service.GetPublicBySlug(context.Background(), "freed"); !errors.Is(err, entry.ErrEntryNotFound) {
-			t.Errorf("GetPublicBySlug = %v, want ErrEntryNotFound", err)
+		if _, err := service.GetPublicByWorldSlug(context.Background(), contentworld.Journal, "freed"); !errors.Is(err, entry.ErrEntryNotFound) {
+			t.Errorf("GetPublicByWorldSlug = %v, want ErrEntryNotFound", err)
 		}
 	})
 
@@ -815,6 +900,7 @@ func TestPublishStampsOnce(t *testing.T) {
 	service, store := newTestService(t)
 	store.Seed(entry.Entry{
 		ID: 7, Slug: "p", Title: "P", ContentMD: "body",
+		World:  contentworld.Journal,
 		Status: entry.StatusDraft, Visibility: entry.VisibilityPublic,
 	})
 
@@ -871,6 +957,7 @@ func TestUnpublishAndArchiveKeepPublishedAt(t *testing.T) {
 			service, store := newTestService(t)
 			store.Seed(entry.Entry{
 				ID: 7, Slug: "w", Title: "W", Status: entry.StatusPublished,
+				World:      contentworld.Journal,
 				Visibility: entry.VisibilityPublic, PublishedAt: original,
 			})
 
@@ -888,8 +975,8 @@ func TestUnpublishAndArchiveKeepPublishedAt(t *testing.T) {
 			// Both take the entry off the site. Only the status differs, and only one
 			// of them can be undone by publishing again without losing the distinction
 			// between a draft and a retired entry.
-			if _, err := service.GetPublicBySlug(context.Background(), "w"); !errors.Is(err, entry.ErrEntryNotFound) {
-				t.Errorf("GetPublicBySlug = %v, want ErrEntryNotFound", err)
+			if _, err := service.GetPublicByWorldSlug(context.Background(), contentworld.Journal, "w"); !errors.Is(err, entry.ErrEntryNotFound) {
+				t.Errorf("GetPublicByWorldSlug = %v, want ErrEntryNotFound", err)
 			}
 			// Still there for an editor.
 			if _, err := service.GetByID(context.Background(), 7); err != nil {
@@ -919,11 +1006,12 @@ func TestListAdminIsAWorkQueue(t *testing.T) {
 	} {
 		store.Seed(entry.Entry{
 			ID: int64(i + 1), Slug: tc.slug, Title: tc.slug, Status: tc.status,
+			World:      contentworld.Journal,
 			Visibility: entry.VisibilityPublic, HappenedAt: tc.happened, UpdatedAt: tc.updated,
 		})
 	}
 
-	page, err := service.ListAdmin(context.Background(), 0, nil, "", 0, 0)
+	page, err := service.ListAdmin(context.Background(), nil, 0, nil, "", 0, 0)
 	if err != nil {
 		t.Fatalf("ListAdmin: %v", err)
 	}
@@ -939,7 +1027,7 @@ func TestListAdminIsAWorkQueue(t *testing.T) {
 	}
 
 	t.Run("the public list disagrees, as it should", func(t *testing.T) {
-		public, err := service.ListPublic(context.Background(), 0, 0, 0)
+		public, err := service.ListPublic(context.Background(), contentworld.Journal, 0, 0, 0)
 		if err != nil {
 			t.Fatalf("ListPublic: %v", err)
 		}
@@ -951,7 +1039,7 @@ func TestListAdminIsAWorkQueue(t *testing.T) {
 
 	t.Run("filtered by status", func(t *testing.T) {
 		draft := entry.StatusDraft
-		page, err := service.ListAdmin(context.Background(), 0, &draft, "", 0, 0)
+		page, err := service.ListAdmin(context.Background(), nil, 0, &draft, "", 0, 0)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -965,13 +1053,13 @@ func TestListAdminIsAWorkQueue(t *testing.T) {
 
 	t.Run("an unknown status is refused", func(t *testing.T) {
 		unknown := entry.Status("stauts")
-		if _, err := service.ListAdmin(context.Background(), 0, &unknown, "", 0, 0); !errors.Is(err, entry.ErrInvalidStatus) {
+		if _, err := service.ListAdmin(context.Background(), nil, 0, &unknown, "", 0, 0); !errors.Is(err, entry.ErrInvalidStatus) {
 			t.Errorf("ListAdmin = %v, want ErrInvalidStatus", err)
 		}
 	})
 
 	t.Run("pagination is clamped like the public list", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), 0, nil, "", -5, 10_000)
+		page, err := service.ListAdmin(context.Background(), nil, 0, nil, "", -5, 10_000)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -984,7 +1072,7 @@ func TestListAdminIsAWorkQueue(t *testing.T) {
 	})
 
 	t.Run("past the end is an empty page, not an error", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), 0, nil, "", 99, 20)
+		page, err := service.ListAdmin(context.Background(), nil, 0, nil, "", 99, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1075,14 +1163,14 @@ func TestListAdminSearchesTheDirectory(t *testing.T) {
 		{"sea-notes", "海边", "a mountain seen from the sea", entry.StatusDraft},
 	} {
 		store.Seed(entry.Entry{
-			ID: int64(i + 1), Slug: tc.slug, Title: tc.title, Summary: tc.summary,
+			ID: int64(i + 1), World: contentworld.Journal, Slug: tc.slug, Title: tc.title, Summary: tc.summary,
 			Status: tc.status, Visibility: entry.VisibilityPublic,
 			UpdatedAt: fixedTime.Add(-time.Duration(i) * time.Hour),
 		})
 	}
 
 	t.Run("matches the title", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), 0, nil, "Mountain", 1, 20)
+		page, err := service.ListAdmin(context.Background(), nil, 0, nil, "Mountain", 1, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1093,7 +1181,7 @@ func TestListAdminSearchesTheDirectory(t *testing.T) {
 	})
 
 	t.Run("is case-insensitive", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), 0, nil, "MOUNTAIN", 1, 20)
+		page, err := service.ListAdmin(context.Background(), nil, 0, nil, "MOUNTAIN", 1, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1103,7 +1191,7 @@ func TestListAdminSearchesTheDirectory(t *testing.T) {
 	})
 
 	t.Run("matches the slug", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), 0, nil, "kyoto", 1, 20)
+		page, err := service.ListAdmin(context.Background(), nil, 0, nil, "kyoto", 1, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1114,7 +1202,7 @@ func TestListAdminSearchesTheDirectory(t *testing.T) {
 
 	t.Run("intersects with the status filter", func(t *testing.T) {
 		draft := entry.StatusDraft
-		page, err := service.ListAdmin(context.Background(), 0, &draft, "mountain", 1, 20)
+		page, err := service.ListAdmin(context.Background(), nil, 0, &draft, "mountain", 1, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1126,7 +1214,7 @@ func TestListAdminSearchesTheDirectory(t *testing.T) {
 	})
 
 	t.Run("the total counts the filtered set", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), 0, nil, "mountain", 1, 20)
+		page, err := service.ListAdmin(context.Background(), nil, 0, nil, "mountain", 1, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1136,7 +1224,7 @@ func TestListAdminSearchesTheDirectory(t *testing.T) {
 	})
 
 	t.Run("a whitespace-only query behaves as absent", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), 0, nil, "   ", 1, 20)
+		page, err := service.ListAdmin(context.Background(), nil, 0, nil, "   ", 1, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1146,7 +1234,7 @@ func TestListAdminSearchesTheDirectory(t *testing.T) {
 	})
 
 	t.Run("surrounding whitespace is trimmed", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), 0, nil, "  kyoto  ", 1, 20)
+		page, err := service.ListAdmin(context.Background(), nil, 0, nil, "  kyoto  ", 1, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1156,7 +1244,7 @@ func TestListAdminSearchesTheDirectory(t *testing.T) {
 	})
 
 	t.Run("no match is an empty page, not an error", func(t *testing.T) {
-		page, err := service.ListAdmin(context.Background(), 0, nil, "nothing-here", 1, 20)
+		page, err := service.ListAdmin(context.Background(), nil, 0, nil, "nothing-here", 1, 20)
 		if err != nil {
 			t.Fatalf("ListAdmin: %v", err)
 		}
@@ -1168,10 +1256,11 @@ func TestListAdminSearchesTheDirectory(t *testing.T) {
 
 func TestListAdminFiltersByCategory(t *testing.T) {
 	service, store := newTestService(t)
-	store.Seed(entry.Entry{ID: 1, Slug: "travel", Title: "Travel", CategoryID: 7, Status: entry.StatusDraft})
-	store.Seed(entry.Entry{ID: 2, Slug: "work", Title: "Work", CategoryID: 8, Status: entry.StatusDraft})
+	store.Seed(entry.Entry{ID: 1, World: contentworld.Journal, Slug: "travel", Title: "Travel", CategoryID: 7, Status: entry.StatusDraft})
+	store.Seed(entry.Entry{ID: 2, World: contentworld.Journal, Slug: "work", Title: "Work", CategoryID: 8, Status: entry.StatusDraft})
 
-	page, err := service.ListAdmin(context.Background(), 7, nil, "", 1, 20)
+	world := contentworld.Journal
+	page, err := service.ListAdmin(context.Background(), &world, 7, nil, "", 1, 20)
 	if err != nil {
 		t.Fatalf("ListAdmin: %v", err)
 	}
@@ -1185,10 +1274,10 @@ func TestListAdminFiltersByCategory(t *testing.T) {
 
 func TestDashboardMetricsCountLiveEntriesAndWords(t *testing.T) {
 	service, store := newTestService(t)
-	store.Seed(entry.Entry{ID: 1, Slug: "published", Status: entry.StatusPublished, WordCount: 120})
-	store.Seed(entry.Entry{ID: 2, Slug: "draft", Status: entry.StatusDraft, WordCount: 35})
-	store.Seed(entry.Entry{ID: 3, Slug: "archived", Status: entry.StatusArchived, WordCount: 10})
-	store.Seed(entry.Entry{ID: 4, Slug: "deleted", Status: entry.StatusDraft, WordCount: 999})
+	store.Seed(entry.Entry{ID: 1, World: contentworld.Journal, Slug: "published", Status: entry.StatusPublished, WordCount: 120})
+	store.Seed(entry.Entry{ID: 2, World: contentworld.Journal, Slug: "draft", Status: entry.StatusDraft, WordCount: 35})
+	store.Seed(entry.Entry{ID: 3, World: contentworld.Journal, Slug: "archived", Status: entry.StatusArchived, WordCount: 10})
+	store.Seed(entry.Entry{ID: 4, World: contentworld.Journal, Slug: "deleted", Status: entry.StatusDraft, WordCount: 999})
 	if _, err := store.SoftDelete(context.Background(), 4, fixedTime); err != nil {
 		t.Fatalf("SoftDelete: %v", err)
 	}
