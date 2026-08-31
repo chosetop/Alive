@@ -19,9 +19,11 @@ import (
 	"github.com/p30huiwei/alive/backend/internal/config"
 	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/entry"
+	"github.com/p30huiwei/alive/backend/internal/media"
 	"github.com/p30huiwei/alive/backend/internal/postgres"
 	"github.com/p30huiwei/alive/backend/internal/router"
 	"github.com/p30huiwei/alive/backend/internal/site"
+	"github.com/p30huiwei/alive/backend/internal/storage/aliyunoss"
 	"github.com/p30huiwei/alive/backend/internal/taxonomy"
 )
 
@@ -84,6 +86,11 @@ func run() error {
 		taxonomy.WithLogger(logger),
 	)
 	tagService := taxonomy.NewTagService(taxonomy.NewTagRepository(pool), taxonomy.WithTagLogger(logger))
+	var signer media.UploadSigner
+	if cfg.OSS.Enabled {
+		signer = aliyunoss.New(cfg.OSS)
+	}
+	mediaService := media.NewConfiguredService(media.NewRepository(pool), signer, cfg.OSS.PublicBaseURL, cfg.OSS.PresignTTL)
 
 	siteService := site.NewService(site.NewRepository(pool))
 
@@ -94,6 +101,7 @@ func run() error {
 		AuthService:      authService,
 		EntryService:     entryService,
 		EntryTagReplacer: entry.NewRepository(pool),
+		MediaService:     mediaService,
 		TaxonomyService:  taxonomyService,
 		TagService:       tagService,
 		SiteService:      siteService,
