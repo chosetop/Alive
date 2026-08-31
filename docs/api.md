@@ -10,6 +10,14 @@
 
 基础路径 `/api/v1`。探针在根路径，不带版本前缀：探针 URL 不应该因为 API 升版而改变。
 
+媒体上传接口（需登录）：
+
+```text
+POST /api/v1/admin/media/presign       获取 OSS PUT 签名；OSS 未启用时返回 503/UNAVAILABLE
+POST /api/v1/admin/media                上传完成后登记媒资元数据
+GET  /api/v1/admin/entries/:id/media    列出当前作者条目的已登记媒资
+```
+
 端口：上面提到的 8099 是那次核对用的临时端口，**不是默认值**。默认是 `.env` 里的 `SERVER_PORT=8080`。
 
 ---
