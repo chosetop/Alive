@@ -22,12 +22,13 @@ import (
 // everything sees domain types and the sentinel errors from model.go, so the
 // driver could be replaced without touching the service.
 type Repository struct {
-	q *sqlcgen.Queries
+	q  *sqlcgen.Queries
+	db *postgres.Pool
 }
 
 // NewRepository wires a repository to a connection pool.
 func NewRepository(pool *postgres.Pool) *Repository {
-	return &Repository{q: sqlcgen.New(pool)}
+	return &Repository{q: sqlcgen.New(pool), db: pool}
 }
 
 // PostgreSQL error codes translated below.
