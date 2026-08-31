@@ -11,6 +11,8 @@ export interface WorldDeskSnapshot {
   entryCount: number
   categoryCount: number
   error: string | null
+  canEnter: boolean
+  canRetry: boolean
 }
 
 const props = defineProps<{
@@ -21,6 +23,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   enter: [WorldKey]
   settings: [WorldKey]
+  retry: [WorldKey]
 }>()
 
 const STATUS_TEXT: Record<WorldStatus, string> = {
@@ -35,6 +38,11 @@ const leadText = computed(() => {
   if (props.snapshot.recentEntry) return props.snapshot.recentEntry.summary || '继续最近一次编辑。'
   return props.definition.emptyCopy
 })
+
+const enterLabel = computed(() => {
+  if (!props.snapshot.canEnter) return '暂时无法进入'
+  return props.snapshot.recentEntry ? '进入最近编辑' : '进入空白工作台'
+})
 </script>
 
 <template>
@@ -44,6 +52,16 @@ const leadText = computed(() => {
     :data-world-material="definition.material"
     data-surface="glass"
   >
+    <UiButton
+      class="world-desk__enter-surface"
+      variant="primary"
+      data-world-enter
+      :disabled="!snapshot.canEnter"
+      @click="emit('enter', definition.key)"
+    >
+      <span class="world-desk__enter-copy">{{ enterLabel }}</span>
+    </UiButton>
+
     <div class="world-desk__topline">
       <div>
         <p class="world-desk__eyebrow">{{ definition.directoryNoun }}</p>
@@ -82,16 +100,17 @@ const leadText = computed(() => {
       >
         {{ leadText }}
       </p>
-    </div>
 
-    <UiButton
-      class="world-desk__enter"
-      variant="primary"
-      data-world-enter
-      @click="emit('enter', definition.key)"
-    >
-      {{ snapshot.recentEntry ? '进入最近编辑' : '进入空白工作台' }}
-    </UiButton>
+      <UiButton
+        v-if="snapshot.canRetry"
+        class="world-desk__retry"
+        variant="secondary"
+        data-world-retry
+        @click="emit('retry', definition.key)"
+      >
+        重试最近编辑
+      </UiButton>
+    </div>
   </article>
 </template>
 
@@ -111,7 +130,40 @@ const leadText = computed(() => {
   backdrop-filter: blur(18px) saturate(130%);
 }
 
+.world-desk__enter-surface {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: end;
+  justify-content: stretch;
+  padding: var(--space-5);
+  border-radius: inherit;
+  background: transparent;
+  box-shadow: none;
+}
+
+.world-desk__enter-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 2.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: var(--c-accent);
+  color: var(--c-on-accent);
+}
+
+.world-desk__enter-surface:disabled .world-desk__enter-copy {
+  border-color: var(--c-line);
+  background: var(--c-line);
+  color: var(--c-ink-faint);
+}
+
 .world-desk__topline {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -135,11 +187,13 @@ const leadText = computed(() => {
 
 .world-desk__settings {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   min-width: 4.5rem;
 }
 
 .world-desk__description {
+  position: relative;
+  z-index: 0;
   margin: 0;
   color: var(--c-ink-muted);
   font-size: 0.9375rem;
@@ -148,6 +202,8 @@ const leadText = computed(() => {
 }
 
 .world-desk__meta {
+  position: relative;
+  z-index: 0;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
@@ -170,6 +226,8 @@ const leadText = computed(() => {
 }
 
 .world-desk__body {
+  position: relative;
+  z-index: 2;
   display: grid;
   align-content: start;
   gap: var(--space-2);
@@ -202,15 +260,15 @@ const leadText = computed(() => {
   color: var(--c-danger);
 }
 
-.world-desk__enter {
-  align-self: end;
-  width: 100%;
-  min-height: 2.75rem;
+.world-desk__retry {
+  width: fit-content;
+  min-height: 2.5rem;
 }
 
 @media (pointer: coarse) {
   .world-desk__settings,
-  .world-desk__enter {
+  .world-desk__enter-copy,
+  .world-desk__retry {
     min-height: 2.75rem;
   }
 }

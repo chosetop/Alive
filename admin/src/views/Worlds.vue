@@ -34,43 +34,52 @@ async function loadSnapshots(settings: AdminWorldSetting[]): Promise<void> {
     ADMIN_WORLD_REGISTRY.map(async (definition) => {
       const setting = settings.find((item) => item.world === definition.key)
       if (!setting) return null
-
-      const [entriesResult, categoriesResult] = await Promise.allSettled([
-        entriesApi.listEntriesAdmin({ world: definition.key, page_size: 1 }),
-        categoriesApi.listCategoriesAdmin({ world: definition.key }),
-      ])
-
-      let recentEntry = null
-      let entryCount = 0
-      let categoryCount = 0
-      let snapshotError: string | null = null
-
-      if (entriesResult.status === 'fulfilled') {
-        recentEntry = entriesResult.value.data[0] ?? null
-        entryCount = entriesResult.value.meta.total
-      } else {
-        snapshotError = '暂时无法读取最近编辑，但仍可进入工作台。'
-      }
-
-      if (categoriesResult.status === 'fulfilled') {
-        categoryCount = categoriesResult.value.length
-      } else {
-        snapshotError ??= '暂时无法读取分类统计，但仍可进入工作台。'
-      }
-
-      return [definition.key, {
-        setting,
-        recentEntry,
-        entryCount,
-        categoryCount,
-        error: snapshotError,
-      } satisfies WorldDeskSnapshot] as const
+      return [definition.key, await loadSnapshot(definition.key, setting)] as const
     }),
   )
 
   snapshots.value = Object.fromEntries(
     nextEntries.filter((entry): entry is readonly [WorldKey, WorldDeskSnapshot] => entry !== null),
   )
+}
+
+async function loadSnapshot(world: WorldKey, setting: AdminWorldSetting): Promise<WorldDeskSnapshot> {
+  const [entriesResult, categoriesResult] = await Promise.allSettled([
+    entriesApi.listEntriesAdmin({ world, page_size: 1 }),
+    categoriesApi.listCategoriesAdmin({ world }),
+  ])
+
+  let recentEntry = null
+  let entryCount = 0
+  let categoryCount = 0
+  let errorMessage: string | null = null
+  let canEnter = true
+  let canRetry = false
+
+  if (entriesResult.status === 'fulfilled') {
+    recentEntry = entriesResult.value.data[0] ?? null
+    entryCount = entriesResult.value.meta.total
+  } else {
+    errorMessage = '暂时无法读取最近编辑，请先重试。'
+    canEnter = false
+    canRetry = true
+  }
+
+  if (categoriesResult.status === 'fulfilled') {
+    categoryCount = categoriesResult.value.length
+  } else if (errorMessage === null) {
+    errorMessage = '暂时无法读取分类统计，但仍可进入工作台。'
+  }
+
+  return {
+    setting,
+    recentEntry,
+    entryCount,
+    categoryCount,
+    error: errorMessage,
+    canEnter,
+    canRetry,
+  }
 }
 
 onMounted(() => {
@@ -96,6 +105,7 @@ async function enterWorld(world: WorldKey): Promise<void> {
   const definition = ADMIN_WORLD_REGISTRY.find((item) => item.key === world)
   const snapshot = snapshots.value[world]
   if (!definition || !snapshot) return
+  if (!snapshot.canEnter) return
 
   if (snapshot.recentEntry) {
     await router.push({ name: 'entry-edit', params: { id: String(snapshot.recentEntry.id) } })
@@ -109,6 +119,17 @@ async function enterWorld(world: WorldKey): Promise<void> {
 
 function openSettings(world: WorldKey): void {
   activeWorld.value = world
+}
+
+async function retryWorld(world: WorldKey): Promise<void> {
+  const setting = itemFor(world)
+  if (setting === null) return
+
+  const next = await loadSnapshot(world, setting)
+  snapshots.value = {
+    ...snapshots.value,
+    [world]: next,
+  }
 }
 
 function closeSettings(open: boolean): void {
@@ -170,6 +191,7 @@ async function reloadSetting(world: WorldKey): Promise<AdminWorldSetting> {
           :snapshot="desk.snapshot"
           @enter="(nextWorld) => void enterWorld(nextWorld)"
           @settings="openSettings"
+          @retry="(nextWorld) => void retryWorld(nextWorld)"
         />
       </div>
 

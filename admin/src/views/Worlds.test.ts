@@ -151,6 +151,56 @@ describe('Worlds', () => {
 
     expect(wrapper.findAll('[data-world-desk]')).toHaveLength(3)
     expect(wrapper.get('[data-world-desk="journal"]').text()).toContain('暂时无法读取')
+    await wrapper.get('[data-world-desk="journal"] [data-world-enter]').trigger('click')
+    expect(navigation.push).not.toHaveBeenCalled()
+  })
+
+  it('retries a failed recent-entry snapshot before allowing entry', async () => {
+    let journalAttempts = 0
+    api.listEntriesAdmin.mockImplementation(async ({ world }: { world: 'journal' | 'saying' | 'video' }) => {
+      if (world === 'journal') {
+        journalAttempts += 1
+        if (journalAttempts === 1) throw new Error('entry list unavailable')
+        return {
+          data: [{
+            id: 9,
+            world: 'journal',
+            kind: 'entry',
+            title: '重试后的最近编辑',
+            slug: 'retried-entry',
+            summary: '重试成功后才允许进入。',
+            cover_url: '',
+            meta: {},
+            word_count: 320,
+            category: null,
+            happened_at: '2026-08-12T10:00:00Z',
+            published_at: null,
+            status: 'draft',
+            visibility: 'private',
+            created_at: '2026-08-12T10:00:00Z',
+            updated_at: '2026-08-30T08:00:00Z',
+          }],
+          meta: { page: 1, page_size: 1, total: 1 },
+        }
+      }
+
+      return {
+        data: [],
+        meta: { page: 1, page_size: 1, total: 0 },
+      }
+    })
+
+    const wrapper = mountWorlds()
+    await flushPromises()
+
+    await wrapper.get('[data-world-desk="journal"] [data-world-retry]').trigger('click')
+    await flushPromises()
+
+    expect(api.listEntriesAdmin).toHaveBeenCalledTimes(4)
+    expect(wrapper.get('[data-world-desk="journal"]').text()).toContain('重试后的最近编辑')
+
+    await wrapper.get('[data-world-desk="journal"] [data-world-enter]').trigger('click')
+    expect(navigation.push).toHaveBeenCalledWith({ name: 'entry-edit', params: { id: '9' } })
   })
 
   it('opens the matching settings panel and refreshes the saved desk snapshot', async () => {
