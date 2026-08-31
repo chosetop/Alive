@@ -117,6 +117,49 @@ func (h *Handler) Register(api *gin.RouterGroup, requireAuth gin.HandlerFunc) {
 	api.GET("/journals/:slug", h.GetBySlug)
 	api.GET("/sayings", h.ListSayings)
 	api.GET("/sayings/:shortID", h.GetSayingByShortID)
+	api.GET("/videos", h.ListVideos)
+	api.GET("/videos/:slug", h.GetVideoBySlug)
+}
+
+func (h *Handler) ListVideos(c *gin.Context) {
+	page, err := intQuery(c, "page")
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+	pageSize, err := intQuery(c, "page_size")
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+	categoryID, err := h.resolveCategory(c, contentworld.Video)
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+	result, err := h.service.ListPublic(c.Request.Context(), contentworld.Video, categoryID, page, pageSize)
+	if err != nil {
+		httpx.Error(c, apperr.From(err))
+		return
+	}
+	items := make([]entrySummary, 0, len(result.Entries))
+	for _, item := range result.Entries {
+		items = append(items, newEntrySummary(item))
+	}
+	httpx.List(c, items, paginationMeta{Page: result.Page, PageSize: result.PageSize, Total: result.Total})
+}
+
+func (h *Handler) GetVideoBySlug(c *gin.Context) {
+	found, err := h.service.GetLinkByWorldSlug(c.Request.Context(), contentworld.Video, c.Param("slug"))
+	if err != nil {
+		if errors.Is(err, entry.ErrEntryNotFound) {
+			httpx.Error(c, apperr.NotFound("no video matches this slug"))
+			return
+		}
+		httpx.Error(c, apperr.From(err))
+		return
+	}
+	httpx.OK(c, newPublicEntryDetail(found))
 }
 
 // RegisterAdmin adds the authenticated read routes under the admin group.
