@@ -22,7 +22,10 @@ describe('resolveAdminWorld', () => {
     expect(resolveAdminWorld('saying')).toMatchObject({
       editorKind: 'saying',
       material: 'note',
+      description: '没有时间轴的短句、片语与轻量记录。',
       directoryNoun: '片语',
+      emptyCopy: '还没有片语。先记下一句话。',
+      searchPlaceholder: '搜索片语',
     })
   })
 
@@ -30,7 +33,10 @@ describe('resolveAdminWorld', () => {
     expect(resolveAdminWorld('video')).toMatchObject({
       editorKind: 'long-form',
       material: 'viewfinder',
+      description: '主视频、封面与说明。',
       directoryNoun: '影像',
+      emptyCopy: '还没有影像。选择一段视频开始。',
+      searchPlaceholder: '搜索影像',
     })
   })
 
