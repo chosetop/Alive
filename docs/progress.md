@@ -1,6 +1,6 @@
 # Alive 施工进度
 
-最后更新：2026-08-30（内容世界基础与 Journal 路由切换已完成，Foundation 收尾中）
+最后更新：2026-08-31（内容世界、片语、标签聚合与影像公开浏览已落地，媒体上传与影像管理仍在推进）
 
 本文档记录已完成的内容、当前状态和待办项。设计依据见 `architecture.md`，认证方案见 `stage-auth-plan.md`。
 
@@ -34,7 +34,9 @@
 | 5A | 内容世界基础（world registry、生命周期、按世界隔离） | 完成 |
 | 5B | 管理端 Journal-first 新建与世界设置 | 完成 |
 | 5C | 公开端 Journal 路由与 API 切换 | 完成 |
-| 5D | mixed home、sitemap、片语/影像公共页面 | 待实现 |
+| 5D | mixed home、sitemap、片语/影像公共页面 | 完成（公开浏览基础） |
+| 5E | 跨世界标签聚合与编辑器标签选择 | 完成（公开聚合、CAS 替换） |
+| 5F | 媒体记录与影像公开播放基础 | 进行中（上传凭证与管理端仍待补齐） |
 
 **Stage 1（users + auth）与 Stage 2（Entry + Categories）的后端 API 均已完成**，共 19 个业务端点加 2 个探针。
 
