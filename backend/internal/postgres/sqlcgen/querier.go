@@ -75,6 +75,7 @@ type Querier interface {
 	ListAllWorlds(ctx context.Context) ([]SiteWorld, error)
 	ListCategories(ctx context.Context, world string) ([]ListCategoriesRow, error)
 	ListCategoriesWithCounts(ctx context.Context, world string) ([]ListCategoriesWithCountsRow, error)
+	ListMediaForEntry(ctx context.Context, entryID int64) ([]ListMediaForEntryRow, error)
 	ListOpenWorlds(ctx context.Context) ([]SiteWorld, error)
 	ListPublicEntries(ctx context.Context, arg ListPublicEntriesParams) ([]ListPublicEntriesRow, error)
 	ListPublicEntriesByTag(ctx context.Context, arg ListPublicEntriesByTagParams) ([]ListPublicEntriesByTagRow, error)

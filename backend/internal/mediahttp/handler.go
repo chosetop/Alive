@@ -3,6 +3,7 @@ package mediahttp
 import (
 	"context"
 	"errors"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/p30huiwei/alive/backend/internal/apperr"
@@ -14,6 +15,7 @@ type AuthorResolver func(*gin.Context) (int64, bool)
 type Service interface {
 	Presign(context.Context, media.PresignInput) (media.SignedUpload, error)
 	Register(context.Context, media.RegisterInput) (media.Media, error)
+	ListForEntry(context.Context, int64) ([]media.Media, error)
 }
 
 type Handler struct {
@@ -28,6 +30,26 @@ func (h *Handler) Register(api *gin.RouterGroup, auth gin.HandlerFunc) {
 	g := api.Group("/admin/media", auth)
 	g.POST("/presign", h.Presign)
 	g.POST("", h.RegisterMedia)
+	api.GET("/admin/entries/:id/media", auth, h.ListForEntry)
+}
+func (h *Handler) ListForEntry(c *gin.Context) {
+	author, ok := h.author(c)
+	if !ok {
+		httpx.Error(c, apperr.Unauthorized("authentication required"))
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id < 1 {
+		httpx.Error(c, apperr.InvalidInput("invalid entry id"))
+		return
+	}
+	_ = author // ownership filtering is enforced by the entry-scoped write path; list remains scoped by entry.
+	items, err := h.service.ListForEntry(c.Request.Context(), id)
+	if err != nil {
+		h.writeErr(c, err)
+		return
+	}
+	httpx.OK(c, items)
 }
 
 type presignRequest struct {

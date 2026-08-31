@@ -84,3 +84,49 @@ func (q *Queries) GetMediaByID(ctx context.Context, id int64) (GetMediaByIDRow, 
 	)
 	return i, err
 }
+
+const listMediaForEntry = `-- name: ListMediaForEntry :many
+SELECT m.id, m.author_id, m.object_key, m.url, m.mime_type, m.byte_size, m.created_at
+FROM media m
+JOIN entry_media em ON em.media_id = m.id
+WHERE em.entry_id = $1
+ORDER BY em.created_at, m.id
+`
+
+type ListMediaForEntryRow struct {
+	ID        int64
+	AuthorID  int64
+	ObjectKey string
+	Url       string
+	MimeType  string
+	ByteSize  int64
+	CreatedAt time.Time
+}
+
+func (q *Queries) ListMediaForEntry(ctx context.Context, entryID int64) ([]ListMediaForEntryRow, error) {
+	rows, err := q.db.Query(ctx, listMediaForEntry, entryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMediaForEntryRow{}
+	for rows.Next() {
+		var i ListMediaForEntryRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AuthorID,
+			&i.ObjectKey,
+			&i.Url,
+			&i.MimeType,
+			&i.ByteSize,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

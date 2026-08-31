@@ -28,3 +28,15 @@ func (r *Repository) Get(ctx context.Context, id int64) (Media, error) {
 	}
 	return Media{ID: row.ID, AuthorID: row.AuthorID, ObjectKey: row.ObjectKey, URL: row.Url, MimeType: row.MimeType, ByteSize: row.ByteSize, CreatedAt: row.CreatedAt}, nil
 }
+
+func (r *Repository) ListForEntry(ctx context.Context, entryID int64) ([]Media, error) {
+	rows, err := r.q.ListMediaForEntry(ctx, entryID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Media, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, Media{ID: row.ID, AuthorID: row.AuthorID, ObjectKey: row.ObjectKey, URL: row.Url, MimeType: row.MimeType, ByteSize: row.ByteSize, CreatedAt: row.CreatedAt})
+	}
+	return out, nil
+}
