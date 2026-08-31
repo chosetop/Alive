@@ -62,14 +62,14 @@ export function useApi() {
     options: RequestOptions = {},
   ): Promise<T> {
     try {
-      return await $fetch<T>(path, {
+      return (await $fetch<T>(path, {
         baseURL,
         method,
         credentials: 'include',
         headers: requestHeaders,
         query: cleanQuery(options.query),
         body: options.body as Record<string, unknown> | undefined,
-      })
+      })) as T
     } catch (cause) {
       throw toApiError(cause)
     }
