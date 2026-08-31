@@ -83,6 +83,7 @@ func run() error {
 		taxonomy.NewRepository(pool),
 		taxonomy.WithLogger(logger),
 	)
+	tagService := taxonomy.NewTagService(taxonomy.NewTagRepository(pool), taxonomy.WithTagLogger(logger))
 
 	siteService := site.NewService(site.NewRepository(pool))
 
@@ -93,6 +94,7 @@ func run() error {
 		AuthService:     authService,
 		EntryService:    entryService,
 		TaxonomyService: taxonomyService,
+		TagService:      tagService,
 		SiteService:     siteService,
 		WorldService:    worldService,
 	})

@@ -54,6 +54,7 @@ type Dependencies struct {
 	// resolves through it, and an optional service would mean that filter silently
 	// answering with every entry on the site.
 	TaxonomyService *taxonomy.Service
+	TagService      *taxonomy.TagService
 
 	// SiteService owns the singleton site settings, including the default theme.
 	SiteService *site.Service
@@ -186,6 +187,9 @@ func New(deps Dependencies) *gin.Engine {
 	taxonomyHandler := taxonomyhttp.NewHandler(deps.TaxonomyService, deps.Logger)
 	taxonomyHandler.Register(api, authHandler.RequireAuth())
 	taxonomyHandler.RegisterAdmin(api, authHandler.RequireAuth())
+	if deps.TagService != nil {
+		taxonomyhttp.NewTagHandler(deps.TagService).RegisterAdmin(api, authHandler.RequireAuth())
+	}
 
 	// GET   /api/v1/site       public site settings
 	// PATCH /api/v1/admin/site requires a session and an expected revision
