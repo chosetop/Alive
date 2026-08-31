@@ -157,13 +157,13 @@ GET /api/v1/categories →  500
 
 **接口契约见 `docs/api.md`**，那份是按当前实现逐条核对过的。`architecture.md` 写的是设计意图与理由，两份的路径已于 2026-08-25 统一为 `/api/v1/*`，但只有 `api.md` 对着运行中的服务核对过字段与状态码，冲突以它为准。
 
-前台还没有的东西：`sitemap.xml`、`feed.xml`、按类型的页面（书架、影单）、归档页、mixed home。Journal 已切换到 `/journal` 与 `/journal/:slug`，其余世界仍未开放给公开端。
+前台仍未实现 `feed.xml` 与归档页；`sitemap.xml`、mixed home、片语页面和影像页面已落地。Journal 已切换到 `/journal` 与 `/journal/:slug`，影像使用 `/videos` 与 `/videos/:slug`。
 
-内容世界基础已完成：后端 migration 000010、`site_worlds` 生命周期接口、文章与分类的 world 隔离、管理端 Journal-first 创建，以及公开端 Journal API/路由切换。管理端发布拦截恢复、目录 world filter、mixed home 与 sitemap 仍待补齐。
+内容世界基础已完成：后端 migration 000010、`site_worlds` 生命周期接口、文章与分类的 world 隔离、管理端 Journal-first 创建，以及公开端 Journal API/路由切换。管理端发布拦截、目录 world filter、mixed home 与 sitemap 已补齐。
 
 后端还剩的三件事：session 绝对过期、Argon2id 参数、trusted proxy，各自在 3.3 到 3.5。**其中 trusted proxy 是部署前必须做的**，见 3.5。
 
-`tags`、`media`、`archives`、`site` 四组接口尚未开始，见 3.8。`tags` 会落在 `internal/taxonomy` 里 —— 那个包从一开始就是为「categories 今天、tags 以后」写的。
+标签与媒体基础接口已实现；剩余是 feed、归档等后续能力。标签仍落在 `internal/taxonomy`，媒体由 `internal/media` 与 `internal/storage` 承担。
 
 ### 3.3 待办：绝对过期
 
@@ -352,7 +352,7 @@ frontend/                 Nuxt 3.21.11 + TS（4A 完成，见第 13 节）
 
 `taxonomy` 没有 Clock，`entry` 有。这不是遗漏：分类的 `created_at` 来自列默认值、`updated_at` 来自触发器，这个包里没有任何东西需要盖时间戳。文章的 `published_at` 才需要。
 
-`internal/media` 与 `internal/storage` **尚未创建**，连空目录都没有。
+`internal/media` 与 `internal/storage` 已创建并接入 OSS 适配、媒资登记、条目媒资列表和 primary video 关联。
 
 `admin/src/components/` 是空目录：3A 没有任何一处需要复用的片段，为「架构完整」先摆几个组件进去只会造出还没有第二个调用点的抽象。
 
