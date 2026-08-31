@@ -78,10 +78,10 @@ function page(data: EntryListItem[]) {
 }
 
 async function mountDirectory(
-  options: { drawer?: boolean; flush?: WritingFlushGate } = {},
+  options: { drawer?: boolean; flush?: WritingFlushGate; world?: 'journal' | 'saying' | 'video' } = {},
 ): Promise<VueWrapper> {
   const wrapper = mount(ArticleDirectory, {
-    props: { drawer: options.drawer ?? false },
+    props: { drawer: options.drawer ?? false, world: options.world ?? 'journal' },
     global: {
       provide: options.flush === undefined ? {} : { [writingFlushKey as symbol]: options.flush },
       stubs: { RouterLink: { template: '<a><slot /></a>' } },
@@ -108,12 +108,12 @@ describe('ArticleDirectory', () => {
     vi.useRealTimers()
   })
 
-  it('loads recent articles with a page size of 20 and no status filter', async () => {
-    await mountDirectory()
+  it('loads recent articles with the active world and a page size of 20', async () => {
+    await mountDirectory({ world: 'saying' })
 
     // No status: "recent" spans every status, ordered by last edit. Passing one
     // would quietly turn the top of the pane into a draft list.
-    expect(api.listEntriesAdmin).toHaveBeenCalledExactlyOnceWith({ page_size: 20 })
+    expect(api.listEntriesAdmin).toHaveBeenCalledExactlyOnceWith({ world: 'saying', page_size: 20 })
     expect(useWritingStore().directoryEntries.map((entry) => entry.id)).toEqual([1])
   })
 
@@ -127,13 +127,13 @@ describe('ArticleDirectory', () => {
   })
 
   it('does not request any status group until one is opened', async () => {
-    const wrapper = await mountDirectory()
+    const wrapper = await mountDirectory({ world: 'saying' })
     expect(api.listEntriesAdmin).toHaveBeenCalledOnce()
 
     await wrapper.get('[data-status-group="draft"]').trigger('click')
     await flushPromises()
 
-    expect(api.listEntriesAdmin).toHaveBeenLastCalledWith({ status: 'draft', page_size: 20 })
+    expect(api.listEntriesAdmin).toHaveBeenLastCalledWith({ world: 'saying', status: 'draft', page_size: 20 })
     expect(wrapper.get('[data-status-list="draft"]').element).toBeTruthy()
   })
 
@@ -156,7 +156,7 @@ describe('ArticleDirectory', () => {
   })
 
   it('debounces the search by 250ms into a single request', async () => {
-    const wrapper = await mountDirectory()
+    const wrapper = await mountDirectory({ world: 'saying' })
     const store = useWritingStore()
     const search = wrapper.get('[data-directory-search]')
 
@@ -170,9 +170,32 @@ describe('ArticleDirectory', () => {
     await vi.advanceTimersByTimeAsync(1)
     await flushPromises()
 
-    expect(api.listEntriesAdmin).toHaveBeenLastCalledWith({ q: '山中', page_size: 20 })
+    expect(api.listEntriesAdmin).toHaveBeenLastCalledWith({ world: 'saying', q: '山中', page_size: 20 })
     expect(api.listEntriesAdmin).toHaveBeenCalledTimes(2)
     expect(store.searchQuery).toBe('山中')
+  })
+
+  it('uses the registered world copy in labels and create navigation', async () => {
+    const order: string[] = []
+    const flush: WritingFlushGate = ref(async () => {
+      order.push('flush')
+    })
+    navigation.push.mockImplementation(async () => {
+      order.push('navigate')
+    })
+    const wrapper = await mountDirectory({ world: 'saying', flush })
+    useWritingStore().setActiveEntry(1)
+
+    expect(wrapper.get('nav[aria-label="片语目录"]').element).toBeTruthy()
+    expect(wrapper.get('[data-directory-new]').text()).toContain('写片语')
+    expect(wrapper.get('[data-directory-search]').attributes('placeholder')).toBe('搜索片语')
+
+    await wrapper.get('[data-directory-new]').trigger('click')
+    await flushPromises()
+
+    expect(api.createEntry).not.toHaveBeenCalled()
+    expect(order).toEqual(['flush', 'navigate'])
+    expect(navigation.push).toHaveBeenCalledWith({ name: 'saying-editor-new', params: { world: 'saying' } })
   })
 
   it('treats a whitespace-only query as no query at all', async () => {
@@ -338,14 +361,10 @@ describe('ArticleDirectory', () => {
     expect(wrapper.get('[data-entry-id="9"]').attributes('aria-current')).toBe('true')
   })
 
-  it('creates a blank draft and routes to the id the server assigned', async () => {
+  it('opens the client-first new route for the current world after flushing', async () => {
     const order: string[] = []
     const flush: WritingFlushGate = ref(async () => {
       order.push('flush')
-    })
-    api.createEntry.mockImplementation(async () => {
-      order.push('create')
-      return item({ id: 77, title: '' })
     })
     navigation.push.mockImplementation(async () => {
       order.push('navigate')
@@ -356,24 +375,16 @@ describe('ArticleDirectory', () => {
     await wrapper.get('[data-directory-new]').trigger('click')
     await flushPromises()
 
-    expect(api.createEntry).toHaveBeenCalledWith({ world: 'journal' })
-    expect(order).toEqual(['flush', 'create', 'navigate'])
-    // The server's id, never a locally invented one.
-    expect(navigation.push).toHaveBeenCalledWith({ name: 'entry-edit', params: { id: '77' } })
+    expect(api.createEntry).not.toHaveBeenCalled()
+    expect(order).toEqual(['flush', 'navigate'])
+    expect(navigation.push).toHaveBeenCalledWith({ name: 'entry-new-world', params: { world: 'journal' } })
   })
 
-  it('disables the new-article button while a creation is in flight', async () => {
-    // The button being disabled is what actually prevents a double creation, so
-    // that is what is asserted. The `isCreating` early return behind it is a
-    // second line no click can reach while this attribute is present -- worth
-    // keeping, not worth a test that would pass with the attribute removed.
-    //
-    // Two draft records from one impatient double-click is not recoverable from
-    // the UI: the writer gets one canvas and an orphan row to notice and delete.
-    let resolveCreate: (value: unknown) => void = () => {}
-    api.createEntry.mockReturnValue(
+  it('disables the new button while the new-route navigation is in flight', async () => {
+    let resolveNavigate: (value: unknown) => void = () => {}
+    navigation.push.mockReturnValue(
       new Promise((resolve) => {
-        resolveCreate = resolve
+        resolveNavigate = resolve
       }),
     )
     const wrapper = await mountDirectory()
@@ -383,21 +394,20 @@ describe('ArticleDirectory', () => {
     expect(wrapper.get('[data-directory-new]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('[data-directory-new]').attributes('aria-busy')).toBe('true')
 
-    resolveCreate(item({ id: 78 }))
+    resolveNavigate(undefined)
     await flushPromises()
 
-    expect(api.createEntry).toHaveBeenCalledOnce()
+    expect(navigation.push).toHaveBeenCalledOnce()
     expect(wrapper.get('[data-directory-new]').attributes('disabled')).toBeUndefined()
   })
 
-  it('reports a failed creation instead of navigating', async () => {
-    api.createEntry.mockRejectedValue(new Error('boom'))
+  it('reports a failed new-route navigation instead of silently doing nothing', async () => {
+    navigation.push.mockRejectedValue(new Error('boom'))
     const wrapper = await mountDirectory()
 
     await wrapper.get('[data-directory-new]').trigger('click')
     await flushPromises()
 
-    expect(navigation.push).not.toHaveBeenCalled()
     expect(wrapper.get('[role="alert"]').element).toBeTruthy()
   })
 
@@ -445,11 +455,11 @@ describe('ArticleDirectory', () => {
     // "收起" describes hiding a column; the same word on a modal is wrong, and an
     // icon-only control has nothing else to go on.
     const column = await mountDirectory({ drawer: false })
-    expect(column.get('[data-directory-collapse]').attributes('aria-label')).toBe('收起文章目录')
+    expect(column.get('[data-directory-collapse]').attributes('aria-label')).toBe('收起日志目录')
     expect(column.get('[data-directory-collapse] .ui-icon').attributes('aria-hidden')).toBe('true')
 
     const drawer = await mountDirectory({ drawer: true })
-    expect(drawer.get('[data-directory-collapse]').attributes('aria-label')).toBe('关闭文章目录')
+    expect(drawer.get('[data-directory-collapse]').attributes('aria-label')).toBe('关闭日志目录')
   })
 
   it('still renders the article list when the recovery store throws', async () => {
@@ -470,12 +480,12 @@ describe('ArticleDirectory', () => {
     expect(wrapper.get('[role="alert"]').element).toBeTruthy()
   })
 
-  it('is announced as a navigation landmark', async () => {
-    const wrapper = await mountDirectory()
+  it('is announced as a world-scoped navigation landmark', async () => {
+    const wrapper = await mountDirectory({ world: 'video' })
 
     // nav, not a bare div: this is how a screen reader user reaches the pane
     // without walking the canvas.
-    expect(wrapper.get('nav[aria-label="文章目录"]').element).toBeTruthy()
+    expect(wrapper.get('nav[aria-label="影像目录"]').element).toBeTruthy()
   })
 
   it('identifies its translucent writing-desk surface and current-article cursor', async () => {
