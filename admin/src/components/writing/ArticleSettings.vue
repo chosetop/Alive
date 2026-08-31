@@ -93,7 +93,7 @@ function confirmDelete(): void {
 
       <label class="field" for="e-cover">封面 URL</label>
       <input id="e-cover" type="url" :value="entry.cover_url" placeholder="https://…" :disabled="disabled" @input="update({ cover_url: ($event.target as HTMLInputElement).value })" />
-      <MediaUpload v-if="entry.id > 0" :entry-id="entry.id" :disabled="disabled" @uploaded="update({ cover_url: $event.url })" />
+      <MediaUpload v-if="entry.id > 0 && entry.world === 'journal'" :entry-id="entry.id" :disabled="disabled" @uploaded="update({ cover_url: $event.url })" />
       <VideoUpload v-if="entry.id > 0 && entry.world === 'video'" :entry-id="entry.id" :revision="entry.revision" :disabled="disabled" @revision="emit('revision', $event)" />
 
       <label class="field" for="e-happened">发生时间</label>
