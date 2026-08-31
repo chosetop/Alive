@@ -16,6 +16,7 @@ type Service interface {
 	Presign(context.Context, media.PresignInput) (media.SignedUpload, error)
 	Register(context.Context, media.RegisterInput) (media.Media, error)
 	ListForEntry(context.Context, int64, int64) ([]media.Media, error)
+	SetPrimaryVideo(context.Context, int64, int64, int64, int64) (int64, error)
 }
 
 type Handler struct {
@@ -31,6 +32,34 @@ func (h *Handler) Register(api *gin.RouterGroup, auth gin.HandlerFunc) {
 	g.POST("/presign", h.Presign)
 	g.POST("", h.RegisterMedia)
 	api.GET("/admin/entries/:id/media", auth, h.ListForEntry)
+	api.PUT("/admin/entries/:id/primary-video", auth, h.SetPrimaryVideo)
+}
+
+func (h *Handler) SetPrimaryVideo(c *gin.Context) {
+	author, ok := h.author(c)
+	if !ok {
+		httpx.Error(c, apperr.Unauthorized("authentication required"))
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id < 1 {
+		httpx.Error(c, apperr.InvalidInput("invalid entry id"))
+		return
+	}
+	var req struct {
+		MediaID  int64 `json:"media_id" binding:"required,min=1"`
+		Revision int64 `json:"revision" binding:"required,min=1"`
+	}
+	if err = c.ShouldBindJSON(&req); err != nil {
+		httpx.Error(c, apperr.InvalidInput("invalid primary video request"))
+		return
+	}
+	revision, err := h.service.SetPrimaryVideo(c.Request.Context(), id, author, req.Revision, req.MediaID)
+	if err != nil {
+		h.writeErr(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"revision": revision, "media_id": req.MediaID})
 }
 func (h *Handler) ListForEntry(c *gin.Context) {
 	author, ok := h.author(c)

@@ -49,6 +49,7 @@ type Store interface {
 	Get(context.Context, int64) (Media, error)
 	ListForEntry(context.Context, int64) ([]Media, error)
 	EntryOwnedByAuthor(context.Context, int64, int64) (bool, error)
+	SetPrimaryVideo(context.Context, int64, int64, int64, int64) (int64, error)
 }
 type Service struct{ store Store }
 
@@ -79,6 +80,10 @@ type ConfiguredService struct {
 	publicBaseURL string
 	ttl           time.Duration
 	now           func() time.Time
+}
+
+func (s *ConfiguredService) SetPrimaryVideo(ctx context.Context, entryID, authorID, expectedRevision, mediaID int64) (int64, error) {
+	return s.store.SetPrimaryVideo(ctx, entryID, authorID, expectedRevision, mediaID)
 }
 
 func (s *ConfiguredService) ListForEntry(ctx context.Context, entryID, authorID int64) ([]Media, error) {
