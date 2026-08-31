@@ -2,7 +2,6 @@ package taxonomyhttp_test
 
 import (
 	"context"
-	"errors"
 	"io"
 	"log/slog"
 	"net/http"
