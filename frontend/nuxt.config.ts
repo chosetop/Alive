@@ -5,6 +5,12 @@ export default defineNuxtConfig({
 
   modules: ['@pinia/nuxt', '@nuxt/eslint'],
 
+  // Components are grouped by domain folders, but their template names stay
+  // short (SayingStream, VideoCard, etc.). Without disabling the folder prefix,
+  // Nuxt generates names such as SayingsSayingStream and silently leaves the
+  // public world pages empty in the browser after hydration.
+  components: [{ path: '~/components', pathPrefix: false }],
+
   // prose.css is global rather than scoped to the page that renders Markdown:
   // scoped styles cannot reach v-html content, since that HTML carries none of
   // the component's generated attributes.

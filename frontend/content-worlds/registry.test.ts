@@ -18,7 +18,7 @@ describe('public world registry', () => {
   })
 
   it('only lists registered public worlds', () => {
-    expect(listPublicWorlds().map((world) => world.key)).toEqual(['journal', 'saying'])
+    expect(listPublicWorlds().map((world) => world.key)).toEqual(['journal', 'saying', 'video'])
     expect(resolvePublicWorld('saying')).toMatchObject({
       key: 'saying',
       label: '片语',
@@ -26,7 +26,13 @@ describe('public world registry', () => {
       timePolicy: 'hidden',
       seoType: 'SocialMediaPosting',
     })
-    expect(resolvePublicWorld('video')).toBeNull()
+    expect(resolvePublicWorld('video')).toMatchObject({
+      key: 'video',
+      label: '影像',
+      rootPath: '/videos',
+      timePolicy: 'metadata',
+      seoType: 'VideoObject',
+    })
     expect(resolvePublicWorld('unknown')).toBeNull()
   })
 })

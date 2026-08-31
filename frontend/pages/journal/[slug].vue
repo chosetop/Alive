@@ -95,20 +95,23 @@ useHead({
 
 <template>
   <article v-if="entry" class="entry">
+    <NuxtLink class="back" to="/journal">日志</NuxtLink>
     <header class="head">
       <h1 class="title">{{ entry.title }}</h1>
 
-      <div class="dateline">
-        <time v-if="date" :datetime="toDateAttribute(date)">{{ formatFullDate(date) }}</time>
-        <span class="type">{{ journal?.label ?? '日志' }}</span>
-        <NuxtLink
-          v-if="entry.category"
-          :to="journal?.categoryPath(entry.category.slug) ?? `/journal/categories/${entry.category.slug}`"
-          class="cat"
-        >
-          {{ entry.category.name }}
-        </NuxtLink>
-        <span class="words">{{ entry.word_count }} 字</span>
+      <div class="entry-meta" aria-label="文章信息">
+        <time v-if="date" class="date" :datetime="toDateAttribute(date)">{{ formatFullDate(date) }}</time>
+        <div class="meta-row">
+          <span class="type">{{ journal?.label ?? '日志' }}</span>
+          <NuxtLink
+            v-if="entry.category"
+            :to="journal?.categoryPath(entry.category.slug) ?? `/journal/categories/${entry.category.slug}`"
+            class="cat"
+          >
+            {{ entry.category.name }}
+          </NuxtLink>
+          <span class="words">{{ entry.word_count }} 字</span>
+        </div>
       </div>
     </header>
 
@@ -147,3 +150,83 @@ useHead({
     </footer>
   </article>
 </template>
+
+<style scoped>
+.entry {
+  max-width: 48rem;
+  margin-inline: auto;
+}
+
+.back {
+  display: inline-block;
+  margin-bottom: var(--space-7);
+  color: var(--c-ink-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.back:hover {
+  color: var(--c-accent);
+}
+
+.head {
+  display: grid;
+  gap: var(--space-5);
+  margin-bottom: var(--space-8);
+}
+
+.title {
+  max-width: 28rem;
+  font-size: clamp(2rem, 6vw, 3.5rem);
+  line-height: 1.25;
+}
+
+.entry-meta {
+  display: grid;
+  gap: var(--space-3);
+  padding-block: var(--space-3);
+  border-block: 1px solid var(--c-line);
+  color: var(--c-ink-muted);
+  font-family: var(--font-ui);
+}
+
+.date {
+  color: var(--c-ink);
+  font-size: var(--text-sm);
+  letter-spacing: 0.04em;
+}
+
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--c-ink-faint);
+  font-size: var(--text-xs);
+}
+
+.cat {
+  color: var(--c-ink-muted);
+}
+
+.words {
+  font-variant-numeric: tabular-nums;
+}
+
+.prose {
+  margin-inline: auto;
+  max-width: 42rem;
+}
+
+@media (max-width: 34rem) {
+  .head {
+    gap: var(--space-4);
+    margin-bottom: var(--space-7);
+  }
+
+  .title {
+    font-size: clamp(1.875rem, 10vw, 2.75rem);
+  }
+}
+</style>

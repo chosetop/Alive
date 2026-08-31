@@ -30,12 +30,22 @@ const SAYING_WORLD: PublicWorldDefinition = {
   seoType: 'SocialMediaPosting',
 }
 
-const PUBLIC_WORLDS = [JOURNAL_WORLD, SAYING_WORLD] as const
+const VIDEO_WORLD: PublicWorldDefinition = {
+  key: 'video',
+  label: '影像',
+  rootPath: '/videos',
+  entryPath: (slug) => `/videos/${slug}`,
+  categoryPath: (slug) => `/videos/categories/${slug}`,
+  timePolicy: 'metadata',
+  seoType: 'VideoObject',
+}
+
+const PUBLIC_WORLDS = [JOURNAL_WORLD, SAYING_WORLD, VIDEO_WORLD] as const
 
 export function listPublicWorlds(): readonly PublicWorldDefinition[] {
   return PUBLIC_WORLDS
 }
 
 export function resolvePublicWorld(key: WorldKey | string): PublicWorldDefinition | null {
-  return key === 'journal' ? JOURNAL_WORLD : key === 'saying' ? SAYING_WORLD : null
+  return key === 'journal' ? JOURNAL_WORLD : key === 'saying' ? SAYING_WORLD : key === 'video' ? VIDEO_WORLD : null
 }

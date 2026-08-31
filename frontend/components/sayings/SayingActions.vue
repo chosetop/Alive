@@ -51,6 +51,7 @@ function rememberAnchor(event: MouseEvent): void {
 .actions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: var(--space-2);
 }
 

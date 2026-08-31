@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import VideoHomePreview from '~/components/home/VideoHomePreview.vue'
+
 const { list: listJournals } = useEntriesApi()
 const { list: listSayings } = useSayingsApi()
-const [{ data: journals }, { data: sayings }] = await Promise.all([
+const { list: listVideos } = useVideosApi()
+const [{ data: journals }, { data: sayings }, { data: videos }] = await Promise.all([
   useAsyncData('home-journals', () => listJournals({ page: 1, page_size: 5 })),
   useAsyncData('home-sayings', () => listSayings({ page: 1, page_size: 3 })),
+  useAsyncData('home-videos', () => listVideos({ page: 1, page_size: 3 })),
 ])
 </script>
 
@@ -15,6 +19,7 @@ const [{ data: journals }, { data: sayings }] = await Promise.all([
     </section>
 
     <SayingsHomePreview v-if="sayings?.data?.length" :items="sayings.data" />
+    <VideoHomePreview v-if="videos?.data?.length" :items="videos.data" />
   </div>
 </template>
 
