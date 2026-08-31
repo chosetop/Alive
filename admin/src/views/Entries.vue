@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { categoriesApi, entriesApi, toUserMessage } from '../api'
-import type { Category, EntryListItem, EntryStatus } from '../types/api'
+import type { Category, EntryListItem, EntryStatus, WorldKey } from '../types/api'
 import EntryRow from '../components/EntryRow.vue'
 
 /**
@@ -43,6 +43,7 @@ const initialStatus = route.query.status === 'draft' || route.query.status === '
 const activeStatus = ref<StatusFilter>(initialStatus)
 const activeSearch = ref(typeof route.query.q === 'string' ? route.query.q : '')
 const activeCategory = ref(typeof route.query.category === 'string' ? route.query.category : '')
+const activeWorld = ref<WorldKey | ''>(route.query.world === 'journal' || route.query.world === 'saying' || route.query.world === 'video' ? route.query.world : '')
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
@@ -58,7 +59,7 @@ async function load(): Promise<void> {
   try {
     const response = await entriesApi.listEntriesAdmin({
       page: page.value,
-      world: 'journal',
+      world: activeWorld.value || undefined,
       // `status: null` means "no filter", and the API client drops undefined
       // rather than serialising it, so null becomes absent here.
       status: activeStatus.value ?? undefined,
@@ -79,13 +80,23 @@ async function load(): Promise<void> {
 }
 
 onMounted(load)
-onMounted(async () => {
+async function loadCategories(): Promise<void> {
+  categoriesError.value = null
   try {
-    categories.value = await categoriesApi.listCategoriesAdmin({ world: 'journal' })
+    if (activeWorld.value) {
+      categories.value = await categoriesApi.listCategoriesAdmin({ world: activeWorld.value })
+    } else {
+      const grouped = await Promise.all(
+        (['journal', 'saying', 'video'] as WorldKey[]).map((world) => categoriesApi.listCategoriesAdmin({ world })),
+      )
+      categories.value = grouped.flat().filter((category, index, all) => all.findIndex((item) => item.slug === category.slug) === index)
+    }
   } catch (error) {
     categoriesError.value = toUserMessage(error)
   }
-})
+}
+
+onMounted(loadCategories)
 
 /** Changing the filter resets to page 1: page 3 of drafts is rarely page 3 of published. */
 function selectStatus(value: StatusFilter): void {
@@ -105,10 +116,19 @@ function syncFiltersToUrl(): void {
       ...route.query,
       q: queryValue(activeSearch.value),
       category: queryValue(activeCategory.value),
+      world: activeWorld.value || undefined,
       status: activeStatus.value ?? undefined,
       page: page.value > 1 ? String(page.value) : undefined,
     },
   })
+}
+
+function selectWorld(value: string): void {
+  activeWorld.value = value as WorldKey | ''
+  activeCategory.value = ''
+  page.value = 1
+  syncFiltersToUrl()
+  void loadCategories()
 }
 
 function selectCategory(value: string): void {
@@ -122,7 +142,7 @@ function updateSearch(): void {
   syncFiltersToUrl()
 }
 
-watch([activeStatus, activeSearch, activeCategory, page], load)
+watch([activeStatus, activeSearch, activeCategory, activeWorld, page], load)
 
 watch(
   () => route.query,
@@ -132,14 +152,18 @@ watch(
       : null
     const nextSearch = typeof query.q === 'string' ? query.q : ''
     const nextCategory = typeof query.category === 'string' ? query.category : ''
+    const nextWorld = query.world === 'journal' || query.world === 'saying' || query.world === 'video' ? query.world : ''
     if (
       activeStatus.value === nextStatus &&
       activeSearch.value === nextSearch &&
-      activeCategory.value === nextCategory
+      activeCategory.value === nextCategory &&
+      activeWorld.value === nextWorld
     ) return
     activeStatus.value = nextStatus
     activeSearch.value = nextSearch
     activeCategory.value = nextCategory
+    activeWorld.value = nextWorld
+    void loadCategories()
     page.value = typeof query.page === 'string' && Number(query.page) > 1 ? Number(query.page) : 1
   },
   { deep: true },
@@ -171,6 +195,15 @@ const emptyMessage = computed(() => {
     </header>
 
     <div class="filters" aria-label="内容筛选">
+      <label class="world-field">
+        <span class="sr-only">按世界筛选</span>
+        <select class="input" data-test="entry-world" :value="activeWorld" aria-label="按世界筛选" @change="selectWorld(($event.target as HTMLSelectElement).value)">
+          <option value="">全部世界</option>
+          <option value="journal">日志</option>
+          <option value="saying">片语</option>
+          <option value="video">影像</option>
+        </select>
+      </label>
       <label class="search-field">
         <span class="sr-only">搜索文章</span>
         <input
@@ -437,6 +470,12 @@ const emptyMessage = computed(() => {
 
   .category-field {
     min-width: 0;
+  }
+
+  .head .btn--primary {
+    min-height: 2.75rem;
+    padding-inline: 1rem;
+    white-space: nowrap;
   }
 }
 </style>

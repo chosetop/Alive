@@ -79,6 +79,14 @@ describe('ArticleSettings', () => {
     expect(wrapper.find('#e-type').exists()).toBe(false)
   })
 
+  it('places journal tags inside article settings', () => {
+    const wrapper = mount(ArticleSettings, {
+      props: { open: true, entry, categories, tags: [{ id: 1, name: '旅行', slug: 'travel' }] },
+    })
+
+    expect(wrapper.get('[aria-label="文章标签"]').text()).toContain('旅行')
+  })
+
   it('requires explicit confirmation before emitting delete', async () => {
     const onDelete = vi.fn()
     const wrapper = mount(ArticleSettings, {

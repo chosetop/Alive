@@ -5,13 +5,15 @@ import { fromFormDateTime, toFormDateTime } from '../../api'
 import type { Category, EntryDetail, EntryPatchFields, EntryVisibility } from '../../types/api'
 import { UiButton, UiIcon, UiIconButton } from '../ui'
 import MediaUpload from './MediaUpload.vue'
-import VideoUpload from './VideoUpload.vue'
+import TagPicker from './TagPicker.vue'
+import type { Tag } from '../../api/tags'
 
 const props = withDefaults(
   defineProps<{
     open: boolean
     entry: EntryDetail
     categories?: Category[]
+    tags?: Tag[]
     disabled?: boolean
   }>(),
   { categories: () => [], disabled: false },
@@ -21,6 +23,7 @@ const emit = defineEmits<{
   'update:open': [boolean]
   update: [EntryPatchFields]
   revision: [number]
+  'tags-saved': [revision: number, tags: Tag[]]
   delete: []
 }>()
 
@@ -94,7 +97,6 @@ function confirmDelete(): void {
       <label class="field" for="e-cover">封面 URL</label>
       <input id="e-cover" type="url" :value="entry.cover_url" placeholder="https://…" :disabled="disabled" @input="update({ cover_url: ($event.target as HTMLInputElement).value })" />
       <MediaUpload v-if="entry.id > 0 && entry.world === 'journal'" :entry-id="entry.id" :disabled="disabled" @uploaded="update({ cover_url: $event.url })" />
-      <VideoUpload v-if="entry.id > 0 && entry.world === 'video'" :entry-id="entry.id" :revision="entry.revision" :disabled="disabled" @revision="emit('revision', $event)" />
 
       <label class="field" for="e-happened">发生时间</label>
       <input id="e-happened" type="datetime-local" :value="toFormDateTime(entry.happened_at)" :disabled="disabled" @input="update({ happened_at: ($event.target as HTMLInputElement).value === '' ? '0001-01-01T00:00:00Z' : fromFormDateTime(($event.target as HTMLInputElement).value) })" />
@@ -106,6 +108,17 @@ function confirmDelete(): void {
           {{ visibility.label }}
         </label>
       </fieldset>
+
+      <section v-if="entry.world === 'journal' && tags" class="settings-section" aria-label="文章标签">
+        <h3>标签</h3>
+        <TagPicker
+          :entry-id="entry.id"
+          :revision="entry.revision"
+          :selected="tags"
+          :disabled="disabled"
+          @saved="(revision, nextTags) => emit('tags-saved', revision, nextTags)"
+        />
+      </section>
 
       <div class="article-settings__danger">
         <template v-if="confirmingDelete">
@@ -146,6 +159,8 @@ function confirmDelete(): void {
 .article-settings input:not([type='radio']), .article-settings select, .article-settings textarea { width: 100%; min-height: 2.5rem; padding: var(--space-2) var(--space-3); border: 1px solid var(--c-line-strong); border-radius: var(--radius-control); background: var(--c-paper); color: var(--c-ink); }
 .article-settings textarea { min-height: 5rem; resize: vertical; }
 .article-settings fieldset { display: grid; gap: var(--space-2); margin: var(--space-3) 0; padding: 0; border: 0; }
+.settings-section { display: grid; gap: var(--space-2); margin: var(--space-3) 0; padding-top: var(--space-3); border-top: 1px solid var(--c-line); }
+.settings-section h3 { font-size: 0.8125rem; font-weight: 600; }
 .visibility-option { display: flex; align-items: center; gap: var(--space-2); min-height: 2.5rem; }
 .article-settings__danger { margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--c-line); }
 .article-settings__danger p { margin-bottom: var(--space-3); color: var(--c-danger); font-size: 0.8125rem; text-wrap: pretty; }

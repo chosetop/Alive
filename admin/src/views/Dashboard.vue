@@ -42,10 +42,13 @@ const greeting = computed(() => {
     <section class="section">
       <div class="section-heading">
         <div>
-          <p class="eyebrow">YOUR STORY, IN NUMBERS</p>
+          <p class="eyebrow">你的创作记录</p>
           <h2 class="section-title">创作概览</h2>
         </div>
-        <RouterLink class="section-link" :to="{ name: 'entries' }">查看全部内容 →</RouterLink>
+        <div class="section-actions">
+          <RouterLink class="section-link section-link--primary" :to="{ name: 'entry-new' }">继续写作</RouterLink>
+          <RouterLink class="section-link" :to="{ name: 'entries', query: { status: 'draft' } }">查看草稿</RouterLink>
+        </div>
       </div>
 
       <p v-if="isLoading" class="state" aria-live="polite">正在同步创作数据…</p>
@@ -108,6 +111,17 @@ const greeting = computed(() => {
   justify-content: space-between;
   gap: var(--space-4);
   margin-bottom: 1.25rem;
+}
+
+.section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.section-link--primary {
+  color: var(--c-accent);
+  font-weight: 600;
 }
 
 .eyebrow {

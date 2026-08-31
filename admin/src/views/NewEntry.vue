@@ -1,7 +1,28 @@
 <script setup lang="ts">
+import { onMounted, ref } from 'vue'
+import { worldsApi } from '../api'
 import { listCreatableAdminWorlds } from '../content-worlds/registry'
+import type { WorldKey, WorldStatus } from '../types/api'
 
 const worlds = listCreatableAdminWorlds()
+const statuses = ref<Partial<Record<WorldKey, WorldStatus>>>({})
+
+onMounted(async () => {
+  try {
+    const settings = await worldsApi.listAdminWorlds()
+    statuses.value = Object.fromEntries(settings.map((setting) => [setting.world, setting.status]))
+  } catch {
+    // The editor and publish panel still enforce the server's actual status.
+  }
+})
+
+function statusCopy(world: WorldKey): string | null {
+  const status = statuses.value[world]
+  if (status === 'open') return '已开放，可发布'
+  if (status === 'hidden') return '暂时隐藏，发布后不出现在导航'
+  if (status === 'unopened') return '未开放，仅可保存草稿'
+  return null
+}
 </script>
 
 <template>
@@ -20,6 +41,10 @@ const worlds = listCreatableAdminWorlds()
       >
         <span class="card__eyebrow">{{ world.label }}</span>
         <strong class="card__title">{{ world.createLabel }}</strong>
+        <span class="card__hint">
+          {{ world.key === 'journal' ? '正文，可加入图片' : world.key === 'saying' ? '单句内容，可补充来源' : '主视频与封面' }}
+        </span>
+        <span v-if="statusCopy(world.key)" class="card__status">{{ statusCopy(world.key) }}</span>
       </RouterLink>
     </div>
   </div>
@@ -74,5 +99,16 @@ const worlds = listCreatableAdminWorlds()
 .card__title {
   color: var(--c-ink);
   font-size: 1.125rem;
+}
+
+.card__hint,
+.card__status {
+  color: var(--c-ink-muted);
+  font-size: 0.8125rem;
+}
+
+.card__status {
+  color: var(--c-accent);
+  font-size: 0.75rem;
 }
 </style>

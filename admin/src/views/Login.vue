@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { isApiClientError, toUserMessage } from '../api'
 import { useAuthStore } from '../stores/auth'
@@ -10,6 +10,7 @@ const route = useRoute()
 
 const username = ref('')
 const password = ref('')
+const passwordInput = ref<HTMLInputElement | null>(null)
 const isSubmitting = ref(false)
 const errorMessage = ref('')
 
@@ -37,6 +38,8 @@ async function handleSubmit(): Promise<void> {
     // Clear the password but keep the username: a mistyped password is the
     // likely cause, and retyping both is busywork.
     password.value = ''
+    await nextTick()
+    passwordInput.value?.focus()
     if (isApiClientError(error) && error.requestId) {
       // Useful when someone reports "login is broken"; harmless otherwise.
       console.error(`login failed (request_id: ${error.requestId})`)
@@ -51,6 +54,7 @@ async function handleSubmit(): Promise<void> {
   <main class="page">
     <div class="panel">
       <h1 class="wordmark">Alive</h1>
+      <p class="tagline">你的安静写作后台</p>
 
       <!--
         The store records an initialization failure separately from "not logged
@@ -80,6 +84,7 @@ async function handleSubmit(): Promise<void> {
           <label class="label" for="password">密码</label>
           <input
             id="password"
+            ref="passwordInput"
             v-model="password"
             class="input"
             type="password"
@@ -87,6 +92,7 @@ async function handleSubmit(): Promise<void> {
             autocomplete="current-password"
             required
             :disabled="isSubmitting"
+            :aria-invalid="errorMessage ? 'true' : undefined"
           />
         </div>
 
@@ -127,6 +133,12 @@ async function handleSubmit(): Promise<void> {
   letter-spacing: -0.02em;
 }
 
+.tagline {
+  margin: calc(var(--space-6) * -1) 0 var(--space-6);
+  color: var(--c-ink-muted);
+  font-size: 0.9375rem;
+}
+
 .notice {
   margin-bottom: var(--space-4);
   padding: var(--space-2) var(--space-3);
@@ -154,7 +166,8 @@ async function handleSubmit(): Promise<void> {
 }
 
 .input {
-  padding: 0.5rem 0.625rem;
+  min-height: 2.75rem;
+  padding: 0.625rem 0.75rem;
   border: 1px solid var(--c-line-strong);
   border-radius: var(--radius-sm);
   background: var(--c-surface);
@@ -171,13 +184,20 @@ async function handleSubmit(): Promise<void> {
   color: var(--c-ink-faint);
 }
 
+.input[aria-invalid='true'] {
+  border-color: var(--c-danger);
+  outline: 2px solid color-mix(in srgb, var(--c-danger) 18%, transparent);
+  outline-offset: 1px;
+}
+
 .error {
   color: var(--c-danger);
   font-size: 0.8125rem;
 }
 
 .submit {
-  padding: 0.5rem 0.75rem;
+  min-height: 2.75rem;
+  padding: 0.625rem 0.875rem;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: var(--c-accent);

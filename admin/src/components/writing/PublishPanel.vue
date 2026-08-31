@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 
 import type { EntryDetail } from '../../types/api'
+import type { WorldStatus } from '../../types/api'
 import type { PublishCheck } from '../../editor/publish-checks'
 import { UiButton, UiIcon, UiIconButton } from '../ui'
 
@@ -10,6 +11,7 @@ const props = defineProps<{
   entry: EntryDetail
   checks: { blockers: PublishCheck[]; reminders: PublishCheck[] }
   busy?: boolean
+  worldStatus?: WorldStatus | null
 }>()
 
 const emit = defineEmits<{
@@ -19,7 +21,7 @@ const emit = defineEmits<{
 
 const acknowledged = ref<Set<PublishCheck['field']>>(new Set())
 const remindersComplete = computed(() => props.checks.reminders.every((check) => acknowledged.value.has(check.field)))
-const blocked = computed(() => props.checks.blockers.length > 0 || !remindersComplete.value)
+const blocked = computed(() => props.checks.blockers.length > 0 || !remindersComplete.value || props.worldStatus === 'unopened')
 
 function acknowledge(field: PublishCheck['field'], checked: boolean): void {
   const next = new Set(acknowledged.value)
@@ -56,6 +58,13 @@ function acknowledge(field: PublishCheck['field'], checked: boolean): void {
       </label>
     </fieldset>
     <p data-visibility-copy>发布后将以“{{ entry.visibility === 'public' ? '公开' : entry.visibility === 'unlisted' ? '不列出' : '私密' }}”状态显示。</p>
+    <p v-if="worldStatus === 'unopened'" class="publish-panel__world-note" data-world-publish-note>
+      这个世界尚未开放。先保存草稿，或
+      <RouterLink :to="{ name: 'worlds' }">前往“世界”开放</RouterLink>后再发布。
+    </p>
+    <p v-else-if="worldStatus === 'hidden'" class="publish-panel__world-note" data-world-publish-note>
+      这个世界暂时隐藏，发布后不会出现在前台导航，但仍可通过链接访问。
+    </p>
     <UiButton variant="primary" data-publish-confirm :disabled="blocked || busy" @click="emit('publish', entry.id, entry.revision)">确认发布</UiButton>
   </aside>
 </template>
@@ -71,6 +80,7 @@ function acknowledge(field: PublishCheck['field'], checked: boolean): void {
 .publish-panel__reminders label { display: flex; align-items: flex-start; gap: var(--space-2); }
 .publish-panel__lead { color: var(--c-danger); }
 .publish-panel [data-visibility-copy] { margin: var(--space-5) 0; color: var(--c-ink-muted); font-size: 0.875rem; text-wrap: pretty; }
+.publish-panel__world-note { margin: var(--space-3) 0; padding: var(--space-3); border-radius: var(--radius-control); background: var(--c-surface-sunken); color: var(--c-ink-muted); font-size: 0.8125rem; line-height: 1.5; }
 
 @media (max-width: 23.4375rem) {
   .publish-panel {

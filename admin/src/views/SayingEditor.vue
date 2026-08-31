@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { entriesApi, toUserMessage } from '../api'
@@ -17,18 +17,28 @@ const isSaving = ref(false)
 const isPublishing = ref(false)
 const error = ref<string | null>(null)
 const tags = ref<Tag[]>([])
+const copied = ref(false)
+const isTouched = computed(() => content.value.trim() !== '' || source.value.trim() !== '' || author.value.trim() !== '')
+let creating: Promise<void> | null = null
 
 const longFormWarning = computed(() => Array.from(content.value.trim()).length > 300)
 
 async function createDraft(): Promise<void> {
+  if (entry.value || creating !== null) return creating ?? Promise.resolve()
+  creating = (async () => {
   try {
     entry.value = await entriesApi.createEntry({ world: 'saying', visibility: 'public' })
   } catch (cause) {
     error.value = toUserMessage(cause)
+  } finally {
+    creating = null
   }
+  })()
+  return creating
 }
 
 async function save(): Promise<void> {
+  if (!entry.value && isTouched.value) await createDraft()
   if (!entry.value || isSaving.value) return
   isSaving.value = true
   error.value = null
@@ -60,19 +70,33 @@ async function publish(): Promise<void> {
   }
 }
 
-onMounted(() => void createDraft())
+async function leave(): Promise<void> {
+  if (!isTouched.value) await router.push({ name: 'entry-new' })
+  else {
+    await save()
+    if (!error.value) await router.push({ name: 'entry-new' })
+  }
+}
+
+async function copyPermalink(): Promise<void> {
+  if (!entry.value?.slug) return
+  await navigator.clipboard.writeText(`${window.location.origin}/sayings/${entry.value.slug}`)
+  copied.value = true
+  window.setTimeout(() => { copied.value = false }, 1600)
+}
+
 </script>
 
 <template>
   <main class="saying-editor">
     <header class="header">
-      <button type="button" class="back" @click="router.push({ name: 'entry-new' })">返回</button>
+      <button type="button" class="back" @click="leave">返回</button>
       <span class="eyebrow">片语</span>
       <span v-if="entry" class="status">{{ entry.status === 'published' ? '已发布' : '草稿' }}</span>
     </header>
 
     <p v-if="error" class="error" role="alert">{{ error }}</p>
-    <textarea v-model="content" autofocus class="body" placeholder="写下一句随口的话……" aria-label="片语正文" />
+    <textarea v-model="content" autofocus class="body" placeholder="写下一句随口的话……" aria-label="片语正文" @input="void createDraft()" />
     <p v-if="longFormWarning" class="warning">这段话已经接近一篇日志。</p>
 
     <section class="meta" aria-label="片语信息">
@@ -84,6 +108,11 @@ onMounted(() => void createDraft())
         <option value="private">私密</option>
       </select>
     </section>
+    <p class="permalink-hint">发布后会生成永久链接；“不列出”不会出现在列表，但知道链接的人仍可访问。</p>
+    <div v-if="entry?.status === 'published' && entry.slug" class="permalink" data-permalink>
+      <code>/sayings/{{ entry.slug }}</code>
+      <button type="button" @click="copyPermalink">{{ copied ? '已复制' : '复制链接' }}</button>
+    </div>
 
     <TagPicker
       v-if="entry"
@@ -112,5 +141,8 @@ onMounted(() => void createDraft())
 .meta input { flex: 1 1 12rem; }
 .actions { justify-content: flex-end; margin-top: 1.5rem; }
 .warning { color: var(--c-ink-muted); font-size: .9rem; }
+.permalink-hint { margin-top: 0.75rem; color: var(--c-ink-faint); font-size: .8125rem; line-height: 1.5; }
+.permalink { display: flex; align-items: center; gap: .5rem; margin-top: .5rem; color: var(--c-ink-muted); font-size: .8125rem; }
+.permalink code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .error { color: var(--c-danger, #b42318); }
 </style>

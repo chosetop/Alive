@@ -17,7 +17,7 @@ const isMobileNavOpen = ref(false)
  *
  * `entry-new` rather than a link to the article list: the list is already the page
  * this nav item sits beside, and the reason to leave it is to write. The blank
- * draft is created by the editor on arrival, so this link has no id to supply.
+ * The editor stays client-first until the writer makes a meaningful change.
  */
 const writeTarget = { name: 'entry-new' } as const
 
@@ -28,9 +28,11 @@ const writeTarget = { name: 'entry-new' } as const
  * link.
  */
 const navItems = [
-  { label: 'Dashboard', to: { name: 'dashboard' }, available: true },
-  { label: 'Entries', to: { name: 'entries' }, available: true },
-  { label: 'Categories', to: { name: 'categories' }, available: true },
+  { label: '概览', to: { name: 'dashboard' }, available: true },
+  { label: '内容', to: { name: 'entries' }, available: true },
+  { label: '分类', to: { name: 'categories' }, available: true },
+  { label: '标签', to: { name: 'tags' }, available: true },
+  { label: '世界', to: { name: 'worlds' }, available: true },
   // Leaves this shell entirely rather than swapping the content pane. That is the
   // point: the writing workspace is a sibling layout, not a page inside this one.
   { label: '写作', to: writeTarget, available: true },
@@ -38,7 +40,7 @@ const navItems = [
 
 /** The context bar reads the same route contract as the links; no path parsing. */
 const currentContext = computed(
-  () => navItems.find((item) => item.to.name === route.name)?.label ?? 'Alive Admin',
+  () => navItems.find((item) => item.to.name === route.name)?.label ?? 'Alive',
 )
 
 function handleDrawerNavigate(

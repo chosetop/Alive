@@ -15,6 +15,8 @@ async function mountAdminLayout(path: string): Promise<VueWrapper> {
       { path: '/dashboard', name: 'dashboard', component: page },
       { path: '/entries', name: 'entries', component: page },
       { path: '/categories', name: 'categories', component: page },
+      { path: '/tags', name: 'tags', component: page },
+      { path: '/worlds', name: 'worlds', component: page },
       { path: '/entries/new', name: 'entry-new', component: page },
     ],
   })
@@ -49,7 +51,7 @@ describe('AdminLayout', () => {
     const wrapper = await mountAdminLayout('/categories')
 
     // A static wordmark would not tell a person which utility section is open.
-    expect(wrapper.get('[data-page-context]').text()).toBe('Categories')
+    expect(wrapper.get('[data-page-context]').text()).toBe('分类')
   })
 
   it('uses a mobile navigation trigger with an accessible label', async () => {

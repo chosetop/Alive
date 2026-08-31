@@ -7,6 +7,7 @@ import Worlds from './Worlds.vue'
 const api = vi.hoisted(() => ({
   listAdminWorlds: vi.fn(),
   updateWorld: vi.fn(),
+  listCategoriesAdmin: vi.fn(),
 }))
 
 vi.mock('../api', async () => {
@@ -17,6 +18,7 @@ vi.mock('../api', async () => {
       listAdminWorlds: api.listAdminWorlds,
       updateWorld: api.updateWorld,
     },
+    categoriesApi: { listCategoriesAdmin: api.listCategoriesAdmin },
   }
 })
 
@@ -63,6 +65,7 @@ function mountWorlds(): VueWrapper {
 beforeEach(() => {
   vi.resetAllMocks()
   api.listAdminWorlds.mockResolvedValue(settings())
+  api.listCategoriesAdmin.mockResolvedValue([])
 })
 
 afterEach(() => {

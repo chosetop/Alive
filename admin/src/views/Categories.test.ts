@@ -8,6 +8,7 @@ const api = vi.hoisted(() => ({
   createCategory: vi.fn(),
   updateCategory: vi.fn(),
   deleteCategory: vi.fn(),
+  listAdminWorlds: vi.fn(),
 }))
 
 vi.mock('../api', () => ({
@@ -18,6 +19,7 @@ vi.mock('../api', () => ({
     updateCategory: api.updateCategory,
     deleteCategory: api.deleteCategory,
   },
+  worldsApi: { listAdminWorlds: api.listAdminWorlds },
   isEmptyPatch: vi.fn(),
   toUserMessage: () => '出现了意外错误，请稍后重试。',
 }))
@@ -32,6 +34,7 @@ function mountCategories(): VueWrapper {
 
 beforeEach(() => {
   api.listCategoriesAdmin.mockResolvedValue([])
+  api.listAdminWorlds.mockResolvedValue([{ world: 'journal', status: 'open' }])
   api.createCategory.mockResolvedValue({
     id: 1,
     world: 'journal',

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { buildCategoryPatch, categoriesApi, isEmptyPatch, toUserMessage } from '../api'
-import type { Category, WorldKey } from '../types/api'
+import { buildCategoryPatch, categoriesApi, isEmptyPatch, toUserMessage, worldsApi } from '../api'
+import type { Category, WorldKey, WorldStatus } from '../types/api'
 import CategoryForm from '../components/CategoryForm.vue'
 import { UiButton, UiIcon } from '../components/ui'
 
@@ -16,6 +16,7 @@ import { UiButton, UiIcon } from '../components/ui'
 
 const items = ref<Category[]>([])
 const selectedWorld = ref<WorldKey>('journal')
+const worldStatus = ref<WorldStatus | null>(null)
 const isLoading = ref(true)
 /** Load failure. Kept apart from `formError` so a failed save cannot blank the list. */
 const loadError = ref<string | null>(null)
@@ -45,7 +46,19 @@ async function load(): Promise<void> {
   }
 }
 
-onMounted(load)
+async function loadWorldStatus(): Promise<void> {
+  try {
+    const settings = await worldsApi.listAdminWorlds()
+    worldStatus.value = settings.find((item) => item.world === selectedWorld.value)?.status ?? null
+  } catch {
+    worldStatus.value = null
+  }
+}
+
+onMounted(() => {
+  void load()
+  void loadWorldStatus()
+})
 
 function openCreate(): void {
   formError.value = null
@@ -138,6 +151,9 @@ async function handleDelete(id: number): Promise<void> {
       <div class="head-copy">
         <h1 class="title">分类</h1>
         <p class="subtitle">分类是站点导航，不是内容。超过两层就是你自己都记不住的信号。</p>
+        <p v-if="worldStatus" class="world-status" data-world-status>
+          当前世界：{{ worldStatus === 'open' ? '已开放' : worldStatus === 'hidden' ? '暂时隐藏' : '未开放' }}。分类可以提前配置，开放后会显示在站点导航中。
+        </p>
       </div>
       <UiButton variant="primary" data-primary-action :disabled="editing !== null" @click="openCreate">
         <UiIcon class="button-icon" name="plus" />新建分类
@@ -146,8 +162,10 @@ async function handleDelete(id: number): Promise<void> {
 
     <label class="world-field">
       <span class="world-field__label">世界</span>
-      <select class="world-field__input" :value="selectedWorld" @change="selectedWorld = ($event.target as HTMLSelectElement).value as WorldKey; void load()">
+      <select class="world-field__input" :value="selectedWorld" @change="selectedWorld = ($event.target as HTMLSelectElement).value as WorldKey; void load(); void loadWorldStatus()">
         <option value="journal">日志</option>
+        <option value="saying">片语</option>
+        <option value="video">影像</option>
       </select>
     </label>
 
@@ -232,6 +250,12 @@ async function handleDelete(id: number): Promise<void> {
   margin: 0;
   color: var(--c-ink-muted);
   font-size: 0.875rem;
+}
+
+.world-status {
+  margin: var(--space-2) 0 0;
+  color: var(--c-ink-faint);
+  font-size: 0.8125rem;
 }
 
 .alert {

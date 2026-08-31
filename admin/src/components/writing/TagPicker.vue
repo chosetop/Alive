@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { tagsApi } from '../../api'
 import type { Tag } from '../../api/tags'
 
-const props = defineProps<{ entryId: number; revision: number; selected: Tag[] }>()
+const props = withDefaults(defineProps<{ entryId: number; revision: number; selected: Tag[]; disabled?: boolean }>(), { disabled: false })
 const emit = defineEmits<{ saved: [revision: number, tags: Tag[]] }>()
 const query = ref('')
 const results = ref<Tag[]>([])
@@ -25,10 +25,10 @@ async function toggle(tag: Tag): Promise<void> {
 </script>
 <template>
   <section class="tag-picker" aria-label="标签">
-    <div class="selected"><button v-for="tag in selected" :key="tag.id" type="button" @click="void toggle(tag)">{{ tag.name }} ×</button><span v-if="selected.length === 0">尚未添加标签</span></div>
-    <input v-model="query" type="search" placeholder="搜索标签" @focus="void search" @input="void search" />
+    <div class="selected"><button v-for="tag in selected" :key="tag.id" type="button" :disabled="disabled" @click="void toggle(tag)">{{ tag.name }} ×</button><span v-if="selected.length === 0">尚未添加标签</span></div>
+    <input v-model="query" type="search" placeholder="搜索标签" :disabled="disabled" @focus="void search" @input="void search" />
     <div v-if="busy">搜索中…</div><p v-if="error" role="alert">{{ error }}</p>
-    <ul v-else><li v-for="tag in results" :key="tag.id"><button type="button" :aria-pressed="selected.some((item) => item.id === tag.id)" @click="void toggle(tag)">{{ tag.name }}</button></li></ul>
+    <ul v-else><li v-for="tag in results" :key="tag.id"><button type="button" :disabled="disabled" :aria-pressed="selected.some((item) => item.id === tag.id)" @click="void toggle(tag)">{{ tag.name }}</button></li></ul>
   </section>
 </template>
 <style scoped>.tag-picker{display:grid;gap:.6rem}.selected{display:flex;gap:.4rem;flex-wrap:wrap;color:var(--c-ink-muted)}button{border:1px solid var(--c-line);border-radius:999px;background:var(--c-surface);padding:.35rem .65rem;color:inherit}input{padding:.55rem;border:1px solid var(--c-line);border-radius:.5rem;background:var(--c-paper)}ul{display:flex;gap:.4rem;flex-wrap:wrap;padding:0;list-style:none}p{color:var(--c-danger)}</style>

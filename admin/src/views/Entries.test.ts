@@ -23,7 +23,7 @@ async function render(query: Record<string, string> = {}) {
   api.categoriesApi.listCategoriesAdmin.mockResolvedValue([
     {
       id: 1,
-      world: 'journal',
+      world: undefined,
       name: '旅行',
       slug: 'travel',
       description: '',
@@ -57,7 +57,7 @@ describe('Entries filters', () => {
 
     expect(api.entriesApi.listEntriesAdmin).toHaveBeenLastCalledWith({
       page: 1,
-      world: 'journal',
+      world: undefined,
       status: 'draft',
       q: '山中',
       category: 'travel',
@@ -74,9 +74,10 @@ describe('Entries filters', () => {
     expect(router.currentRoute.value.query).toMatchObject({ q: 'mountain', category: 'travel' })
     expect(api.entriesApi.listEntriesAdmin).toHaveBeenLastCalledWith({
       page: 1,
-      world: 'journal',
+      world: undefined,
       q: 'mountain',
       category: 'travel',
+      status: undefined,
     })
   })
 })

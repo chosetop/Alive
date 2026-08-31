@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 
-import { worldsApi, toUserMessage, type ApiClientError } from '../api'
+import { categoriesApi, worldsApi, toUserMessage, type ApiClientError } from '../api'
 import { ADMIN_WORLD_REGISTRY } from '../content-worlds/registry'
 import type { AdminWorldSetting, WorldKey, WorldStatus, WorldViewMode } from '../types/api'
 import { UiButton } from '../components/ui'
@@ -13,6 +13,7 @@ const drafts = ref<DraftMap | null>(null)
 const isLoading = ref(true)
 const savingWorld = ref<WorldKey | null>(null)
 const error = ref<string | null>(null)
+const categoryCounts = ref<Partial<Record<WorldKey, number>>>({})
 
 async function load(): Promise<void> {
   isLoading.value = true
@@ -35,12 +36,40 @@ async function load(): Promise<void> {
   }
 }
 
+async function loadCategoryCounts(): Promise<void> {
+  try {
+    const grouped = await Promise.all(
+      (['journal', 'saying', 'video'] as WorldKey[]).map(async (world) => [world, (await categoriesApi.listCategoriesAdmin({ world })).length] as const),
+    )
+    categoryCounts.value = Object.fromEntries(grouped)
+  } catch {
+    categoryCounts.value = {}
+  }
+}
+
 onMounted(() => {
   void load()
+  void loadCategoryCounts()
 })
 
 function itemFor(world: WorldKey): AdminWorldSetting | null {
   return items.value.find((item) => item.world === world) ?? null
+}
+
+function isDirty(world: WorldKey): boolean {
+  const current = itemFor(world)
+  const draft = drafts.value?.[world]
+  return current !== null && draft !== undefined && (
+    current.status !== draft.status ||
+    current.nav_label !== draft.nav_label ||
+    current.default_view !== draft.default_view
+  )
+}
+
+function statusHelp(status: WorldStatus): string {
+  if (status === 'open') return '前台可见，也允许发布。'
+  if (status === 'hidden') return '前台暂时隐藏，已发布内容仍可通过链接访问。'
+  return '不出现在前台导航，发布前需要先开放。'
 }
 
 async function save(world: WorldKey): Promise<void> {
@@ -104,6 +133,7 @@ async function save(world: WorldKey): Promise<void> {
         <div class="row__copy">
           <h2>{{ world.label }}</h2>
           <p>{{ world.key }}</p>
+          <small class="row__count">{{ categoryCounts[world.key] ?? '—' }} 个分类</small>
         </div>
 
         <label class="field">
@@ -113,6 +143,7 @@ async function save(world: WorldKey): Promise<void> {
             <option value="open">已开放</option>
             <option value="hidden">暂时隐藏</option>
           </select>
+          <small class="field-help">{{ statusHelp(drafts[world.key].status) }}</small>
         </label>
 
         <label class="field">
@@ -124,19 +155,20 @@ async function save(world: WorldKey): Promise<void> {
           <span>默认浏览</span>
           <select :value="drafts[world.key].default_view" @change="drafts[world.key].default_view = ($event.target as HTMLSelectElement).value as WorldViewMode">
             <option value="">跟随世界默认</option>
-            <option value="stream">流式</option>
-            <option value="wall">纸片墙</option>
-            <option value="focus">一句模式</option>
+            <option v-if="world.key === 'saying'" value="stream">流式</option>
+            <option v-if="world.key === 'saying'" value="wall">纸片墙</option>
+            <option v-if="world.key === 'saying'" value="focus">一句模式</option>
           </select>
         </label>
 
         <UiButton
           variant="primary"
           :loading="savingWorld === world.key"
+          :disabled="!isDirty(world.key)"
           :data-world-save="world.key"
           @click="void save(world.key)"
         >
-          保存
+          {{ isDirty(world.key) ? '保存修改' : '已保存' }}
         </UiButton>
       </section>
     </div>
@@ -187,6 +219,13 @@ async function save(world: WorldKey): Promise<void> {
   font-size: 0.75rem;
 }
 
+.row__count {
+  display: block;
+  margin-top: var(--space-2);
+  color: var(--c-ink-muted);
+  font-size: 0.75rem;
+}
+
 .field {
   display: grid;
   gap: var(--space-2);
@@ -195,6 +234,12 @@ async function save(world: WorldKey): Promise<void> {
 .field span {
   color: var(--c-ink-muted);
   font-size: 0.8125rem;
+}
+
+.field-help {
+  color: var(--c-ink-faint);
+  font-size: 0.75rem;
+  line-height: 1.45;
 }
 
 .field input,

@@ -49,6 +49,7 @@ vi.mock('../api', async () => {
       archiveEntry: api.archiveEntry,
       deleteEntry: api.deleteEntry,
     },
+    worldsApi: { listAdminWorlds: vi.fn().mockResolvedValue([]) },
   }
 })
 
@@ -849,7 +850,7 @@ describe('EntryEditor autosave integration', () => {
     )
   })
 
-  it('creates an empty draft before binding autosave on the new-entry route', async () => {
+  it('does not create a server draft until the new-entry route is edited', async () => {
     const created = entry({ id: 99, revision: 1, title: '', slug: '', content_md: '' })
     api.createEntry.mockResolvedValue(created)
     api.updateEntry.mockImplementation(async (_id: number, body: EntryUpdateRequest) =>
@@ -857,16 +858,15 @@ describe('EntryEditor autosave integration', () => {
     )
     const wrapper = await mountEditor(undefined)
 
-    expect(api.createEntry).toHaveBeenCalledWith({ world: 'journal' })
-    expect(navigation.replace).toHaveBeenCalledWith({
-      name: 'entry-edit',
-      params: { id: '99' },
-    })
+    expect(api.createEntry).not.toHaveBeenCalled()
+    expect(navigation.replace).not.toHaveBeenCalled()
     expect(wrapper.findAll('button').some((button) => button.text() === '保存')).toBe(false)
 
-    await (await titleField(wrapper)).setValue('新草稿标题')
+    await wrapper.get('textarea[aria-label="正文编辑器"]').setValue('新草稿正文')
+    await flushPromises()
     await vi.advanceTimersByTimeAsync(1000)
-    expect(api.updateEntry).toHaveBeenCalledWith(99, { revision: 1, title: '新草稿标题' })
+    expect(api.createEntry).toHaveBeenCalledWith({ world: 'journal' })
+    expect(api.updateEntry).toHaveBeenCalledWith(99, { revision: 1, content_md: '新草稿正文' })
   })
 
   it('keeps a created draft usable when loading categories fails', async () => {
@@ -881,21 +881,17 @@ describe('EntryEditor autosave integration', () => {
 
     const wrapper = await mountEditor(undefined)
 
-    expect(api.createEntry).toHaveBeenCalledOnce()
-    expect(api.createEntry).toHaveBeenCalledWith({ world: 'journal' })
-    expect(navigation.replace).toHaveBeenCalledWith({
-      name: 'entry-edit',
-      params: { id: '140' },
-    })
-    expect(api.listCategoriesAdmin).toHaveBeenCalledWith({ world: 'journal' })
-    expect(wrapper.get('[role="alert"]').text()).toContain('无法连接到服务器')
+    expect(api.createEntry).not.toHaveBeenCalled()
+    expect(api.createEntry).not.toHaveBeenCalled()
 
-    await (await titleField(wrapper)).setValue('分类失败仍可编辑')
+    await wrapper.get('textarea[aria-label="正文编辑器"]').setValue('分类失败仍可编辑')
+    await flushPromises()
     await vi.advanceTimersByTimeAsync(1000)
+    expect(api.createEntry).toHaveBeenCalledWith({ world: 'journal' })
 
     expect(api.updateEntry).toHaveBeenCalledWith(140, {
       revision: 3,
-      title: '分类失败仍可编辑',
+      content_md: '分类失败仍可编辑',
     })
   })
 
@@ -946,14 +942,11 @@ describe('EntryEditor autosave integration', () => {
       expect(storeFor(wrapper).activeEntryId).toBe(61)
     })
 
-    it('publishes the created id on the new-article route', async () => {
+    it('does not publish an id for an untouched new-article route', async () => {
       api.createEntry.mockResolvedValue(entry({ id: 62, revision: 1, title: '' }))
       const wrapper = await mountEditorWithProps({})
 
-      // The server's id, published as soon as the draft exists. The route replace
-      // happens after, so waiting for it would leave the directory with nothing
-      // highlighted for the length of that round trip.
-      expect(storeFor(wrapper).activeEntryId).toBe(62)
+      expect(storeFor(wrapper).activeEntryId).toBeNull()
     })
 
     it('clears the open article id on unmount', async () => {

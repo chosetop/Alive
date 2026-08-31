@@ -79,7 +79,7 @@ function formatDate(value: string): string {
     <div class="main">
       <div class="head">
         <RouterLink class="title" :to="{ name: 'entry-edit', params: { id: entry.id } }">
-          <span>{{ entry.title }}</span><UiIcon class="title-icon" name="chevron-right" />
+          <span>{{ entry.title || '未命名草稿' }}</span><UiIcon class="title-icon" name="chevron-right" />
         </RouterLink>
         <span class="badge" :class="`badge--${entry.status}`" :data-status="entry.status">{{
           STATUS_LABEL[entry.status]
@@ -91,12 +91,12 @@ function formatDate(value: string): string {
 
       <div class="meta">
         <span class="type">{{ WORLD_LABEL[entry.world] }}</span>
-        <code class="slug">{{ entry.slug }}</code>
+        <code v-if="entry.slug" class="slug metadata-secondary">{{ entry.slug }}</code>
         <!-- Uncategorised is a normal state, so it is stated rather than left
              blank, which would read as a rendering gap. -->
-        <span v-if="entry.category" class="cat">{{ entry.category.name }}</span>
-        <span v-else class="cat cat--none">未分类</span>
-        <span class="words">{{ entry.word_count }} 字</span>
+        <span v-if="entry.category" class="cat metadata-secondary">{{ entry.category.name }}</span>
+        <span v-else class="cat cat--none metadata-secondary">未分类</span>
+        <span class="words metadata-secondary">{{ entry.word_count }} 字</span>
         <span class="time">{{ timeLabel.prefix }} {{ timeLabel.value }}</span>
       </div>
     </div>
@@ -140,6 +140,11 @@ function formatDate(value: string): string {
 }
 
 .title-icon { width: 0.875rem; height: 0.875rem; }
+
+@media (max-width: 40rem) {
+  .metadata-secondary { display: none; }
+  .meta { gap: var(--space-2); }
+}
 
 .badge {
   padding: 0.0625rem 0.375rem;

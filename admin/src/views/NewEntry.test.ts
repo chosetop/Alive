@@ -1,7 +1,9 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import NewEntry from './NewEntry.vue'
+
+vi.mock('../api', () => ({ worldsApi: { listAdminWorlds: vi.fn().mockResolvedValue([]) } }))
 
 describe('NewEntry', () => {
   it('offers only worlds with registered editors', () => {

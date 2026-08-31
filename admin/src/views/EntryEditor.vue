@@ -7,6 +7,7 @@ import {
   fromFormDateTime,
   toFormDateTime,
   toUserMessage,
+  worldsApi,
   type EntryFormState,
 } from '../api'
 import { resolveAdminWorld } from '../content-worlds/registry'
@@ -14,7 +15,7 @@ import MarkdownEditor from '../components/MarkdownEditor.vue'
 import WorkspaceHeader from '../components/writing/WorkspaceHeader.vue'
 import ArticleSettings from '../components/writing/ArticleSettings.vue'
 import PublishPanel from '../components/writing/PublishPanel.vue'
-import TagPicker from '../components/writing/TagPicker.vue'
+import VideoUpload from '../components/writing/VideoUpload.vue'
 import { EntryRecoveryStore } from '../editor/recovery-store'
 import {
   createSaveCoordinator,
@@ -30,6 +31,7 @@ import type {
   EntryPatchFields,
   EntryStatus,
   WorldKey,
+  WorldStatus,
 } from '../types/api'
 
 /**
@@ -51,10 +53,12 @@ const router = useRouter()
 
 const entryId = computed(() => (props.id === undefined ? null : Number(props.id)))
 const draftWorld = computed<WorldKey>(() => resolveAdminWorld(props.world)?.key ?? 'journal')
+const worldDefinition = computed(() => resolveAdminWorld(original.value?.world ?? draftWorld.value))
 
 /** The record as loaded, kept to diff against. Null while creating. */
 const original = ref<EntryDetail | null>(null)
 const categories = ref<Category[]>([])
+const worldStatus = ref<WorldStatus | null>(null)
 
 const isLoading = ref(true)
 const loadError = ref<string | null>(null)
@@ -165,6 +169,12 @@ async function load(targetId: number | null = entryId.value): Promise<void> {
     resetToBlank()
     return
   }
+  if (targetId === null) {
+    // A new route is an editing session, not a database command. The first
+    // meaningful edit or explicit save creates the server-side draft.
+    resetToBlank()
+    return
+  }
   const generation = ++loadGeneration
   settingsOpen.value = false
   publishOpen.value = false
@@ -172,28 +182,14 @@ async function load(targetId: number | null = entryId.value): Promise<void> {
   loadError.value = null
   categoryError.value = null
   try {
-    const entry =
-      targetId === null
-        ? await entriesApi.createEntry({ world: draftWorld.value })
-        : await entriesApi.getEntry(targetId)
+    const entry = await entriesApi.getEntry(targetId)
     if (!isCurrentLoad(generation)) return
     recoveryDraft = null
 
-    if (targetId === null) {
-      original.value = entry
-      applyEntryToForm(entry)
-      // Set before the replace, not after. The directory highlights whatever this
-      // holds, and the blank draft is a real row the moment it exists -- waiting
-      // for navigation would leave nothing current for the length of the round
-      // trip, on the one path where the writer just asked for a new article.
-      writing.setActiveEntry(entry.id)
-      await router.replace({ name: 'entry-edit', params: { id: String(entry.id) } })
-      if (!isCurrentLoad(generation)) return
-    } else {
-      original.value = entry
-      applyEntryToForm(entry)
-      writing.setActiveEntry(entry.id)
-    }
+    original.value = entry
+    applyEntryToForm(entry)
+    writing.setActiveEntry(entry.id)
+    void loadWorldStatus(entry.world ?? draftWorld.value)
 
     editorSession.value += 1
     await bindCoordinator(entry)
@@ -212,6 +208,16 @@ async function load(targetId: number | null = entryId.value): Promise<void> {
     if (isCurrentLoad(generation)) loadError.value = toUserMessage(error)
   } finally {
     if (isCurrentLoad(generation)) isLoading.value = false
+  }
+}
+
+async function loadWorldStatus(world: WorldKey): Promise<void> {
+  if (!worldsApi?.listAdminWorlds) return
+  try {
+    const settings = await worldsApi.listAdminWorlds()
+    worldStatus.value = settings.find((item) => item.world === world)?.status ?? null
+  } catch {
+    worldStatus.value = null
   }
 }
 
@@ -267,7 +273,24 @@ function applyError(error: unknown): void {
 /** Markdown arrives from the editor one way; this is the only writer of contentMd. */
 function handleContentUpdate(markdown: string): void {
   form.value.contentMd = markdown
-  queueUpdate({ content_md: markdown })
+  void ensureEntry().then(() => queueUpdate({ content_md: markdown }))
+}
+
+async function ensureEntry(): Promise<void> {
+  if (original.value !== null || isLoading.value || loadError.value !== null) return
+  isLoading.value = true
+  try {
+    const entry = await entriesApi.createEntry({ world: draftWorld.value })
+    if (!isActive || original.value !== null) return
+    original.value = entry
+    writing.setActiveEntry(entry.id)
+    void loadWorldStatus(entry.world ?? draftWorld.value)
+    await bindCoordinator(entry)
+  } catch (error) {
+    loadError.value = toUserMessage(error)
+  } finally {
+    isLoading.value = false
+  }
 }
 
 function queueUpdate(fields: EntryPatchFields): void {
@@ -633,6 +656,21 @@ function createCoordinatorBridge(): CoordinatorBridge {
 
       <div class="page">
         <div class="fields">
+          <p class="editor-hint" data-editor-world>
+            {{ worldDefinition?.label }} · {{ worldDefinition?.mediaCapability === 'primary-video' ? '先输入内容，保存后即可添加主视频' : '正文从这里开始' }}
+          </p>
+          <section v-if="worldDefinition?.mediaCapability === 'primary-video' && original === null" class="video-slot video-slot--pending" data-video-slot>
+            <strong>主视频</strong>
+            <p>首次保存内容后，这里会出现选择视频、上传进度和播放预览。</p>
+          </section>
+          <VideoUpload
+            v-else-if="worldDefinition?.mediaCapability === 'primary-video' && original"
+            :entry-id="original.id"
+            :revision="original.revision"
+            :disabled="controlsDisabled"
+            data-video-slot
+            @revision="onMediaRevision"
+          />
           <!-- Mounted only once the content is known, and keyed by id: Milkdown
                reads its initial value once, so switching entries must build a
                new editor rather than try to swap the document underneath. -->
@@ -657,24 +695,20 @@ function createCoordinatorBridge(): CoordinatorBridge {
         :open="settingsOpen"
         :entry="editorEntry"
         :categories="categories"
+        :tags="original?.tags ?? []"
         :disabled="controlsDisabled"
         @update:open="settingsOpen = $event"
         @update="handleSettingsUpdate"
+        @tags-saved="onTagsSaved"
         @delete="handleDelete"
         @revision="onMediaRevision"
-      />
-      <TagPicker
-        v-if="original"
-        :entry-id="original.id"
-        :revision="original.revision"
-        :selected="original.tags ?? []"
-        @saved="onTagsSaved"
       />
       <PublishPanel
         v-if="editorEntry"
         :open="publishOpen"
         :entry="editorEntry"
         :checks="publishChecks"
+        :world-status="worldStatus"
         :busy="controlsDisabled"
         @update:open="publishOpen = $event"
         @publish="publishFromPanel"
@@ -713,6 +747,31 @@ function createCoordinatorBridge(): CoordinatorBridge {
   max-width: 52rem;
   margin-inline: auto;
   padding: var(--space-6) var(--space-5);
+}
+
+.editor-hint {
+  margin: 0 0 var(--space-3);
+  color: var(--c-ink-faint);
+  font-size: 0.8125rem;
+}
+
+.video-slot--pending {
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  border: 1px dashed var(--c-line-strong);
+  border-radius: var(--radius-control);
+  color: var(--c-ink-muted);
+}
+
+.video-slot--pending strong {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--c-ink);
+}
+
+.video-slot--pending p {
+  margin: 0;
+  font-size: 0.8125rem;
 }
 
 .badge {
