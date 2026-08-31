@@ -155,6 +155,10 @@ func (s *fakeTagStore) NameExists(_ context.Context, name string) (bool, error) 
 	return false, nil
 }
 
+func (s *fakeTagStore) ListPublicEntriesByTag(context.Context, string, int, int) ([]taxonomy.PublicTagEntry, int64, error) {
+	return nil, 0, nil
+}
+
 func newTagService() (*taxonomy.TagService, *fakeTagStore) {
 	store := newFakeTagStore()
 	return taxonomy.NewTagService(store, taxonomy.WithTagLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))), store

@@ -190,7 +190,9 @@ func New(deps Dependencies) *gin.Engine {
 	taxonomyHandler.Register(api, authHandler.RequireAuth())
 	taxonomyHandler.RegisterAdmin(api, authHandler.RequireAuth())
 	if deps.TagService != nil {
-		taxonomyhttp.NewTagHandler(deps.TagService).RegisterAdmin(api, authHandler.RequireAuth())
+		tagHandler := taxonomyhttp.NewTagHandler(deps.TagService)
+		tagHandler.RegisterPublic(api)
+		tagHandler.RegisterAdmin(api, authHandler.RequireAuth())
 	}
 
 	// GET   /api/v1/site       public site settings

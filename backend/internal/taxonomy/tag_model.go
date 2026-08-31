@@ -35,6 +35,10 @@ type Tag struct {
 	UpdatedAt  time.Time
 }
 
+type PublicTagEntry struct {
+	World, Kind, Slug, Title, Summary, CoverURL string
+}
+
 type CreateTagInput struct {
 	Name string
 	Slug string
@@ -67,6 +71,7 @@ type TagStore interface {
 	Delete(ctx context.Context, id int64) (bool, error)
 	SlugExists(ctx context.Context, slug string) (bool, error)
 	NameExists(ctx context.Context, name string) (bool, error)
+	ListPublicEntriesByTag(ctx context.Context, slug string, limit, offset int) ([]PublicTagEntry, int64, error)
 }
 
 func NormalizeTagName(name string) string {

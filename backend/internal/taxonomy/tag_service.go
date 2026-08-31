@@ -156,3 +156,22 @@ func (s *TagService) List(ctx context.Context, query string, limit int) ([]Tag, 
 	}
 	return s.store.List(ctx, strings.TrimSpace(query), limit)
 }
+
+func (s *TagService) PublicEntries(ctx context.Context, slug string, page, pageSize int) (Tag, []PublicTagEntry, int64, error) {
+	slug = NormalizeTagSlug(slug)
+	tag, err := s.store.GetBySlug(ctx, slug)
+	if err != nil {
+		return Tag{}, nil, 0, err
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 50 {
+		pageSize = 50
+	}
+	items, total, err := s.store.ListPublicEntriesByTag(ctx, slug, pageSize, (page-1)*pageSize)
+	return tag, items, total, err
+}

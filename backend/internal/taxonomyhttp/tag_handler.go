@@ -27,6 +27,14 @@ type tagResponse struct {
 	Slug       string `json:"slug"`
 	UsageCount int64  `json:"usage_count"`
 }
+type publicTagEntry struct {
+	World    string `json:"world"`
+	Kind     string `json:"kind"`
+	Slug     string `json:"slug"`
+	Title    string `json:"title,omitempty"`
+	Excerpt  string `json:"excerpt,omitempty"`
+	CoverURL string `json:"cover_url,omitempty"`
+}
 
 func tagOut(t taxonomy.Tag) tagResponse {
 	return tagResponse{ID: t.ID, Name: t.Name, Slug: t.Slug, UsageCount: t.UsageCount}
@@ -37,6 +45,42 @@ func (h *TagHandler) RegisterAdmin(api *gin.RouterGroup, auth gin.HandlerFunc) {
 	g.POST("", h.Create)
 	g.PATCH("/:id", h.Update)
 	g.DELETE("/:id", h.Delete)
+}
+func (h *TagHandler) RegisterPublic(api *gin.RouterGroup) {
+	api.GET("/tags/:slug/entries", h.PublicEntries)
+}
+func (h *TagHandler) PublicEntries(c *gin.Context) {
+	page, _ := strconv.Atoi(c.Query("page"))
+	size, _ := strconv.Atoi(c.Query("page_size"))
+	tag, items, total, err := h.service.PublicEntries(c, c.Param("slug"), page, size)
+	if err != nil {
+		if errors.Is(err, taxonomy.ErrTagNotFound) {
+			httpx.Error(c, apperr.NotFound("tag not found"))
+		} else {
+			httpx.Error(c, apperr.From(err))
+		}
+		return
+	}
+	out := make([]publicTagEntry, 0, len(items))
+	for _, item := range items {
+		out = append(out, publicTagEntry{World: item.World, Kind: item.Kind, Slug: item.Slug, Title: item.Title, Excerpt: item.Summary, CoverURL: item.CoverURL})
+	}
+	httpx.OK(c, gin.H{"tag": tagOut(tag), "items": out, "meta": gin.H{"page": maxInt(page, 1), "page_size": normalizedSize(size), "total": total}})
+}
+func maxInt(v, d int) int {
+	if v < d {
+		return d
+	}
+	return v
+}
+func normalizedSize(v int) int {
+	if v < 1 {
+		return 20
+	}
+	if v > 50 {
+		return 50
+	}
+	return v
 }
 func (h *TagHandler) List(c *gin.Context) {
 	limit := 50

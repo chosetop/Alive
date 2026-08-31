@@ -83,6 +83,29 @@ func (r *TagRepository) List(ctx context.Context, query string, limit int) ([]Ta
 	return tags, nil
 }
 
+func (r *TagRepository) ListPublicEntriesByTag(ctx context.Context, slug string, limit, offset int) ([]PublicTagEntry, int64, error) {
+	rows, err := r.q.ListPublicEntriesByTag(ctx, sqlcgen.ListPublicEntriesByTagParams{Slug: slug, Limit: int32(limit), Offset: int32(offset)})
+	if err != nil {
+		return nil, 0, fmt.Errorf("taxonomy: list public tag entries: %w", err)
+	}
+	total, err := r.q.CountPublicEntriesByTag(ctx, slug)
+	if err != nil {
+		return nil, 0, fmt.Errorf("taxonomy: count public tag entries: %w", err)
+	}
+	out := make([]PublicTagEntry, 0, len(rows))
+	for _, row := range rows {
+		summary, cover := "", ""
+		if row.Summary != nil {
+			summary = *row.Summary
+		}
+		if row.CoverUrl != nil {
+			cover = *row.CoverUrl
+		}
+		out = append(out, PublicTagEntry{World: row.World, Kind: row.Kind, Slug: row.Slug, Title: row.Title, Summary: summary, CoverURL: cover})
+	}
+	return out, total, nil
+}
+
 func (r *TagRepository) Update(ctx context.Context, params UpdateTagParams) (Tag, error) {
 	row, err := r.q.UpdateTag(ctx, sqlcgen.UpdateTagParams{
 		ID:      params.ID,

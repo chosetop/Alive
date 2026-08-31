@@ -109,6 +109,10 @@ func (s *tagHTTPStore) NameExists(_ context.Context, name string) (bool, error) 
 	return false, nil
 }
 
+func (s *tagHTTPStore) ListPublicEntriesByTag(context.Context, string, int, int) ([]taxonomy.PublicTagEntry, int64, error) {
+	return nil, 0, nil
+}
+
 func newTagServer(t *testing.T) (http.Handler, *tagHTTPStore) {
 	t.Helper()
 

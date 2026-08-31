@@ -10,6 +10,25 @@ import (
 	"time"
 )
 
+const countPublicEntriesByTag = `-- name: CountPublicEntriesByTag :one
+SELECT count(*)
+FROM entries e
+JOIN entry_tags et ON et.entry_id = e.id
+JOIN tags t ON t.id = et.tag_id
+JOIN site_worlds sw ON sw.world = e.world AND sw.status = 'open'
+WHERE t.slug = $1
+  AND e.deleted_at IS NULL
+  AND e.status = 'published'
+  AND e.visibility = 'public'
+`
+
+func (q *Queries) CountPublicEntriesByTag(ctx context.Context, slug string) (int64, error) {
+	row := q.db.QueryRow(ctx, countPublicEntriesByTag, slug)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createTag = `-- name: CreateTag :one
 INSERT INTO tags (
     name,
@@ -102,6 +121,68 @@ func (q *Queries) GetTagBySlug(ctx context.Context, slug string) (Tag, error) {
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listPublicEntriesByTag = `-- name: ListPublicEntriesByTag :many
+SELECT
+    e.world,
+    e.kind,
+    e.slug,
+    e.title,
+    e.summary,
+    e.cover_url
+FROM entries e
+JOIN entry_tags et ON et.entry_id = e.id
+JOIN tags t ON t.id = et.tag_id
+JOIN site_worlds sw ON sw.world = e.world AND sw.status = 'open'
+WHERE t.slug = $1
+  AND e.deleted_at IS NULL
+  AND e.status = 'published'
+  AND e.visibility = 'public'
+ORDER BY COALESCE(e.happened_at, e.published_at) DESC, e.id DESC
+LIMIT $3 OFFSET $2
+`
+
+type ListPublicEntriesByTagParams struct {
+	Slug   string
+	Offset int32
+	Limit  int32
+}
+
+type ListPublicEntriesByTagRow struct {
+	World    string
+	Kind     string
+	Slug     string
+	Title    string
+	Summary  *string
+	CoverUrl *string
+}
+
+func (q *Queries) ListPublicEntriesByTag(ctx context.Context, arg ListPublicEntriesByTagParams) ([]ListPublicEntriesByTagRow, error) {
+	rows, err := q.db.Query(ctx, listPublicEntriesByTag, arg.Slug, arg.Offset, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPublicEntriesByTagRow{}
+	for rows.Next() {
+		var i ListPublicEntriesByTagRow
+		if err := rows.Scan(
+			&i.World,
+			&i.Kind,
+			&i.Slug,
+			&i.Title,
+			&i.Summary,
+			&i.CoverUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listTags = `-- name: ListTags :many

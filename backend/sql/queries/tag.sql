@@ -107,3 +107,33 @@ JOIN entry_tags et
     ON et.tag_id = t.id
 WHERE et.entry_id = sqlc.arg(entry_id)
 ORDER BY lower(t.name), t.id;
+
+-- name: ListPublicEntriesByTag :many
+SELECT
+    e.world,
+    e.kind,
+    e.slug,
+    e.title,
+    e.summary,
+    e.cover_url
+FROM entries e
+JOIN entry_tags et ON et.entry_id = e.id
+JOIN tags t ON t.id = et.tag_id
+JOIN site_worlds sw ON sw.world = e.world AND sw.status = 'open'
+WHERE t.slug = sqlc.arg(slug)
+  AND e.deleted_at IS NULL
+  AND e.status = 'published'
+  AND e.visibility = 'public'
+ORDER BY COALESCE(e.happened_at, e.published_at) DESC, e.id DESC
+LIMIT sqlc.arg(limit_) OFFSET sqlc.arg(offset_);
+
+-- name: CountPublicEntriesByTag :one
+SELECT count(*)
+FROM entries e
+JOIN entry_tags et ON et.entry_id = e.id
+JOIN tags t ON t.id = et.tag_id
+JOIN site_worlds sw ON sw.world = e.world AND sw.status = 'open'
+WHERE t.slug = sqlc.arg(slug)
+  AND e.deleted_at IS NULL
+  AND e.status = 'published'
+  AND e.visibility = 'public';
