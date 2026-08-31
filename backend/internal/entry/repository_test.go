@@ -13,6 +13,7 @@ import (
 	"github.com/p30huiwei/alive/backend/internal/dbtest"
 	"github.com/p30huiwei/alive/backend/internal/entry"
 	"github.com/p30huiwei/alive/backend/internal/postgres"
+	"github.com/p30huiwei/alive/backend/internal/taxonomy"
 )
 
 // The repository translates storage facts into domain facts, and that
@@ -916,6 +917,53 @@ func TestRepositoryAdminReadsSeeEveryStatus(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestRepositoryGetByIDIncludesTags(t *testing.T) {
+	repo, pool, authorID := newTestRepository(t)
+	ctx := context.Background()
+	dbtest.CleanupTags(t, pool)
+
+	created, err := repo.Create(ctx, validCreate(authorID, dbtest.Slug(t, "tagged-entry")))
+	if err != nil {
+		t.Fatalf("create entry: %v", err)
+	}
+
+	tagRepo := taxonomy.NewTagRepository(pool)
+	travel, err := tagRepo.Create(ctx, taxonomy.CreateTagParams{
+		Name: "Travel",
+		Slug: dbtest.Slug(t, "travel"),
+	})
+	if err != nil {
+		t.Fatalf("create travel tag: %v", err)
+	}
+	food, err := tagRepo.Create(ctx, taxonomy.CreateTagParams{
+		Name: "Food",
+		Slug: dbtest.Slug(t, "food"),
+	})
+	if err != nil {
+		t.Fatalf("create food tag: %v", err)
+	}
+
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO entry_tags (entry_id, tag_id) VALUES ($1, $2), ($1, $3)`,
+		created.ID, travel.ID, food.ID); err != nil {
+		t.Fatalf("seed entry_tags: %v", err)
+	}
+
+	got, err := repo.GetByID(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if len(got.Tags) != 2 {
+		t.Fatalf("len(tags) = %d, want 2", len(got.Tags))
+	}
+	if got.Tags[0].Name != "Food" || got.Tags[1].Name != "Travel" {
+		t.Fatalf("tags = %#v, want Food then Travel", got.Tags)
+	}
+	if got.Tags[0].Slug != food.Slug || got.Tags[1].Slug != travel.Slug {
+		t.Fatalf("tags slugs = %#v, want sorted by name", got.Tags)
+	}
 }
 
 // TestRepositoryAdminListSearches covers the search predicate in real SQL rather

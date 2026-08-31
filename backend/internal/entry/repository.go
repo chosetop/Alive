@@ -14,6 +14,7 @@ import (
 	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/postgres"
 	"github.com/p30huiwei/alive/backend/internal/postgres/sqlcgen"
+	"github.com/p30huiwei/alive/backend/internal/taxonomy"
 )
 
 // Repository reads and writes entries.
@@ -457,7 +458,7 @@ func (r *Repository) GetByID(ctx context.Context, id int64) (Entry, error) {
 		return Entry{}, fmt.Errorf("entry: get entry %d: %w", id, err)
 	}
 
-	return entryFromRow(rowFields{
+	found := entryFromRow(rowFields{
 		ID: row.ID, Revision: row.Revision, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
 		CategoryName: row.CategoryName, CategorySlug: row.CategorySlug,
 		World: row.World, Kind: row.Kind, Title: row.Title,
@@ -465,7 +466,15 @@ func (r *Repository) GetByID(ctx context.Context, id int64) (Entry, error) {
 		CoverURL: row.CoverUrl, Status: row.Status, Visibility: row.Visibility,
 		Meta: row.Meta, WordCount: row.WordCount, HappenedAt: row.HappenedAt,
 		PublishedAt: row.PublishedAt, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
-	}), nil
+	})
+
+	tags, err := r.loadTags(ctx, id)
+	if err != nil {
+		return Entry{}, err
+	}
+	found.Tags = tags
+
+	return found, nil
 }
 
 // ListAdmin returns one page of live entries of any status, newest edit first,
@@ -638,6 +647,25 @@ func entryFromRow(row rowFields) Entry {
 		CreatedAt:    row.CreatedAt,
 		UpdatedAt:    row.UpdatedAt,
 	}
+}
+
+func (r *Repository) loadTags(ctx context.Context, entryID int64) ([]taxonomy.Tag, error) {
+	rows, err := r.q.ListTagsByEntryID(ctx, entryID)
+	if err != nil {
+		return nil, fmt.Errorf("entry: list tags for entry %d: %w", entryID, err)
+	}
+
+	tags := make([]taxonomy.Tag, 0, len(rows))
+	for _, row := range rows {
+		tags = append(tags, taxonomy.Tag{
+			ID:        row.ID,
+			Name:      row.Name,
+			Slug:      row.Slug,
+			CreatedAt: row.CreatedAt,
+			UpdatedAt: row.UpdatedAt,
+		})
+	}
+	return tags, nil
 }
 
 // translateWriteError turns a driver error from a write into a domain error.

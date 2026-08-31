@@ -175,6 +175,46 @@ func (q *Queries) ListTags(ctx context.Context, arg ListTagsParams) ([]ListTagsR
 	return items, nil
 }
 
+const listTagsByEntryID = `-- name: ListTagsByEntryID :many
+SELECT
+    t.id,
+    t.name,
+    t.slug,
+    t.created_at,
+    t.updated_at
+FROM tags t
+JOIN entry_tags et
+    ON et.tag_id = t.id
+WHERE et.entry_id = $1
+ORDER BY lower(t.name), t.id
+`
+
+func (q *Queries) ListTagsByEntryID(ctx context.Context, entryID int64) ([]Tag, error) {
+	rows, err := q.db.Query(ctx, listTagsByEntryID, entryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Tag{}
+	for rows.Next() {
+		var i Tag
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const tagNameExists = `-- name: TagNameExists :one
 SELECT EXISTS (
     SELECT 1

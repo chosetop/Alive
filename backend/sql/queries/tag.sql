@@ -94,3 +94,16 @@ SELECT EXISTS (
     FROM tags
     WHERE slug = sqlc.arg(slug)
 );
+
+-- name: ListTagsByEntryID :many
+SELECT
+    t.id,
+    t.name,
+    t.slug,
+    t.created_at,
+    t.updated_at
+FROM tags t
+JOIN entry_tags et
+    ON et.tag_id = t.id
+WHERE et.entry_id = sqlc.arg(entry_id)
+ORDER BY lower(t.name), t.id;

@@ -75,6 +75,7 @@ type Querier interface {
 	ListOpenWorlds(ctx context.Context) ([]SiteWorld, error)
 	ListPublicEntries(ctx context.Context, arg ListPublicEntriesParams) ([]ListPublicEntriesRow, error)
 	ListTags(ctx context.Context, arg ListTagsParams) ([]ListTagsRow, error)
+	ListTagsByEntryID(ctx context.Context, entryID int64) ([]Tag, error)
 	PublishEntry(ctx context.Context, arg PublishEntryParams) (PublishEntryRow, error)
 	SoftDeleteEntry(ctx context.Context, arg SoftDeleteEntryParams) (int64, error)
 	TagNameExists(ctx context.Context, name string) (bool, error)

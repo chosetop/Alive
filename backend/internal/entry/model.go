@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/p30huiwei/alive/backend/internal/contentworld"
+	"github.com/p30huiwei/alive/backend/internal/taxonomy"
 )
 
 // Sentinel errors. Callers compare with errors.Is.
@@ -290,6 +291,11 @@ type Entry struct {
 	// written rather than read — and a caller cannot tell those apart.
 	CategoryName string
 	CategorySlug string
+
+	// Tags are filled by the reads, which join through entry_tags and load the
+	// global taxonomy separately. Writes leave this empty until the read path asks
+	// for it.
+	Tags []taxonomy.Tag
 
 	World      contentworld.Key
 	Kind       string
