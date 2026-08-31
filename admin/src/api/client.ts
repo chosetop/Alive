@@ -46,7 +46,7 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler): void {
 }
 
 export interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
   /** Serialised as JSON. Omit for GET and DELETE. */
   body?: unknown
   query?: Record<string, string | number | undefined>
