@@ -187,6 +187,7 @@ export interface EntryDetail extends Omit<EntryListItem, 'category'> {
   /** `0` means uncategorised, not "unset". */
   category_id: number
   category: EntryCategoryRef | null
+  tags?: Array<{ id: number; name: string; slug: string; usage_count?: number }>
 }
 
 /**

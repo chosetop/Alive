@@ -14,6 +14,7 @@ import MarkdownEditor from '../components/MarkdownEditor.vue'
 import WorkspaceHeader from '../components/writing/WorkspaceHeader.vue'
 import ArticleSettings from '../components/writing/ArticleSettings.vue'
 import PublishPanel from '../components/writing/PublishPanel.vue'
+import TagPicker from '../components/writing/TagPicker.vue'
 import { EntryRecoveryStore } from '../editor/recovery-store'
 import {
   createSaveCoordinator,
@@ -650,6 +651,13 @@ function createCoordinatorBridge(): CoordinatorBridge {
         @update:open="settingsOpen = $event"
         @update="handleSettingsUpdate"
         @delete="handleDelete"
+      />
+      <TagPicker
+        v-if="original"
+        :entry-id="original.id"
+        :revision="original.revision"
+        :selected="original.tags ?? []"
+        @saved="(revision, tags) => { if (original) { original.revision = revision; original.tags = tags } }"
       />
       <PublishPanel
         v-if="editorEntry"

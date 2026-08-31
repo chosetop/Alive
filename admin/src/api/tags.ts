@@ -1,6 +1,6 @@
 import { request } from './client'
 
-export interface Tag { id: number; name: string; slug: string; usage_count: number }
+export interface Tag { id: number; name: string; slug: string; usage_count?: number }
 export function listTags(query: { q?: string; limit?: number } = {}): Promise<Tag[]> {
   return request<Tag[]>('/admin/tags', { query })
 }
