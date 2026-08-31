@@ -15,6 +15,7 @@ import (
 const (
 	tagUniqueViolation     = "23505"
 	tagForeignKeyViolation = "23503"
+	tagDependencyViolation = "23001"
 )
 
 type TagRepository struct {
@@ -154,7 +155,7 @@ func translateTagWriteError(op string, err error, name, slug string) error {
 
 func translateTagDeleteError(err error) error {
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == tagForeignKeyViolation {
+	if errors.As(err, &pgErr) && (pgErr.Code == tagForeignKeyViolation || pgErr.Code == tagDependencyViolation) {
 		return ErrTagInUse
 	}
 	return fmt.Errorf("taxonomy: delete tag: %w", err)
