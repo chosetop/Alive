@@ -4,6 +4,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import { fromFormDateTime, toFormDateTime } from '../../api'
 import type { Category, EntryDetail, EntryPatchFields, EntryVisibility } from '../../types/api'
 import { UiButton, UiIcon, UiIconButton } from '../ui'
+import MediaUpload from './MediaUpload.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -90,6 +91,7 @@ function confirmDelete(): void {
 
       <label class="field" for="e-cover">封面 URL</label>
       <input id="e-cover" type="url" :value="entry.cover_url" placeholder="https://…" :disabled="disabled" @input="update({ cover_url: ($event.target as HTMLInputElement).value })" />
+      <MediaUpload v-if="entry.id > 0" :entry-id="entry.id" :disabled="disabled" @uploaded="update({ cover_url: $event.url })" />
 
       <label class="field" for="e-happened">发生时间</label>
       <input id="e-happened" type="datetime-local" :value="toFormDateTime(entry.happened_at)" :disabled="disabled" @input="update({ happened_at: ($event.target as HTMLInputElement).value === '' ? '0001-01-01T00:00:00Z' : fromFormDateTime(($event.target as HTMLInputElement).value) })" />
