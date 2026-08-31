@@ -3,6 +3,7 @@ package aliyunoss
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/aliyun/alibabacloud-oss-go-sdk-v2/oss"
@@ -17,9 +18,16 @@ type Client struct {
 }
 
 func New(cfg config.OSSConfig) *Client {
+	return NewWithHTTPClient(cfg, nil)
+}
+
+func NewWithHTTPClient(cfg config.OSSConfig, httpClient *http.Client) *Client {
 	c := oss.LoadDefaultConfig().WithRegion(cfg.Region).WithCredentialsProvider(credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.AccessKeySecret))
 	if cfg.Endpoint != "" {
 		c = c.WithEndpoint(cfg.Endpoint)
+	}
+	if httpClient != nil {
+		c = c.WithHttpClient(httpClient)
 	}
 	return &Client{client: oss.NewClient(c), bucket: cfg.Bucket}
 }
