@@ -218,8 +218,8 @@ func (r *Repository) GetLinkByWorldSlug(ctx context.Context, world contentworld.
 // yields nothing when no row does, so an offset past the end would report a total
 // of zero and the client could not tell that from an empty site.
 //
-// The entries have no ContentMD. The query does not select it, so a list response
-// cannot accidentally carry six bodies.
+// The list response carries ContentMD for the saying world, whose public list is
+// the content itself. Journal and video DTOs still omit it at the HTTP boundary.
 //
 // categoryID of 0 means every category. It is an id rather than a slug because the
 // service resolves the slug first: that way an unknown category is a 404 saying the
@@ -248,11 +248,11 @@ func (r *Repository) ListPublic(ctx context.Context, world contentworld.Key, cat
 
 	entries := make([]Entry, 0, len(rows))
 	for _, row := range rows {
-		// No ContentMD: this query does not select it, so it stays "" here.
 		entries = append(entries, entryFromRow(rowFields{
 			ID: row.ID, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
 			CategoryName: row.CategoryName, CategorySlug: row.CategorySlug,
 			World: row.World, Kind: row.Kind, Title: row.Title, Slug: row.Slug, Summary: row.Summary,
+			ContentMD: row.ContentMd,
 			CoverURL: row.CoverUrl, Status: row.Status, Visibility: row.Visibility,
 			Meta: row.Meta, WordCount: row.WordCount, HappenedAt: row.HappenedAt,
 			PublishedAt: row.PublishedAt, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,

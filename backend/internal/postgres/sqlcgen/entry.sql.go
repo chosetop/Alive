@@ -736,6 +736,7 @@ SELECT
     e.title,
     e.slug,
     e.summary,
+    e.content_md,
     e.cover_url,
     e.status,
     e.visibility,
@@ -777,6 +778,7 @@ type ListPublicEntriesRow struct {
 	Title        string
 	Slug         string
 	Summary      *string
+	ContentMd    string
 	CoverUrl     *string
 	Status       string
 	Visibility   string
@@ -813,6 +815,7 @@ func (q *Queries) ListPublicEntries(ctx context.Context, arg ListPublicEntriesPa
 			&i.Title,
 			&i.Slug,
 			&i.Summary,
+			&i.ContentMd,
 			&i.CoverUrl,
 			&i.Status,
 			&i.Visibility,

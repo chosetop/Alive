@@ -115,6 +115,7 @@ SELECT
     e.title,
     e.slug,
     e.summary,
+    e.content_md,
     e.cover_url,
     e.status,
     e.visibility,
