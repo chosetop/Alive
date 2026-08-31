@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRouter } from 'vue-router'
 
 import { entriesApi, toUserMessage } from '../api'
 import TagPicker from '../components/writing/TagPicker.vue'
 import type { Tag } from '../api/tags'
 import type { EntryDetail, EntryVisibility } from '../types/api'
-import { useWritingStore } from '../stores/writing'
+import { useWritingStore, writingFlushKey } from '../stores/writing'
 
 const props = defineProps<{
   initialEntry?: EntryDetail
@@ -28,14 +28,25 @@ const isTouched = computed(() => content.value.trim() !== '' || source.value.tri
 let creating: Promise<void> | null = null
 
 const longFormWarning = computed(() => Array.from(content.value.trim()).length > 300)
+const flushGate = inject(writingFlushKey, null)
+const ownFlush = async (): Promise<void> => {
+  await save()
+}
 
 onMounted(() => {
   writing.setActiveWorld(props.initialEntry?.world ?? 'saying')
+  if (flushGate !== null) flushGate.value = ownFlush
   if (props.initialEntry) applyEntry(props.initialEntry)
+})
+
+onBeforeUnmount(() => {
+  if (flushGate !== null && flushGate.value === ownFlush) flushGate.value = null
+  if (writing.activeEntryId === entry.value?.id) writing.setActiveEntry(null)
 })
 
 function applyEntry(next: EntryDetail): void {
   entry.value = next
+  writing.setActiveEntry(next.id)
   content.value = next.content_md
   visibility.value = next.visibility
   source.value = typeof next.meta.source === 'string' ? next.meta.source : ''
@@ -77,6 +88,11 @@ async function save(): Promise<void> {
   }
 }
 
+async function flushBeforeRouteChange(): Promise<boolean> {
+  await save()
+  return error.value === null
+}
+
 async function publish(): Promise<void> {
   if (!entry.value || isPublishing.value) return
   await save()
@@ -105,6 +121,9 @@ async function copyPermalink(): Promise<void> {
   copied.value = true
   window.setTimeout(() => { copied.value = false }, 1600)
 }
+
+onBeforeRouteLeave(async () => ((await flushBeforeRouteChange()) ? undefined : false))
+onBeforeRouteUpdate(async () => ((await flushBeforeRouteChange()) ? undefined : false))
 
 </script>
 

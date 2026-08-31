@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 import { entriesApi, toUserMessage } from '../api'
 import { resolveAdminWorld } from '../content-worlds/registry'
@@ -28,6 +28,10 @@ watch(
   },
   { immediate: true },
 )
+
+onBeforeUnmount(() => {
+  loadGeneration += 1
+})
 
 async function load(id: string): Promise<void> {
   const generation = ++loadGeneration

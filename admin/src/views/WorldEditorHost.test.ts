@@ -1,6 +1,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 
 import { useWritingStore } from '../stores/writing'
 import type { EntryDetail } from '../types/api'
@@ -124,5 +125,30 @@ describe('WorldEditorHost', () => {
 
     expect(wrapper.find('[data-editor-kind]').exists()).toBe(false)
     expect(wrapper.get('[role="alert"]').text()).toContain('Unsupported world')
+  })
+
+  it('ignores a late entry load after the host unmounts', async () => {
+    let resolveEntry: (value: EntryDetail) => void = () => {}
+    api.getEntry.mockReturnValue(
+      new Promise<EntryDetail>((resolve) => {
+        resolveEntry = resolve
+      }),
+    )
+
+    const wrapper = mount(WorldEditorHost, {
+      props: { id: '41' },
+      global: { plugins: [createPinia()] },
+    })
+    wrappers.push(wrapper)
+
+    expect(useWritingStore().activeWorld).toBeNull()
+
+    wrapper.unmount()
+    wrappers.splice(wrappers.indexOf(wrapper), 1)
+    resolveEntry(entry({ world: 'saying' }))
+    await flushPromises()
+    await nextTick()
+
+    expect(useWritingStore().activeWorld).toBeNull()
   })
 })
