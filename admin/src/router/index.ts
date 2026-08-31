@@ -102,6 +102,11 @@ export const routes: RouteRecordRaw[] = [
         },
       },
       {
+        path: 'new/saying',
+        name: 'saying-editor-new',
+        component: () => import('../views/SayingEditor.vue'),
+      },
+      {
         path: 'blank',
         name: 'entry-blank',
         component: () => import('../views/EntryEditor.vue'),

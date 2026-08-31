@@ -24,7 +24,7 @@ export const ADMIN_WORLD_REGISTRY: readonly AdminWorldDefinition[] = [
     key: 'saying',
     label: '片语',
     createLabel: '写片语',
-    editorRouteName: null,
+    editorRouteName: 'saying-editor-new',
     publishPolicy: 'saying',
     categoryEnabled: true,
     mediaCapability: 'none',
