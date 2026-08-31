@@ -23,4 +23,10 @@ describe('resolveApiBase', () => {
       'http://localhost:8080',
     )
   })
+
+  it('maps the local API origin to the current host for LAN browser access', () => {
+    expect(resolveApiBase('http://localhost:8080', false, 'http://192.168.1.48:3000')).toBe(
+      'http://192.168.1.48:8080',
+    )
+  })
 })

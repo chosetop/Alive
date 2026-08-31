@@ -3,6 +3,19 @@ export function resolveApiBase(
   isServer: boolean,
   browserOrigin = '',
 ): string {
+  if (!isServer && configuredOrigin) {
+    try {
+      const configured = new URL(configuredOrigin)
+      const browser = new URL(browserOrigin)
+      const isLocalApi = configured.hostname === 'localhost' || configured.hostname === '127.0.0.1'
+
+      if (isLocalApi && browser.hostname !== 'localhost' && browser.hostname !== '127.0.0.1') {
+        return `${browser.protocol}//${browser.hostname}:${configured.port || '80'}`
+      }
+    } catch {
+      // Fall through to the configured origin when either value is not a URL.
+    }
+  }
   if (configuredOrigin) return configuredOrigin
   if (isServer) return 'http://127.0.0.1:8081'
   try {
