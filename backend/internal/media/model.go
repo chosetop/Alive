@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"github.com/p30huiwei/alive/backend/internal/storage"
 	"path/filepath"
 	"strings"
 	"time"
@@ -46,6 +47,77 @@ type Store interface {
 	Get(context.Context, int64) (Media, error)
 }
 type Service struct{ store Store }
+
+type PresignInput struct {
+	AuthorID, EntryID  int64
+	Filename, MIMEType string
+	SizeBytes          int64
+}
+type SignedUpload struct {
+	ObjectKey string
+	Upload    storage.PresignedPut
+}
+type RegisterInput struct {
+	AuthorID, EntryID   int64
+	ObjectKey, MIMEType string
+	SizeBytes           int64
+	Width, Height       *int
+}
+
+type UploadSigner interface {
+	PresignPut(context.Context, string, string, time.Duration) (storage.PresignedPut, error)
+	Head(context.Context, string) (storage.ObjectInfo, error)
+}
+
+type ConfiguredService struct {
+	store         Store
+	signer        UploadSigner
+	publicBaseURL string
+	ttl           time.Duration
+	now           func() time.Time
+}
+
+func NewConfiguredService(store Store, signer UploadSigner, publicBaseURL string, ttl time.Duration) *ConfiguredService {
+	return &ConfiguredService{store: store, signer: signer, publicBaseURL: strings.TrimRight(publicBaseURL, "/"), ttl: ttl, now: time.Now}
+}
+func (s *ConfiguredService) Presign(ctx context.Context, in PresignInput) (SignedUpload, error) {
+	if s.signer == nil {
+		return SignedUpload{}, errors.New("media: storage unavailable")
+	}
+	if err := ValidateUpload(in.MIMEType, in.SizeBytes); err != nil {
+		return SignedUpload{}, err
+	}
+	key, err := NewObjectKey(in.AuthorID, in.EntryID, in.MIMEType, s.now())
+	if err != nil {
+		return SignedUpload{}, err
+	}
+	signed, err := s.signer.PresignPut(ctx, key, in.MIMEType, s.ttl)
+	if err != nil {
+		return SignedUpload{}, err
+	}
+	return SignedUpload{ObjectKey: key, Upload: signed}, nil
+}
+func (s *ConfiguredService) Register(ctx context.Context, in RegisterInput) (Media, error) {
+	if s.signer == nil {
+		return Media{}, errors.New("media: storage unavailable")
+	}
+	prefix := fmt.Sprintf("media/%d/%d/", in.AuthorID, in.EntryID)
+	if !strings.HasPrefix(in.ObjectKey, prefix) {
+		return Media{}, errors.New("media: object key outside entry prefix")
+	}
+	if err := ValidateUpload(in.MIMEType, in.SizeBytes); err != nil {
+		return Media{}, err
+	}
+	info, err := s.signer.Head(ctx, in.ObjectKey)
+	if err != nil {
+		return Media{}, err
+	}
+	if info.SizeBytes != in.SizeBytes || strings.ToLower(info.MIMEType) != strings.ToLower(in.MIMEType) {
+		return Media{}, errors.New("media: uploaded object metadata mismatch")
+	}
+	m := Media{AuthorID: in.AuthorID, ObjectKey: in.ObjectKey, MimeType: in.MIMEType, ByteSize: in.SizeBytes}
+	return s.store.Create(ctx, m)
+}
 
 func NewService(store Store) *Service { return &Service{store: store} }
 func (s *Service) Register(ctx context.Context, m Media) (Media, error) {
