@@ -5,6 +5,7 @@ import { fromFormDateTime, toFormDateTime } from '../../api'
 import type { Category, EntryDetail, EntryPatchFields, EntryVisibility } from '../../types/api'
 import { UiButton, UiIcon, UiIconButton } from '../ui'
 import MediaUpload from './MediaUpload.vue'
+import VideoUpload from './VideoUpload.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -19,6 +20,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   'update:open': [boolean]
   update: [EntryPatchFields]
+  revision: [number]
   delete: []
 }>()
 
@@ -92,6 +94,7 @@ function confirmDelete(): void {
       <label class="field" for="e-cover">封面 URL</label>
       <input id="e-cover" type="url" :value="entry.cover_url" placeholder="https://…" :disabled="disabled" @input="update({ cover_url: ($event.target as HTMLInputElement).value })" />
       <MediaUpload v-if="entry.id > 0" :entry-id="entry.id" :disabled="disabled" @uploaded="update({ cover_url: $event.url })" />
+      <VideoUpload v-if="entry.id > 0 && entry.world === 'video'" :entry-id="entry.id" :revision="entry.revision" :disabled="disabled" @revision="emit('revision', $event)" />
 
       <label class="field" for="e-happened">发生时间</label>
       <input id="e-happened" type="datetime-local" :value="toFormDateTime(entry.happened_at)" :disabled="disabled" @input="update({ happened_at: ($event.target as HTMLInputElement).value === '' ? '0001-01-01T00:00:00Z' : fromFormDateTime(($event.target as HTMLInputElement).value) })" />

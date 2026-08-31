@@ -84,6 +84,11 @@ function onTagsSaved(revision: number, tags: Array<{ id: number; name: string; s
   autosave.revision.value = revision
 }
 
+function onMediaRevision(revision: number): void {
+  if (original.value) original.value = { ...original.value, revision }
+  autosave.revision.value = revision
+}
+
 /**
  * The flush gate the directory pulls before it navigates away.
  *
@@ -656,6 +661,7 @@ function createCoordinatorBridge(): CoordinatorBridge {
         @update:open="settingsOpen = $event"
         @update="handleSettingsUpdate"
         @delete="handleDelete"
+        @revision="onMediaRevision"
       />
       <TagPicker
         v-if="original"
