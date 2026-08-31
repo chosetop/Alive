@@ -59,6 +59,7 @@ func newRouterWith(cfg *config.Config) http.Handler {
 	authService := auth.NewService(auth.NewRepository(nil))
 	entryService := entry.NewService(entry.NewRepository(nil))
 	taxonomyService := taxonomy.NewService(taxonomy.NewRepository(nil))
+	tagService := taxonomy.NewTagService(taxonomy.NewTagRepository(nil))
 	siteService := site.NewService(site.NewRepository(nil))
 	worldService := contentworld.NewService(contentworld.NewRepository(nil))
 
@@ -69,6 +70,7 @@ func newRouterWith(cfg *config.Config) http.Handler {
 		AuthService:     authService,
 		EntryService:    entryService,
 		TaxonomyService: taxonomyService,
+		TagService:      tagService,
 		SiteService:     siteService,
 		WorldService:    worldService,
 	})
@@ -234,6 +236,16 @@ func TestWorldRoutesAreMountedWithTheRightGuards(t *testing.T) {
 				t.Fatalf("status = %d, want %d: %s", rec.Code, tc.want, rec.Body.String())
 			}
 		})
+	}
+}
+
+func TestTagAdminRoutesAreMountedWithTheRightGuard(t *testing.T) {
+	handler := newTestRouter()
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/tags", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401\nbody: %s", rec.Code, rec.Body.String())
 	}
 }
 
