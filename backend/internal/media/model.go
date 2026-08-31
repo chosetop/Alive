@@ -127,6 +127,13 @@ func (s *ConfiguredService) Register(ctx context.Context, in RegisterInput) (Med
 	if s.signer == nil {
 		return Media{}, errors.New("media: storage unavailable")
 	}
+	owned, err := s.store.EntryOwnedByAuthor(ctx, in.EntryID, in.AuthorID)
+	if err != nil {
+		return Media{}, err
+	}
+	if !owned {
+		return Media{}, errors.New("media: entry not found")
+	}
 	prefix := fmt.Sprintf("media/%d/%d/", in.AuthorID, in.EntryID)
 	if !strings.HasPrefix(in.ObjectKey, prefix) {
 		return Media{}, errors.New("media: object key outside entry prefix")
