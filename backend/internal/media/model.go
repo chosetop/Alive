@@ -50,7 +50,13 @@ type Store interface {
 	ListForEntry(context.Context, int64) ([]Media, error)
 	EntryOwnedByAuthor(context.Context, int64, int64) (bool, error)
 	SetPrimaryVideo(context.Context, int64, int64, int64, int64) (int64, error)
+	GetPrimaryVideoByEntry(context.Context, int64) (Media, error)
 }
+
+func (s *ConfiguredService) GetPrimaryVideoByEntry(ctx context.Context, entryID int64) (Media, error) {
+	return s.store.GetPrimaryVideoByEntry(ctx, entryID)
+}
+
 type Service struct{ store Store }
 
 type PresignInput struct {

@@ -52,6 +52,7 @@ type Querier interface {
 	GetCategoryBySlug(ctx context.Context, arg GetCategoryBySlugParams) (GetCategoryBySlugRow, error)
 	GetLinkEntryBySlug(ctx context.Context, arg GetLinkEntryBySlugParams) (GetLinkEntryBySlugRow, error)
 	GetMediaByID(ctx context.Context, id int64) (GetMediaByIDRow, error)
+	GetPrimaryVideoByEntry(ctx context.Context, entryID int64) (GetPrimaryVideoByEntryRow, error)
 	GetPublicEntryBySlug(ctx context.Context, arg GetPublicEntryBySlugParams) (GetPublicEntryBySlugRow, error)
 	// The authentication lookup. One round trip returns the session and its user,
 	// because this runs on every protected request and a second query would double

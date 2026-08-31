@@ -101,6 +101,37 @@ func (q *Queries) GetMediaByID(ctx context.Context, id int64) (GetMediaByIDRow, 
 	return i, err
 }
 
+const getPrimaryVideoByEntry = `-- name: GetPrimaryVideoByEntry :one
+SELECT m.id, m.author_id, m.object_key, m.url, m.mime_type, m.byte_size, m.created_at
+FROM media m JOIN entry_media em ON em.media_id = m.id
+WHERE em.entry_id = $1 AND em.role = 'primary_video'
+`
+
+type GetPrimaryVideoByEntryRow struct {
+	ID        int64
+	AuthorID  int64
+	ObjectKey string
+	Url       string
+	MimeType  string
+	ByteSize  int64
+	CreatedAt time.Time
+}
+
+func (q *Queries) GetPrimaryVideoByEntry(ctx context.Context, entryID int64) (GetPrimaryVideoByEntryRow, error) {
+	row := q.db.QueryRow(ctx, getPrimaryVideoByEntry, entryID)
+	var i GetPrimaryVideoByEntryRow
+	err := row.Scan(
+		&i.ID,
+		&i.AuthorID,
+		&i.ObjectKey,
+		&i.Url,
+		&i.MimeType,
+		&i.ByteSize,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const listMediaForEntry = `-- name: ListMediaForEntry :many
 SELECT m.id, m.author_id, m.object_key, m.url, m.mime_type, m.byte_size, m.created_at
 FROM media m

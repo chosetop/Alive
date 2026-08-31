@@ -16,3 +16,8 @@ ORDER BY em.created_at, m.id;
 
 -- name: EntryOwnedByAuthor :one
 SELECT EXISTS(SELECT 1 FROM entries WHERE id = $1 AND author_id = $2 AND deleted_at IS NULL);
+
+-- name: GetPrimaryVideoByEntry :one
+SELECT m.id, m.author_id, m.object_key, m.url, m.mime_type, m.byte_size, m.created_at
+FROM media m JOIN entry_media em ON em.media_id = m.id
+WHERE em.entry_id = $1 AND em.role = 'primary_video';

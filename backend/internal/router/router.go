@@ -175,6 +175,9 @@ func New(deps Dependencies) *gin.Engine {
 		deps.Logger,
 	)
 	entryHandler.SetTagReplacer(deps.EntryTagReplacer)
+	if deps.MediaService != nil {
+		entryHandler.SetPrimaryVideoResolver(deps.MediaService)
+	}
 	entryHandler.Register(api, authHandler.RequireAuth())
 	entryHandler.RegisterAdmin(api, authHandler.RequireAuth())
 	if deps.MediaService != nil {

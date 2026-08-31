@@ -78,3 +78,11 @@ func (r *Repository) SetPrimaryVideo(ctx context.Context, entryID, authorID, exp
 	}
 	return revision, nil
 }
+
+func (r *Repository) GetPrimaryVideoByEntry(ctx context.Context, entryID int64) (Media, error) {
+	row, err := r.q.GetPrimaryVideoByEntry(ctx, entryID)
+	if err != nil {
+		return Media{}, err
+	}
+	return Media{ID: row.ID, AuthorID: row.AuthorID, ObjectKey: row.ObjectKey, URL: row.Url, MimeType: row.MimeType, ByteSize: row.ByteSize, CreatedAt: row.CreatedAt}, nil
+}

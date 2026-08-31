@@ -21,6 +21,7 @@ import (
 	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/entry"
 	"github.com/p30huiwei/alive/backend/internal/httpx"
+	"github.com/p30huiwei/alive/backend/internal/media"
 )
 
 // CategoryResolver turns a category slug into its id within one world.
@@ -52,17 +53,22 @@ type AuthorResolver func(c *gin.Context) (int64, bool)
 type TagReplacer interface {
 	ReplaceTags(context.Context, int64, int64, int64, []int64) (int64, error)
 }
+type PrimaryVideoResolver interface {
+	GetPrimaryVideoByEntry(context.Context, int64) (media.Media, error)
+}
 
 // Handler serves the entry endpoints.
 type Handler struct {
-	service  *entry.Service
-	author   AuthorResolver
-	category CategoryResolver
-	logger   *slog.Logger
-	tags     TagReplacer
+	service      *entry.Service
+	author       AuthorResolver
+	category     CategoryResolver
+	logger       *slog.Logger
+	tags         TagReplacer
+	primaryVideo PrimaryVideoResolver
 }
 
-func (h *Handler) SetTagReplacer(replacer TagReplacer) { h.tags = replacer }
+func (h *Handler) SetTagReplacer(replacer TagReplacer)                   { h.tags = replacer }
+func (h *Handler) SetPrimaryVideoResolver(resolver PrimaryVideoResolver) { h.primaryVideo = resolver }
 
 // NewHandler wires a handler to the service.
 //
@@ -159,7 +165,13 @@ func (h *Handler) GetVideoBySlug(c *gin.Context) {
 		httpx.Error(c, apperr.From(err))
 		return
 	}
-	httpx.OK(c, newPublicEntryDetail(found))
+	detail := newPublicEntryDetail(found)
+	if h.primaryVideo != nil {
+		if video, resolveErr := h.primaryVideo.GetPrimaryVideoByEntry(c.Request.Context(), found.ID); resolveErr == nil && video.URL != "" {
+			detail.PrimaryMedia = &primaryMedia{URL: video.URL, MIMEType: video.MimeType}
+		}
+	}
+	httpx.OK(c, detail)
 }
 
 // RegisterAdmin adds the authenticated read routes under the admin group.

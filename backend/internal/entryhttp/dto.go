@@ -237,8 +237,13 @@ func newEntryCategory(e entry.Entry) *entryCategory {
 // would be two constants in every response.
 type publicEntryDetail struct {
 	entrySummary
-	ContentMD string    `json:"content_md"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ContentMD    string        `json:"content_md"`
+	UpdatedAt    time.Time     `json:"updated_at"`
+	PrimaryMedia *primaryMedia `json:"primary_media,omitempty"`
+}
+type primaryMedia struct {
+	URL      string `json:"url"`
+	MIMEType string `json:"mime_type"`
 }
 
 // sayingListItem is one Saying as the public list reports it.
@@ -246,11 +251,11 @@ type publicEntryDetail struct {
 // No title, no timestamps, no cover: a Saying is surfaced as a short permanent
 // piece of content rather than as a journal entry with metadata chrome.
 type sayingListItem struct {
-	ShortID  string          `json:"short_id"`
-	Content  string          `json:"content_md"`
-	Source   string          `json:"source,omitempty"`
-	Author   string          `json:"author,omitempty"`
-	Category *entryCategory  `json:"category,omitempty"`
+	ShortID  string         `json:"short_id"`
+	Content  string         `json:"content_md"`
+	Source   string         `json:"source,omitempty"`
+	Author   string         `json:"author,omitempty"`
+	Category *entryCategory `json:"category,omitempty"`
 }
 
 // sayingLink is the minimal permanent-link shape used for previous/next.
