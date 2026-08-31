@@ -9,13 +9,28 @@ describe('resolveAdminWorld', () => {
 
   it('returns the Journal editor contract for the registered world', () => {
     expect(resolveAdminWorld('journal')).toMatchObject({
-      key: 'journal',
-      label: '日志',
-      createLabel: '写日志',
-      editorRouteName: 'entry-new-world',
-      publishPolicy: 'journal',
-      categoryEnabled: true,
-      mediaCapability: 'markdown-images',
+      editorKind: 'long-form',
+      material: 'manuscript',
+      description: '长文、图片与时间留下的痕迹',
+      directoryNoun: '日志',
+      emptyCopy: '还没有日志。写下第一篇。',
+      searchPlaceholder: '搜索日志',
+    })
+  })
+
+  it('returns the Saying editor contract for the registered world', () => {
+    expect(resolveAdminWorld('saying')).toMatchObject({
+      editorKind: 'saying',
+      material: 'note',
+      directoryNoun: '片语',
+    })
+  })
+
+  it('returns the Video editor contract for the registered world', () => {
+    expect(resolveAdminWorld('video')).toMatchObject({
+      editorKind: 'long-form',
+      material: 'viewfinder',
+      directoryNoun: '影像',
     })
   })
 
