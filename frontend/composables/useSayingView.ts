@@ -12,7 +12,7 @@ type SayingViewRecord = {
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>
 type HistoryLike = {
   state: unknown
-  replaceState: (state: unknown, title?: string, url?: string | null) => void
+  replaceState: (state: unknown, title: string, url?: string | URL | null) => void
 }
 
 const VALUES: readonly SayingView[] = ['stream', 'wall', 'focus']
@@ -25,7 +25,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-export function resolveSayingView(value: unknown, fallback: SayingView = 'stream'): SayingView {
+export function resolveSayingView(value: unknown, fallback: unknown = 'stream'): SayingView {
   if (isView(value)) return value
   return isView(fallback) ? fallback : 'stream'
 }

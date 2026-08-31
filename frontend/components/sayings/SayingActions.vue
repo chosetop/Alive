@@ -35,7 +35,7 @@ function rememberAnchor(event: MouseEvent): void {
   const root = target.closest<HTMLElement>('[data-saying-id]')
   if (!root) return
 
-  rememberSayingAnchor(window.history, props.shortId, root.offsetTop)
+  rememberSayingAnchor(window.history as unknown as Parameters<typeof rememberSayingAnchor>[0], props.shortId, root.offsetTop)
 }
 </script>
 

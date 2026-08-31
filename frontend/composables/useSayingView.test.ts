@@ -7,7 +7,6 @@ import {
   resolveSayingView,
   saveSayingViewPreference,
 } from './useSayingView'
-import type { SayingView } from '~/types'
 
 describe('resolveSayingView', () => {
   it('keeps a valid explicit choice', () => {
@@ -63,10 +62,13 @@ describe('sayings view preference storage', () => {
 
 describe('saying return anchors', () => {
   function createHistory() {
+    let currentState: unknown = {}
     return {
-      state: {},
-      replaceState(nextState: unknown) {
-        this.state = nextState
+      get state() {
+        return currentState
+      },
+      replaceState(nextState: unknown, _title: string) {
+        currentState = nextState
       },
     }
   }
@@ -81,7 +83,7 @@ describe('saying return anchors', () => {
 
   it('consumes a stored anchor once', () => {
     const history = createHistory()
-    history.state = { aliveSayingAnchor: { shortId: 'abc123', offsetTop: 240 } }
+    history.replaceState({ aliveSayingAnchor: { shortId: 'abc123', offsetTop: 240 } }, '')
 
     expect(consumeSayingAnchor(history)).toEqual({ shortId: 'abc123', offsetTop: 240 })
     expect(history.state).toEqual({})

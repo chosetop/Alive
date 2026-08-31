@@ -1,4 +1,5 @@
 import type { Category } from '~/types'
+import type { WorldKey } from '~/types'
 
 /**
  * The site's categories, fetched once per render and shared.
@@ -13,10 +14,10 @@ import type { Category } from '~/types'
  * fails the footer is empty, but the entry the reader came for still renders.
  * `default` supplies an empty array so no caller has to handle `null`.
  */
-export function useSiteCategories() {
+export function useSiteCategories(world: WorldKey = 'journal') {
   const { list } = useCategoriesApi()
 
-  return useAsyncData<Category[]>('site-categories', () => list(), {
+  return useAsyncData<Category[]>(`site-categories-${world}`, () => list({ world }), {
     default: () => [],
   })
 }
