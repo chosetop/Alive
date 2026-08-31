@@ -8,7 +8,7 @@ import (
 // ReplaceTags atomically replaces an entry's tag ids and advances its revision.
 // It is intentionally repository-level until the editor write path is wired to
 // the same CAS contract as the other entry mutations.
-func (r *Repository) ReplaceTags(ctx context.Context, id, expectedRevision int64, tagIDs []int64) (int64, error) {
+func (r *Repository) ReplaceTags(ctx context.Context, id, authorID, expectedRevision int64, tagIDs []int64) (int64, error) {
 	if len(tagIDs) > 20 {
 		return 0, fmt.Errorf("entry: at most 20 tags")
 	}
@@ -31,7 +31,7 @@ func (r *Repository) ReplaceTags(ctx context.Context, id, expectedRevision int64
 	}
 	defer tx.Rollback(ctx)
 	var revision int64
-	if err := tx.QueryRow(ctx, `UPDATE entries SET revision = revision + 1 WHERE id = $1 AND revision = $2 AND deleted_at IS NULL RETURNING revision`, id, expectedRevision).Scan(&revision); err != nil {
+	if err := tx.QueryRow(ctx, `UPDATE entries SET revision = revision + 1 WHERE id = $1 AND author_id = $2 AND revision = $3 AND deleted_at IS NULL RETURNING revision`, id, authorID, expectedRevision).Scan(&revision); err != nil {
 		return 0, ErrVersionConflict
 	}
 	if _, err = tx.Exec(ctx, `DELETE FROM entry_tags WHERE entry_id = $1`, id); err != nil {

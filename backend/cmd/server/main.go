@@ -88,15 +88,16 @@ func run() error {
 	siteService := site.NewService(site.NewRepository(pool))
 
 	handler := router.New(router.Dependencies{
-		Config:          cfg,
-		Logger:          logger,
-		Pool:            pool,
-		AuthService:     authService,
-		EntryService:    entryService,
-		TaxonomyService: taxonomyService,
-		TagService:      tagService,
-		SiteService:     siteService,
-		WorldService:    worldService,
+		Config:           cfg,
+		Logger:           logger,
+		Pool:             pool,
+		AuthService:      authService,
+		EntryService:     entryService,
+		EntryTagReplacer: entry.NewRepository(pool),
+		TaxonomyService:  taxonomyService,
+		TagService:       tagService,
+		SiteService:      siteService,
+		WorldService:     worldService,
 	})
 
 	server := &http.Server{

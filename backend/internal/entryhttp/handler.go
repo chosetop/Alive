@@ -49,13 +49,20 @@ type CategoryResolver func(c *gin.Context, world contentworld.Key, slug string) 
 // The second result is false when the request carries no identity.
 type AuthorResolver func(c *gin.Context) (int64, bool)
 
+type TagReplacer interface {
+	ReplaceTags(context.Context, int64, int64, int64, []int64) (int64, error)
+}
+
 // Handler serves the entry endpoints.
 type Handler struct {
 	service  *entry.Service
 	author   AuthorResolver
 	category CategoryResolver
 	logger   *slog.Logger
+	tags     TagReplacer
 }
+
+func (h *Handler) SetTagReplacer(replacer TagReplacer) { h.tags = replacer }
 
 // NewHandler wires a handler to the service.
 //
@@ -131,6 +138,7 @@ func (h *Handler) RegisterAdmin(api *gin.RouterGroup, requireAuth gin.HandlerFun
 
 	group.GET("", h.ListAdmin)
 	group.GET("/:id", h.GetByID)
+	group.PUT("/:id/tags", h.ReplaceTags)
 	api.GET("/admin/dashboard", requireAuth, h.Dashboard)
 }
 

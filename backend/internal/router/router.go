@@ -47,7 +47,8 @@ type Dependencies struct {
 
 	// EntryService is required. Same arrangement as AuthService: the adapter is
 	// built here, not passed in.
-	EntryService *entry.Service
+	EntryService     *entry.Service
+	EntryTagReplacer entryhttp.TagReplacer
 
 	// TaxonomyService is required. Required rather than optional even though the
 	// category endpoints could be left off: the entry list's ?category= filter
@@ -171,6 +172,7 @@ func New(deps Dependencies) *gin.Engine {
 		categoryFromSlug(deps.TaxonomyService),
 		deps.Logger,
 	)
+	entryHandler.SetTagReplacer(deps.EntryTagReplacer)
 	entryHandler.Register(api, authHandler.RequireAuth())
 	entryHandler.RegisterAdmin(api, authHandler.RequireAuth())
 
