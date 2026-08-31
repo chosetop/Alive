@@ -20,12 +20,22 @@ const JOURNAL_WORLD: PublicWorldDefinition = {
   seoType: 'Article',
 }
 
-const PUBLIC_WORLDS = [JOURNAL_WORLD] as const
+const SAYING_WORLD: PublicWorldDefinition = {
+  key: 'saying',
+  label: '片语',
+  rootPath: '/sayings',
+  entryPath: (slug) => `/sayings/${slug}`,
+  categoryPath: (slug) => `/sayings/categories/${slug}`,
+  timePolicy: 'hidden',
+  seoType: 'SocialMediaPosting',
+}
+
+const PUBLIC_WORLDS = [JOURNAL_WORLD, SAYING_WORLD] as const
 
 export function listPublicWorlds(): readonly PublicWorldDefinition[] {
   return PUBLIC_WORLDS
 }
 
 export function resolvePublicWorld(key: WorldKey | string): PublicWorldDefinition | null {
-  return key === 'journal' ? JOURNAL_WORLD : null
+  return key === 'journal' ? JOURNAL_WORLD : key === 'saying' ? SAYING_WORLD : null
 }

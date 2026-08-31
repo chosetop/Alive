@@ -18,8 +18,14 @@ describe('public world registry', () => {
   })
 
   it('only lists registered public worlds', () => {
-    expect(listPublicWorlds().map((world) => world.key)).toEqual(['journal'])
-    expect(resolvePublicWorld('saying')).toBeNull()
+    expect(listPublicWorlds().map((world) => world.key)).toEqual(['journal', 'saying'])
+    expect(resolvePublicWorld('saying')).toMatchObject({
+      key: 'saying',
+      label: '片语',
+      rootPath: '/sayings',
+      timePolicy: 'hidden',
+      seoType: 'SocialMediaPosting',
+    })
     expect(resolvePublicWorld('video')).toBeNull()
     expect(resolvePublicWorld('unknown')).toBeNull()
   })
