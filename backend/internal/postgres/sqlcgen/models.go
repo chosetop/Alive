@@ -68,6 +68,7 @@ type Medium struct {
 	Height          *int32
 	DurationSeconds *int32
 	CreatedAt       time.Time
+	Url             string
 }
 
 type Session struct {

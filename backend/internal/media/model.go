@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/p30huiwei/alive/backend/internal/storage"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -38,6 +39,7 @@ type Media struct {
 	ID        int64
 	AuthorID  int64
 	ObjectKey string
+	URL       string
 	MimeType  string
 	ByteSize  int64
 	CreatedAt time.Time
@@ -116,6 +118,9 @@ func (s *ConfiguredService) Register(ctx context.Context, in RegisterInput) (Med
 		return Media{}, errors.New("media: uploaded object metadata mismatch")
 	}
 	m := Media{AuthorID: in.AuthorID, ObjectKey: in.ObjectKey, MimeType: in.MIMEType, ByteSize: in.SizeBytes}
+	if s.publicBaseURL != "" {
+		m.URL = s.publicBaseURL + "/" + url.PathEscape(in.ObjectKey)
+	}
 	return s.store.Create(ctx, m)
 }
 

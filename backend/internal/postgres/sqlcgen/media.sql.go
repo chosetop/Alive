@@ -11,14 +11,15 @@ import (
 )
 
 const createMedia = `-- name: CreateMedia :one
-INSERT INTO media (author_id, object_key, mime_type, byte_size)
-VALUES ($1, $2, $3, $4)
-RETURNING id, author_id, object_key, mime_type, byte_size, created_at
+INSERT INTO media (author_id, object_key, url, mime_type, byte_size)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, author_id, object_key, url, mime_type, byte_size, created_at
 `
 
 type CreateMediaParams struct {
 	AuthorID  int64
 	ObjectKey string
+	Url       string
 	MimeType  string
 	ByteSize  int64
 }
@@ -27,6 +28,7 @@ type CreateMediaRow struct {
 	ID        int64
 	AuthorID  int64
 	ObjectKey string
+	Url       string
 	MimeType  string
 	ByteSize  int64
 	CreatedAt time.Time
@@ -36,6 +38,7 @@ func (q *Queries) CreateMedia(ctx context.Context, arg CreateMediaParams) (Creat
 	row := q.db.QueryRow(ctx, createMedia,
 		arg.AuthorID,
 		arg.ObjectKey,
+		arg.Url,
 		arg.MimeType,
 		arg.ByteSize,
 	)
@@ -44,6 +47,7 @@ func (q *Queries) CreateMedia(ctx context.Context, arg CreateMediaParams) (Creat
 		&i.ID,
 		&i.AuthorID,
 		&i.ObjectKey,
+		&i.Url,
 		&i.MimeType,
 		&i.ByteSize,
 		&i.CreatedAt,
@@ -52,7 +56,7 @@ func (q *Queries) CreateMedia(ctx context.Context, arg CreateMediaParams) (Creat
 }
 
 const getMediaByID = `-- name: GetMediaByID :one
-SELECT id, author_id, object_key, mime_type, byte_size, created_at
+SELECT id, author_id, object_key, url, mime_type, byte_size, created_at
 FROM media WHERE id = $1
 `
 
@@ -60,6 +64,7 @@ type GetMediaByIDRow struct {
 	ID        int64
 	AuthorID  int64
 	ObjectKey string
+	Url       string
 	MimeType  string
 	ByteSize  int64
 	CreatedAt time.Time
@@ -72,6 +77,7 @@ func (q *Queries) GetMediaByID(ctx context.Context, id int64) (GetMediaByIDRow, 
 		&i.ID,
 		&i.AuthorID,
 		&i.ObjectKey,
+		&i.Url,
 		&i.MimeType,
 		&i.ByteSize,
 		&i.CreatedAt,
