@@ -16,6 +16,7 @@
 POST /api/v1/admin/media/presign       获取 OSS PUT 签名；OSS 未启用时返回 503/UNAVAILABLE
 POST /api/v1/admin/media                上传完成后登记媒资元数据
 GET  /api/v1/admin/entries/:id/media    列出当前作者条目的已登记媒资
+PUT  /api/v1/admin/entries/:id/primary-video  以 revision CAS 设置主视频
 ```
 
 端口：上面提到的 8099 是那次核对用的临时端口，**不是默认值**。默认是 `.env` 里的 `SERVER_PORT=8080`。

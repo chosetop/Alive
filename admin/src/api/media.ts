@@ -27,3 +27,7 @@ export function registerMedia(body: { entry_id: number; object_key: string; mime
 export function listEntryMedia(entryId: number): Promise<MediaRecord[]> {
   return request<MediaRecord[]>(`/admin/entries/${entryId}/media`)
 }
+
+export function setPrimaryVideo(entryId: number, body: { media_id: number; revision: number }): Promise<{ revision: number; media_id: number }> {
+  return request(`/admin/entries/${entryId}/primary-video`, { method: 'PUT', body })
+}
