@@ -1,6 +1,10 @@
 package media
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"time"
+)
 
 func TestValidateUpload(t *testing.T) {
 	if err := ValidateUpload("video/mp4", MaxVideoBytes); err != nil {
@@ -14,5 +18,15 @@ func TestValidateUpload(t *testing.T) {
 	}
 	if err := ValidateUpload("image/png", MaxImageBytes+1); err != ErrInvalidSize {
 		t.Fatalf("image size error = %v", err)
+	}
+}
+
+func TestObjectKeyUsesValidatedMIMEAndEntryPrefix(t *testing.T) {
+	key, err := NewObjectKey(7, 42, "image/png", time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(key, "media/7/42/2026/08/") || !strings.HasSuffix(key, ".png") {
+		t.Fatalf("key = %q", key)
 	}
 }

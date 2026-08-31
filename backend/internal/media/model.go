@@ -2,9 +2,28 @@ package media
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
+	"fmt"
+	"path/filepath"
+	"strings"
 	"time"
 )
+
+func NewObjectKey(authorID, entryID int64, mime string, now time.Time) (string, error) {
+	if authorID <= 0 || entryID <= 0 {
+		return "", errors.New("media: invalid owner")
+	}
+	ext := map[string]string{"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "video/mp4": "mp4"}[strings.ToLower(mime)]
+	if ext == "" {
+		return "", ErrInvalidMime
+	}
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("media: random key: %w", err)
+	}
+	return filepath.ToSlash(fmt.Sprintf("media/%d/%d/%04d/%02d/%x.%s", authorID, entryID, now.UTC().Year(), int(now.UTC().Month()), b, ext)), nil
+}
 
 var ErrInvalidMime = errors.New("media: invalid mime type")
 var ErrInvalidSize = errors.New("media: invalid size")
