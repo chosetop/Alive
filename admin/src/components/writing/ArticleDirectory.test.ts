@@ -2,6 +2,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
+import * as VueRouter from 'vue-router'
 
 import { useWritingStore, writingFlushKey, type WritingFlushGate } from '../../stores/writing'
 import type { EntryListItem } from '../../types/api'
@@ -409,6 +410,19 @@ describe('ArticleDirectory', () => {
     await flushPromises()
 
     expect(wrapper.get('[role="alert"]').element).toBeTruthy()
+  })
+
+  it('keeps the drawer open when the new-route navigation is vetoed', async () => {
+    vi.spyOn(VueRouter, 'isNavigationFailure').mockReturnValue(true)
+    navigation.push.mockResolvedValue({ type: 4 })
+    const store = useWritingStore()
+    const wrapper = await mountDirectory({ drawer: true })
+
+    await wrapper.get('[data-directory-new]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('当前编辑状态未改变')
+    expect(store.directoryOpen).toBe(true)
   })
 
   it('closes the drawer after a selection, and only in drawer mode', async () => {

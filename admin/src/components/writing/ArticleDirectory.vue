@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { isNavigationFailure, useRouter } from 'vue-router'
 
 import { entriesApi, toUserMessage } from '../../api'
 import { resolveAdminWorld } from '../../content-worlds/registry'
@@ -245,10 +245,14 @@ async function createArticle(): Promise<void> {
     if (worldDefinition.value?.editorRouteName === null || worldDefinition.value === null) {
       throw new Error('missing world route')
     }
-    await router.push({ name: worldDefinition.value.editorRouteName, params: { world: props.world } })
+    const navigationResult = await router.push({
+      name: worldDefinition.value.editorRouteName,
+      params: { world: props.world },
+    })
+    if (isNavigationFailure(navigationResult)) throw navigationResult
     if (props.drawer) writing.setDirectoryOpen(false)
   } catch (createFailure) {
-    if (!disposed) error.value = toUserMessage(createFailure)
+    if (!disposed) error.value = '无法打开新的工作台，当前编辑状态未改变。'
   } finally {
     if (!disposed) isCreating.value = false
   }
