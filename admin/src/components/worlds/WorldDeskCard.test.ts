@@ -74,6 +74,22 @@ describe('WorldDeskCard', () => {
     expect(wrapper.emitted('settings')).toEqual([['journal']])
   })
 
+  it('treats visible card content as an enter target while keeping settings separate', async () => {
+    const wrapper = mount(WorldDeskCard, {
+      props: {
+        definition: ADMIN_WORLD_REGISTRY[0],
+        snapshot: snapshot(),
+      },
+    })
+
+    await wrapper.get('.world-desk__description').trigger('click')
+    expect(wrapper.emitted('enter')).toEqual([['journal']])
+
+    await wrapper.get('[data-world-settings]').trigger('click')
+    expect(wrapper.emitted('enter')).toEqual([['journal']])
+    expect(wrapper.emitted('settings')).toEqual([['journal']])
+  })
+
   it('blocks entry on a recent-load failure and offers an inline retry', async () => {
     const wrapper = mount(WorldDeskCard, {
       props: {

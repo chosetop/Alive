@@ -412,6 +412,18 @@ describe('ArticleDirectory', () => {
     expect(wrapper.get('[role="alert"]').element).toBeTruthy()
   })
 
+  it('closes the drawer after a successful new-route navigation', async () => {
+    navigation.push.mockResolvedValue(undefined)
+    const store = useWritingStore()
+    const wrapper = await mountDirectory({ drawer: true })
+
+    await wrapper.get('[data-directory-new]').trigger('click')
+    await flushPromises()
+
+    expect(navigation.push).toHaveBeenCalledWith({ name: 'entry-new-world', params: { world: 'journal' } })
+    expect(store.directoryOpen).toBe(false)
+  })
+
   it('keeps the drawer open when the new-route navigation is vetoed', async () => {
     vi.spyOn(VueRouter, 'isNavigationFailure').mockReturnValue(true)
     navigation.push.mockResolvedValue({ type: 4 })

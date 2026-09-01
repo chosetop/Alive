@@ -81,6 +81,16 @@ function entry(overrides: Partial<EntryDetail> = {}): EntryDetail {
   }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve
+    reject = nextReject
+  })
+  return { promise, resolve, reject }
+}
+
 async function mountEditor(
   current: EntryDetail,
   flushGate?: Ref<(() => Promise<void>) | null>,
@@ -153,6 +163,59 @@ describe('SayingEditor', () => {
     await expect(navigation.leaveGuard?.()).resolves.toBe(false)
     await flushPromises()
 
+    expect(wrapper.get('[role="alert"]').text()).toContain('稍后重试')
+  })
+
+  it('waits for an in-flight save before allowing route leave', async () => {
+    const gate = ref<(() => Promise<void>) | null>(null)
+    const pendingSave = deferred<EntryDetail>()
+    api.updateEntry.mockReturnValueOnce(pendingSave.promise)
+    const wrapper = await mountEditor(entry({ id: 75, revision: 6, content_md: '旧句' }), gate)
+
+    await wrapper.get('textarea[aria-label="片语正文"]').setValue('保存中的句子')
+    const savePromise = gate.value?.()
+    await Promise.resolve()
+
+    const leavePromise = navigation.leaveGuard?.()
+    let settled = false
+    void leavePromise?.then(() => {
+      settled = true
+    })
+    await Promise.resolve()
+
+    expect(api.updateEntry).toHaveBeenCalledTimes(1)
+    expect(settled).toBe(false)
+
+    pendingSave.resolve(entry({ id: 75, revision: 7, content_md: '保存中的句子' }))
+    await expect(savePromise).resolves.toBeUndefined()
+    await expect(leavePromise).resolves.toBeUndefined()
+    expect(api.updateEntry).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits for an in-flight save failure before vetoing route leave', async () => {
+    const gate = ref<(() => Promise<void>) | null>(null)
+    const pendingSave = deferred<EntryDetail>()
+    api.updateEntry.mockReturnValueOnce(pendingSave.promise)
+    const wrapper = await mountEditor(entry({ id: 76, revision: 7, content_md: '旧句' }), gate)
+
+    await wrapper.get('textarea[aria-label="片语正文"]').setValue('失败中的句子')
+    const savePromise = gate.value?.()
+    await Promise.resolve()
+
+    const leavePromise = navigation.leaveGuard?.()
+    let settled = false
+    void leavePromise?.then(() => {
+      settled = true
+    })
+    await Promise.resolve()
+
+    expect(api.updateEntry).toHaveBeenCalledTimes(1)
+    expect(settled).toBe(false)
+
+    pendingSave.reject(new Error('offline'))
+    await expect(savePromise).resolves.toBeUndefined()
+    await expect(leavePromise).resolves.toBe(false)
+    await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('稍后重试')
   })
 })
