@@ -15,6 +15,13 @@ const navigation = vi.hoisted(() => ({
   push: vi.fn(),
 }))
 
+const transition = vi.hoisted(() => ({
+  dispose: vi.fn(),
+  enterWorld: vi.fn((_: Element, __: Element[], navigate: () => Promise<void>) => navigate()),
+  enterWorkspace: vi.fn(),
+  swapCanvas: vi.fn(),
+}))
+
 vi.mock('../api', async () => {
   const errors = await import('../api/errors')
   return {
@@ -34,6 +41,12 @@ vi.mock('vue-router', async () => {
   const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
   return { ...actual, useRouter: () => ({ push: navigation.push }) }
 })
+
+vi.mock('../composables/useWorldTransition', () => ({
+  useWorldTransition: () => transition,
+  worldTransitionKey: Symbol('world-transition'),
+  writingRailKey: Symbol('writing-rail'),
+}))
 
 const wrappers: VueWrapper[] = []
 
@@ -129,6 +142,14 @@ describe('Worlds', () => {
 
     await wrapper.get('[data-world-desk="journal"] [data-world-enter]').trigger('click')
 
+    expect(transition.enterWorld).toHaveBeenCalledWith(
+      wrapper.get('[data-world-desk="journal"]').element,
+      expect.arrayContaining([
+        wrapper.get('[data-world-desk="saying"]').element,
+        wrapper.get('[data-world-desk="video"]').element,
+      ]),
+      expect.any(Function),
+    )
     expect(navigation.push).toHaveBeenCalledWith({ name: 'entry-edit', params: { id: '7' } })
   })
 
@@ -261,5 +282,26 @@ describe('Worlds', () => {
 
     expect(api.listAdminWorlds).toHaveBeenCalledTimes(2)
     expect(wrapper.get('[role="alert"]').text()).toContain('请重新确认')
+  })
+
+  it('disposes the scoped transition if the page unmounts during a running world entry', async () => {
+    let release: (() => void) | null = null
+    transition.enterWorld.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve
+        }),
+    )
+
+    const wrapper = mountWorlds()
+    await flushPromises()
+
+    await wrapper.get('[data-world-desk="journal"] [data-world-enter]').trigger('click')
+    wrapper.unmount()
+    wrappers.splice(wrappers.indexOf(wrapper), 1)
+    release?.()
+    await flushPromises()
+
+    expect(transition.dispose).toHaveBeenCalledOnce()
   })
 })

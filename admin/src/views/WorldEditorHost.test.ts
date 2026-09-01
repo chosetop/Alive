@@ -6,6 +6,7 @@ import { nextTick } from 'vue'
 import { useWritingStore } from '../stores/writing'
 import type { EntryDetail } from '../types/api'
 import WorldEditorHost from './WorldEditorHost.vue'
+import { worldTransitionKey } from '../composables/useWorldTransition'
 
 const api = vi.hoisted(() => ({
   getEntry: vi.fn(),
@@ -38,6 +39,14 @@ vi.mock('./SayingEditor.vue', () => ({
 }))
 
 const wrappers: VueWrapper[] = []
+const transition = {
+  dispose: vi.fn(),
+  enterWorld: vi.fn(),
+  enterWorkspace: vi.fn().mockResolvedValue(undefined),
+  swapCanvas: vi.fn(async (_surface: Element, replace: () => Promise<void>) => {
+    await replace()
+  }),
+}
 
 function entry(overrides: Partial<EntryDetail> = {}): EntryDetail {
   return {
@@ -68,7 +77,12 @@ function entry(overrides: Partial<EntryDetail> = {}): EntryDetail {
 async function mountHost(id = '41'): Promise<VueWrapper> {
   const wrapper = mount(WorldEditorHost, {
     props: { id },
-    global: { plugins: [createPinia()] },
+    global: {
+      plugins: [createPinia()],
+      provide: {
+        [worldTransitionKey as symbol]: transition,
+      },
+    },
   })
   wrappers.push(wrapper)
   await flushPromises()
@@ -79,6 +93,8 @@ describe('WorldEditorHost', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     setActivePinia(createPinia())
+    transition.enterWorkspace.mockClear()
+    transition.swapCanvas.mockClear()
   })
 
   afterEach(() => {
@@ -105,6 +121,7 @@ describe('WorldEditorHost', () => {
     expect(wrapper.get('[data-editor-kind="long-form"]').attributes('data-entry-id')).toBe('42')
     expect(wrapper.get('[data-editor-kind="long-form"]').attributes('data-world')).toBe('journal')
     expect(useWritingStore().activeWorld).toBe('journal')
+    expect(transition.enterWorkspace).toHaveBeenCalledOnce()
   })
 
   it('routes video entries to the long-form editor with the preloaded entry', async () => {
@@ -114,6 +131,23 @@ describe('WorldEditorHost', () => {
 
     expect(wrapper.find('[data-editor-kind="saying"]').exists()).toBe(false)
     expect(wrapper.get('[data-editor-kind="long-form"]').attributes('data-entry-id')).toBe('43')
+    expect(wrapper.get('[data-editor-kind="long-form"]').attributes('data-world')).toBe('video')
+    expect(useWritingStore().activeWorld).toBe('video')
+  })
+
+  it('swaps the stable editor surface when navigating between two entry ids', async () => {
+    api.getEntry
+      .mockResolvedValueOnce(entry({ id: 41, world: 'journal' }))
+      .mockResolvedValueOnce(entry({ id: 42, world: 'video' }))
+
+    const wrapper = await mountHost('41')
+    await wrapper.setProps({ id: '42' })
+    await flushPromises()
+
+    expect(api.getEntry).toHaveBeenNthCalledWith(1, 41)
+    expect(api.getEntry).toHaveBeenNthCalledWith(2, 42)
+    expect(transition.swapCanvas).toHaveBeenCalledOnce()
+    expect(wrapper.get('[data-editor-kind="long-form"]').attributes('data-entry-id')).toBe('42')
     expect(wrapper.get('[data-editor-kind="long-form"]').attributes('data-world')).toBe('video')
     expect(useWritingStore().activeWorld).toBe('video')
   })

@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, provide, ref } from 'vue'
 
 import ArticleDirectory from '../components/writing/ArticleDirectory.vue'
 import { UiDialog } from '../components/ui'
+import { useWorldTransition, worldTransitionKey, writingRailKey } from '../composables/useWorldTransition'
 import { resolveAdminWorld } from '../content-worlds/registry'
 import { getSiteSettings } from '../api/site'
 import { useThemeStore } from '../stores/theme'
@@ -40,6 +41,9 @@ const theme = useThemeStore()
 const currentDirectoryTitle = computed(
   () => `${resolveAdminWorld(writing.activeWorld)?.directoryNoun ?? '世界'}目录`,
 )
+const workspaceRoot = ref<HTMLElement | null>(null)
+const railRef = ref<HTMLElement | null>(null)
+const transition = useWorldTransition(workspaceRoot)
 
 const isNarrow = ref(false)
 const directoryWidth = ref(DEFAULT_DIRECTORY_WIDTH)
@@ -55,6 +59,8 @@ let resizing = false
  */
 const flushGate: WritingFlushGate = ref(null)
 provide(writingFlushKey, flushGate)
+provide(worldTransitionKey, transition)
+provide(writingRailKey, railRef)
 
 function applyMatch(matches: boolean): void {
   isNarrow.value = matches
@@ -161,6 +167,7 @@ onBeforeUnmount(() => {
   stopResize()
   mediaQuery?.removeEventListener('change', handleMediaChange)
   mediaQuery = null
+  transition.dispose()
 })
 
 function handleMediaChange(event: MediaQueryListEvent): void {
@@ -170,6 +177,7 @@ function handleMediaChange(event: MediaQueryListEvent): void {
 
 <template>
   <div
+    ref="workspaceRoot"
     class="workspace"
     data-writing-workspace
     data-visual-mode="writing-desk"
@@ -182,7 +190,13 @@ function handleMediaChange(event: MediaQueryListEvent): void {
       the accessibility tree and two identical ids on the search input.
     -->
     <template v-if="writing.activeWorld">
-      <div v-if="!isNarrow" class="rail" :data-collapsed="writing.directoryOpen ? 'false' : 'true'">
+      <div
+        v-if="!isNarrow"
+        ref="railRef"
+        class="rail"
+        data-writing-rail
+        :data-collapsed="writing.directoryOpen ? 'false' : 'true'"
+      >
         <ArticleDirectory
           v-if="writing.directoryOpen"
           :key="writing.activeWorld"

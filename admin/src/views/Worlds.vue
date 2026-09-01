@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { categoriesApi, entriesApi, worldsApi, toUserMessage } from '../api'
 import WorldDeskCard, { type WorldDeskSnapshot } from '../components/worlds/WorldDeskCard.vue'
 import WorldSettingsPanel from '../components/worlds/WorldSettingsPanel.vue'
+import { useWorldTransition } from '../composables/useWorldTransition'
 import { ADMIN_WORLD_REGISTRY } from '../content-worlds/registry'
 import type { AdminWorldSetting, WorldKey } from '../types/api'
 
@@ -14,6 +15,8 @@ const activeWorld = ref<WorldKey | null>(null)
 const isLoading = ref(true)
 const error = ref<string | null>(null)
 const router = useRouter()
+const pageRoot = ref<HTMLElement | null>(null)
+const transition = useWorldTransition(pageRoot)
 
 async function load(): Promise<void> {
   isLoading.value = true
@@ -107,14 +110,21 @@ async function enterWorld(world: WorldKey): Promise<void> {
   if (!definition || !snapshot) return
   if (!snapshot.canEnter) return
 
-  if (snapshot.recentEntry) {
-    await router.push({ name: 'entry-edit', params: { id: String(snapshot.recentEntry.id) } })
-    return
-  }
+  const card = pageRoot.value?.querySelector<HTMLElement>(`[data-world-desk="${world}"]`) ?? null
+  const siblings = Array.from(pageRoot.value?.querySelectorAll<HTMLElement>('[data-world-desk]') ?? []).filter(
+    (element) => element !== card,
+  )
 
-  if (definition.editorRouteName) {
-    await router.push({ name: definition.editorRouteName, params: { world: definition.key } })
-  }
+  await transition.enterWorld(card, siblings, async () => {
+    if (snapshot.recentEntry) {
+      await router.push({ name: 'entry-edit', params: { id: String(snapshot.recentEntry.id) } })
+      return
+    }
+
+    if (definition.editorRouteName) {
+      await router.push({ name: definition.editorRouteName, params: { world: definition.key } })
+    }
+  })
 }
 
 function openSettings(world: WorldKey): void {
@@ -173,10 +183,14 @@ async function reloadActiveSetting(): Promise<AdminWorldSetting> {
   if (!activeWorld.value) throw new Error('没有正在编辑的世界设置。')
   return reloadSetting(activeWorld.value)
 }
+
+onBeforeUnmount(() => {
+  transition.dispose()
+})
 </script>
 
 <template>
-  <div class="page">
+  <div ref="pageRoot" class="page">
     <header class="head">
       <div>
         <h1 class="title">内容世界</h1>

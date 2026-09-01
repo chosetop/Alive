@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import { entriesApi, toUserMessage } from '../api'
+import { worldTransitionKey, writingRailKey } from '../composables/useWorldTransition'
 import { resolveAdminWorld } from '../content-worlds/registry'
 import { useWritingStore } from '../stores/writing'
 import type { EntryDetail } from '../types/api'
@@ -13,6 +14,9 @@ const props = defineProps<{
 }>()
 
 const writing = useWritingStore()
+const transition = inject(worldTransitionKey, null)
+const railRef = inject(writingRailKey, null)
+const editorSurface = ref<HTMLElement | null>(null)
 
 const entry = ref<EntryDetail | null>(null)
 const isLoading = ref(true)
@@ -20,6 +24,7 @@ const loadError = ref<string | null>(null)
 const definition = computed(() => resolveAdminWorld(entry.value?.world))
 
 let loadGeneration = 0
+let workspaceEntered = false
 
 watch(
   () => props.id,
@@ -35,9 +40,13 @@ onBeforeUnmount(() => {
 
 async function load(id: string): Promise<void> {
   const generation = ++loadGeneration
-  isLoading.value = true
+  const currentEntry = entry.value
+  const isSwitching = currentEntry !== null
+  if (!isSwitching) {
+    isLoading.value = true
+    entry.value = null
+  }
   loadError.value = null
-  entry.value = null
 
   try {
     const loaded = await entriesApi.getEntry(Number(id))
@@ -46,11 +55,33 @@ async function load(id: string): Promise<void> {
     const world = resolveAdminWorld(loaded.world)
     if (world === null) throw new Error(`Unsupported world: ${loaded.world}`)
 
-    writing.setActiveWorld(world.key)
-    entry.value = loaded
+    if (
+      isSwitching
+      && currentEntry?.id !== loaded.id
+      && transition !== null
+      && editorSurface.value !== null
+    ) {
+      await transition.swapCanvas(editorSurface.value, async () => {
+        entry.value = loaded
+        writing.setActiveWorld(world.key)
+        await nextTick()
+      })
+    } else {
+      entry.value = loaded
+      writing.setActiveWorld(world.key)
+      await nextTick()
+    }
+
+    if (!workspaceEntered && transition !== null && editorSurface.value !== null) {
+      await transition.enterWorkspace(railRef?.value ?? null, editorSurface.value)
+      workspaceEntered = true
+    }
   } catch (cause) {
     if (generation !== loadGeneration) return
-    writing.setActiveWorld(null)
+    if (!isSwitching) {
+      entry.value = null
+      writing.setActiveWorld(null)
+    }
     loadError.value =
       cause instanceof Error && cause.message.startsWith('Unsupported world:')
         ? cause.message
@@ -62,15 +93,26 @@ async function load(id: string): Promise<void> {
 </script>
 
 <template>
-  <p v-if="isLoading" class="state page">载入中…</p>
-  <p v-else-if="loadError" class="alert page" role="alert">{{ loadError }}</p>
-  <SayingEditor
-    v-else-if="entry && definition?.editorKind === 'saying'"
-    :initial-entry="entry"
-  />
-  <EntryEditor
-    v-else-if="entry && definition?.editorKind === 'long-form'"
-    :id="String(entry.id)"
-    :initial-entry="entry"
-  />
+  <p v-if="isLoading && !entry" class="state page">载入中…</p>
+  <p v-else-if="loadError && !entry" class="alert page" role="alert">{{ loadError }}</p>
+  <section v-else-if="entry" ref="editorSurface" class="world-editor-host" data-world-editor-surface>
+    <p v-if="loadError" class="alert page" role="alert">{{ loadError }}</p>
+    <SayingEditor
+      v-if="definition?.editorKind === 'saying'"
+      :key="`saying-${entry.id}`"
+      :initial-entry="entry"
+    />
+    <EntryEditor
+      v-else-if="definition?.editorKind === 'long-form'"
+      :key="`entry-${entry.id}`"
+      :id="String(entry.id)"
+      :initial-entry="entry"
+    />
+  </section>
 </template>
+
+<style scoped>
+.world-editor-host {
+  min-height: 100%;
+}
+</style>

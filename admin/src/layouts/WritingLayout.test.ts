@@ -10,6 +10,13 @@ import { defineComponent, inject, nextTick } from 'vue'
 import { useWritingStore, writingFlushKey, type WritingFlushGate } from '../stores/writing'
 import WritingLayout from './WritingLayout.vue'
 
+const transition = vi.hoisted(() => ({
+  dispose: vi.fn(),
+  enterWorld: vi.fn(),
+  enterWorkspace: vi.fn(),
+  swapCanvas: vi.fn(),
+}))
+
 /**
  * The shell's geometry and its two presentations of the directory. What matters
  * here is that exactly one directory exists at a time and that the canvas track
@@ -32,6 +39,12 @@ vi.mock('../components/writing/ArticleDirectory.vue', () => ({
     },
     template: '<nav data-stub-directory :data-drawer="drawer ? \'true\' : \'false\'" :data-world="world" />',
   }),
+}))
+
+vi.mock('../composables/useWorldTransition', () => ({
+  useWorldTransition: () => transition,
+  worldTransitionKey: Symbol('world-transition'),
+  writingRailKey: Symbol('writing-rail'),
 }))
 
 const wrappers: VueWrapper[] = []
@@ -87,6 +100,10 @@ describe('WritingLayout', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     installMatchMedia(false)
+    transition.dispose.mockReset()
+    transition.enterWorld.mockReset()
+    transition.enterWorkspace.mockReset()
+    transition.swapCanvas.mockReset()
   })
 
   afterEach(async () => {
@@ -226,6 +243,15 @@ describe('WritingLayout', () => {
     // A layout that leaked one listener per mount would rewrite the store's
     // directory state from a dead component on the next viewport change.
     expect(media.listeners.size).toBe(0)
+  })
+
+  it('disposes the provided world transition on unmount', async () => {
+    const wrapper = await mountLayout()
+
+    wrapper.unmount()
+    wrappers.splice(wrappers.indexOf(wrapper), 1)
+
+    expect(transition.dispose).toHaveBeenCalledOnce()
   })
 
   it('zeroes the directory track rather than hiding its contents', () => {
