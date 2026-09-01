@@ -135,6 +135,14 @@ describe('SayingEditor', () => {
     expect(store.activeEntryId).toBe(72)
   })
 
+  it('renders the shared workspace header with the saying world label', async () => {
+    const wrapper = await mountEditor(entry({ id: 78 }))
+
+    expect(wrapper.find('[data-workspace-header]').exists()).toBe(true)
+    expect(wrapper.get('[data-world-context]').text()).toContain('片语')
+    expect(wrapper.findAll('[data-save-status]')).toHaveLength(1)
+  })
+
   it('registers a flush gate and uses the same save path for route updates', async () => {
     const gate = ref<(() => Promise<void>) | null>(null)
     const wrapper = await mountEditor(entry({ id: 73, revision: 5, content_md: '旧句' }), gate)

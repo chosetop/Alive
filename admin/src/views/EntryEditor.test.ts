@@ -195,6 +195,12 @@ describe('EntryEditor autosave integration', () => {
     expect(wrapper.get('[data-save-status]').text()).toContain('已保存')
   })
 
+  it('passes the current world label into the shared workspace header', async () => {
+    const wrapper = await mountEditor(entry({ id: 46, world: 'video' }))
+
+    expect(wrapper.get('[data-world-context]').text()).toContain('影像')
+  })
+
   it('schedules Milkdown markdown as content_md without remounting the editor', async () => {
     const server = installMutableServer()
     api.updateEntry.mockResolvedValueOnce(

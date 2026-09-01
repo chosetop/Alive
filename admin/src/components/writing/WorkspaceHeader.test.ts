@@ -20,10 +20,16 @@ import WorkspaceHeader from './WorkspaceHeader.vue'
  */
 
 function mountHeader(
-  props: { saveStatus?: SaveStatus; entryStatus?: EntryStatus | null; busy?: boolean } = {},
+  props: {
+    worldLabel?: string
+    saveStatus?: SaveStatus
+    entryStatus?: EntryStatus | null
+    busy?: boolean
+    compactActions?: boolean
+  } = {},
 ): VueWrapper {
   return mount(WorkspaceHeader, {
-    props: { saveStatus: 'saved', ...props },
+    props: { worldLabel: '日志', saveStatus: 'saved', ...props },
     global: { stubs: { RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' } } },
   })
 }
@@ -112,13 +118,13 @@ describe('WorkspaceHeader', () => {
 
   it('renders the conflict slot only while the save is conflicted', () => {
     const conflicted = mount(WorkspaceHeader, {
-      props: { saveStatus: 'conflict' },
+      props: { worldLabel: '日志', saveStatus: 'conflict' },
       slots: { conflict: '<button data-test="choice">载入服务端</button>' },
     })
     expect(conflicted.find('[data-test="choice"]').exists()).toBe(true)
 
     const saved = mount(WorkspaceHeader, {
-      props: { saveStatus: 'saved' },
+      props: { worldLabel: '日志', saveStatus: 'saved' },
       slots: { conflict: '<button data-test="choice">载入服务端</button>' },
     })
     expect(saved.find('[data-test="choice"]').exists()).toBe(false)
@@ -156,6 +162,46 @@ describe('WorkspaceHeader', () => {
     const wrapper = mountHeader()
 
     expect(wrapper.find('[data-writing-brand]').exists()).toBe(false)
+  })
+
+  it('renders the current world breadcrumb once beside the directory toggle', () => {
+    const wrapper = mountHeader({ worldLabel: '片语', entryStatus: 'draft' })
+
+    expect(wrapper.get('[data-world-context]').text()).toBe('世界/片语')
+    expect(wrapper.findAll('[data-save-status]')).toHaveLength(1)
+  })
+
+  it('moves secondary actions into the existing menu when compact actions are requested', async () => {
+    const wrapper = mount(WorkspaceHeader, {
+      attachTo: document.body,
+      props: {
+        worldLabel: '片语',
+        saveStatus: 'saved',
+        entryStatus: 'draft',
+        compactActions: true,
+      },
+      global: {
+        stubs: {
+          RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+        },
+      },
+    })
+
+    expect(wrapper.find('[data-header-settings]').exists()).toBe(false)
+    expect(wrapper.find('[data-header-archive]').exists()).toBe(false)
+    expect(wrapper.find('[data-header-delete]').exists()).toBe(false)
+    expect(wrapper.get('[data-publish]').text()).toContain('发布')
+
+    await wrapper.get('[data-more-actions]').trigger('click')
+    await nextTick()
+
+    const items = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).map((item) =>
+      item.textContent?.trim() ?? '',
+    )
+    expect(items).toContain('设置')
+    expect(items).toContain('归档')
+    expect(items).toContain('删除')
+    wrapper.unmount()
   })
 
   it('offers no publish or menu before the record exists', () => {

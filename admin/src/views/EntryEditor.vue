@@ -626,6 +626,7 @@ function createCoordinatorBridge(): CoordinatorBridge {
         place a save state is rendered.
       -->
       <WorkspaceHeader
+        :world-label="worldDefinition?.label ?? '日志'"
         :save-status="autosave.status.value"
         :entry-status="currentStatus"
         :busy="controlsDisabled"
