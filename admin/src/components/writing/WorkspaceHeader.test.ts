@@ -22,14 +22,16 @@ import WorkspaceHeader from './WorkspaceHeader.vue'
 function mountHeader(
   props: {
     worldLabel?: string
+    entryId?: number | null
     saveStatus?: SaveStatus
     entryStatus?: EntryStatus | null
     busy?: boolean
     compactActions?: boolean
+    showActions?: boolean
   } = {},
 ): VueWrapper {
   return mount(WorkspaceHeader, {
-    props: { worldLabel: '日志', saveStatus: 'saved', ...props },
+    props: { worldLabel: '日志', entryId: 1, saveStatus: 'saved', ...props },
     global: { stubs: { RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' } } },
   })
 }
@@ -229,6 +231,30 @@ describe('WorkspaceHeader', () => {
     expect(wrapper.find('[data-more-actions]').exists()).toBe(false)
     expect(wrapper.find('[data-header-delete-confirm]').exists()).toBe(false)
     expect(wrapper.get('[data-publish]').text()).toBe('发布')
+  })
+
+  it('clears a pending delete confirmation when the subject entry changes', async () => {
+    const wrapper = mountHeader({ entryStatus: 'draft', entryId: 11 })
+
+    await wrapper.get('[data-header-delete]').trigger('click')
+    expect(wrapper.find('[data-header-delete-confirm]').exists()).toBe(true)
+
+    await wrapper.setProps({ entryId: 12 })
+
+    expect(wrapper.find('[data-header-delete-confirm]').exists()).toBe(false)
+    expect(wrapper.get('[data-header-delete]').text()).toBe('删除')
+  })
+
+  it('can show entry status without exposing entry actions', () => {
+    const wrapper = mountHeader({
+      entryStatus: 'published',
+      showActions: false,
+    })
+
+    expect(wrapper.find('.entry-status').text()).toBe('已发布')
+    expect(wrapper.find('[data-publish]').exists()).toBe(false)
+    expect(wrapper.find('[data-header-settings]').exists()).toBe(false)
+    expect(wrapper.find('[data-header-delete]').exists()).toBe(false)
   })
 
   it('does not offer publish for something already published', () => {

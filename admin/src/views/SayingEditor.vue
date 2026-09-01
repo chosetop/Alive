@@ -75,16 +75,28 @@ function applyEntry(next: EntryDetail): void {
 async function createDraft(): Promise<void> {
   if (entry.value || creating !== null) return creating ?? Promise.resolve()
   creating = (async () => {
-  isCreating.value = true
-  try {
-    const created = await entriesApi.createEntry({ world: 'saying', visibility: 'public' })
-    applyEntry(created)
-  } catch (cause) {
-    error.value = toUserMessage(cause)
-  } finally {
-    isCreating.value = false
-    creating = null
-  }
+    isCreating.value = true
+    const pendingDraft = {
+      content: content.value,
+      visibility: visibility.value,
+      source: source.value,
+      author: author.value,
+    }
+    try {
+      const created = await entriesApi.createEntry({ world: 'saying', visibility: 'public' })
+      applyEntry(created)
+      // A fresh server draft is structural state only. The sentence currently on
+      // screen is the writer's source of truth and must survive record creation.
+      content.value = pendingDraft.content
+      visibility.value = pendingDraft.visibility
+      source.value = pendingDraft.source
+      author.value = pendingDraft.author
+    } catch (cause) {
+      error.value = toUserMessage(cause)
+    } finally {
+      isCreating.value = false
+      creating = null
+    }
   })()
   return creating
 }
@@ -155,8 +167,12 @@ onBeforeRouteUpdate(async () => ((await flushBeforeRouteChange()) ? undefined : 
 <template>
   <div class="saying-shell">
     <WorkspaceHeader
+      :entry-id="entry?.id ?? null"
       :world-label="sayingWorldLabel"
+      :entry-status="entry?.status ?? null"
       :save-status="saveStatus"
+      :show-actions="false"
+      @retry="void save()"
     />
 
     <main class="saying-editor">

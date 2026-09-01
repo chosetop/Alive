@@ -91,14 +91,17 @@ function deferred<T>() {
 }
 
 async function mountEditor(
-  current: EntryDetail,
+  current?: EntryDetail,
   flushGate?: Ref<(() => Promise<void>) | null>,
 ): Promise<VueWrapper> {
   const wrapper = mount(SayingEditor, {
-    props: { initialEntry: current },
+    props: current === undefined ? {} : { initialEntry: current },
     global: {
       provide: flushGate === undefined ? {} : { [writingFlushKey as symbol]: flushGate },
       plugins: [createPinia()],
+      stubs: {
+        RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+      },
     },
   })
   wrappers.push(wrapper)
@@ -143,6 +146,15 @@ describe('SayingEditor', () => {
     expect(wrapper.findAll('[data-save-status]')).toHaveLength(1)
   })
 
+  it('passes the current entry status into the shared header without exposing long-form actions', async () => {
+    const wrapper = await mountEditor(entry({ id: 79, status: 'published' }))
+
+    expect(wrapper.find('.entry-status').text()).toBe('已发布')
+    expect(wrapper.find('[data-publish]').exists()).toBe(false)
+    expect(wrapper.find('[data-header-settings]').exists()).toBe(false)
+    expect(wrapper.find('[data-header-delete]').exists()).toBe(false)
+  })
+
   it('registers a flush gate and uses the same save path for route updates', async () => {
     const gate = ref<(() => Promise<void>) | null>(null)
     const wrapper = await mountEditor(entry({ id: 73, revision: 5, content_md: '旧句' }), gate)
@@ -171,6 +183,30 @@ describe('SayingEditor', () => {
     await flushPromises()
 
     expect(wrapper.get('[role="alert"]').text()).toContain('稍后重试')
+  })
+
+  it('retries a failed draft creation through the shared header action', async () => {
+    api.createEntry
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(entry({ id: 91, revision: 1, content_md: '' }))
+    const wrapper = await mountEditor()
+
+    await wrapper.get('textarea[aria-label="片语正文"]').setValue('重试后的句子')
+    await flushPromises()
+
+    expect(wrapper.get('[data-save-retry]').exists()).toBe(true)
+
+    await wrapper.get('[data-save-retry]').trigger('click')
+    await flushPromises()
+    await flushPromises()
+
+    expect(api.createEntry).toHaveBeenCalledTimes(2)
+    expect(api.updateEntry).toHaveBeenCalledWith(91, {
+      revision: 1,
+      content_md: '重试后的句子',
+      visibility: 'public',
+      meta: { source: '', author: '' },
+    })
   })
 
   it('waits for an in-flight save before allowing route leave', async () => {

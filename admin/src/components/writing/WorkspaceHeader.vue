@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import type { SaveStatus } from '../../editor/save-coordinator'
 import { useWritingStore } from '../../stores/writing'
@@ -39,14 +39,17 @@ const COMPACT_ACTIONS_QUERY = '(max-width: 48rem)'
 const props = withDefaults(
   defineProps<{
     worldLabel: string
+    entryId?: number | null
     saveStatus: SaveStatus
     /** Null before the record exists; publish and the menu are meaningless then. */
     entryStatus?: EntryStatus | null
     busy?: boolean
     /** Test hook plus manual override for hosts that already know their layout. */
     compactActions?: boolean
+    /** Lets callers reuse the status region without inheriting long-form actions. */
+    showActions?: boolean
   }>(),
-  { entryStatus: null, busy: false, compactActions: undefined },
+  { entryId: null, entryStatus: null, busy: false, compactActions: undefined, showActions: true },
 )
 
 const emit = defineEmits<{
@@ -78,12 +81,13 @@ const publishLabel = computed(() =>
   props.entryStatus === 'published' ? '已发布' : '发布',
 )
 
+const showsActions = computed(() => props.showActions && props.entryStatus !== null)
 const usesCompactActions = computed(
-  () => props.entryStatus !== null && (props.compactActions ?? autoCompactActions.value),
+  () => showsActions.value && (props.compactActions ?? autoCompactActions.value),
 )
 
 const actionMenuItems = computed<UiMenuItem[]>(() => {
-  if (props.entryStatus === null) return []
+  if (!showsActions.value || props.entryStatus === null) return []
   const items: UiMenuItem[] = [{ id: 'settings', label: '设置' }]
   if (props.entryStatus === 'published') items.push({ id: 'unpublish', label: '撤回' })
   if (props.entryStatus !== 'archived') items.push({ id: 'archive', label: '归档' })
@@ -114,6 +118,13 @@ onBeforeUnmount(() => {
   mediaQuery?.removeEventListener('change', handleMediaChange)
   mediaQuery = null
 })
+
+watch(
+  () => [props.entryId, props.entryStatus] as const,
+  () => {
+    confirmingDelete.value = false
+  },
+)
 </script>
 
 <template>
@@ -169,7 +180,7 @@ onBeforeUnmount(() => {
     <div class="right">
       <span v-if="entryStatus" class="entry-status">{{ ENTRY_STATUS_TEXT[entryStatus] }}</span>
 
-      <template v-if="entryStatus !== null && !usesCompactActions">
+      <template v-if="showsActions && !usesCompactActions">
         <UiButton variant="quiet" data-header-settings @click="emit('action', 'settings')">设置</UiButton>
         <UiButton v-if="entryStatus === 'published'" variant="quiet" data-header-unpublish @click="emit('action', 'unpublish')">
           撤回
@@ -179,11 +190,11 @@ onBeforeUnmount(() => {
         </UiButton>
       </template>
 
-      <template v-if="entryStatus !== null && !confirmingDelete && !usesCompactActions">
+      <template v-if="showsActions && !confirmingDelete && !usesCompactActions">
         <UiButton variant="quiet" data-header-delete @click="confirmingDelete = true">删除</UiButton>
       </template>
       <UiMenu
-        v-else-if="entryStatus !== null && !confirmingDelete"
+        v-else-if="showsActions && !confirmingDelete"
         :items="actionMenuItems"
         label="更多操作"
         @select="handleAction"
@@ -194,7 +205,7 @@ onBeforeUnmount(() => {
           </UiIconButton>
         </template>
       </UiMenu>
-      <template v-else-if="entryStatus !== null">
+      <template v-else-if="showsActions">
         <span class="delete-confirm-text" data-delete-confirm-text>确认删除？</span>
         <UiButton variant="danger" :disabled="busy" data-header-delete-confirm @click="emit('delete'); confirmingDelete = false">
           {{ busy ? '删除中…' : '确认删除' }}
@@ -205,7 +216,7 @@ onBeforeUnmount(() => {
       </template>
 
       <UiButton
-        v-if="entryStatus !== null"
+        v-if="showsActions"
         variant="primary"
         :disabled="busy || entryStatus === 'published'"
         data-publish
