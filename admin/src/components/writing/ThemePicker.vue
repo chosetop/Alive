@@ -3,6 +3,7 @@ import { computed, nextTick, ref } from 'vue'
 
 import { THEMES, type ThemeName } from '@alive/theme'
 import { toUserMessage } from '../../api'
+import { getSiteSettings } from '../../api/site'
 import { useThemeStore } from '../../stores/theme'
 import { UiButton, UiIcon } from '../ui'
 
@@ -56,7 +57,17 @@ async function save(): Promise<void> {
   try {
     await theme.saveDefault()
   } catch (saveFailure) {
-    error.value = toUserMessage(saveFailure)
+    if ((saveFailure as { status?: number }).status === 409) {
+      try {
+        const desired = theme.preview
+        theme.hydrate(await getSiteSettings())
+        theme.previewTheme(desired)
+        await theme.saveDefault()
+        return
+      } catch (retryFailure) {
+        error.value = toUserMessage(retryFailure)
+      }
+    } else error.value = toUserMessage(saveFailure)
   } finally {
     saving.value = false
   }
@@ -69,7 +80,8 @@ async function save(): Promise<void> {
       <span class="theme-trigger__dot" aria-hidden="true" />
       <span>主题：{{ currentThemeLabel }}</span>
     </button>
-    <div v-show="open" class="theme-options" role="radiogroup" aria-label="选择主题">
+    <div v-show="open" class="theme-menu">
+      <div class="theme-options" role="radiogroup" aria-label="选择主题">
       <UiButton
         v-for="item in THEMES"
         :key="item.name"
@@ -86,17 +98,17 @@ async function save(): Promise<void> {
         <span>{{ item.label }}</span>
         <UiIcon v-if="item.name === theme.preview" class="theme-check" name="check" />
       </UiButton>
-    </div>
-
-    <div v-if="theme.isDirty" class="theme-actions" data-theme-actions>
+      </div>
+      <div v-if="theme.isDirty" class="theme-actions" data-theme-actions>
       <UiButton variant="primary" :loading="saving" data-theme-save @click="save">
         {{ saving ? '保存中…' : '设为站点默认' }}
       </UiButton>
       <UiButton variant="quiet" :disabled="saving" data-theme-cancel @click="theme.cancelPreview">
         取消预览
       </UiButton>
+      </div>
+      <p v-if="error" class="theme-error" role="alert">{{ error }}</p>
     </div>
-    <p v-if="error" class="theme-error" role="alert">{{ error }}</p>
   </div>
 </template>
 
@@ -130,19 +142,22 @@ async function save(): Promise<void> {
 }
 
 .theme-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.theme-menu {
   position: absolute;
   z-index: 5;
   top: calc(100% + var(--space-2));
   right: 0;
-  min-width: 11.5rem;
-  padding: .375rem;
+  min-width: 13rem;
+  padding: .5rem;
   border: 1px solid var(--c-line);
   border-radius: .875rem;
   background: var(--c-surface);
   box-shadow: var(--shadow-float);
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
 }
 
 .theme-option { justify-content: flex-start; min-width: 0; }
