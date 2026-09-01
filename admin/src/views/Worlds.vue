@@ -168,6 +168,11 @@ async function reloadSetting(world: WorldKey): Promise<AdminWorldSetting> {
   }
   return next
 }
+
+async function reloadActiveSetting(): Promise<AdminWorldSetting> {
+  if (!activeWorld.value) throw new Error('没有正在编辑的世界设置。')
+  return reloadSetting(activeWorld.value)
+}
 </script>
 
 <template>
@@ -200,7 +205,7 @@ async function reloadSetting(world: WorldKey): Promise<AdminWorldSetting> {
         :definition="activeDefinition"
         :setting="activeSetting"
         :open="activeWorld !== null"
-        :reload="() => reloadSetting(activeSetting.world)"
+        :reload="reloadActiveSetting"
         @saved="handleSaved"
         @update:open="closeSettings"
       />

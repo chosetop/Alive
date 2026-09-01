@@ -83,7 +83,7 @@ describe('WorldSettingsPanel', () => {
     const video = mountPanel('video')
 
     expect(journal.find('[data-world-default-view]').exists()).toBe(false)
-    expect(saying.get('[data-world-default-view]').exists()).toBe(true)
+    expect(saying.find('[data-world-default-view]').exists()).toBe(true)
     expect(video.find('[data-world-default-view]').exists()).toBe(false)
   })
 

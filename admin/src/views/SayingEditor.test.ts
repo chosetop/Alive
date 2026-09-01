@@ -60,7 +60,6 @@ function entry(overrides: Partial<EntryDetail> = {}): EntryDetail {
     revision: 3,
     world: 'saying',
     kind: '',
-    type: 'saying',
     title: '',
     slug: 'saying-entry',
     summary: '',
