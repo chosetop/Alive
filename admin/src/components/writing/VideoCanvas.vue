@@ -94,8 +94,8 @@ const emit = defineEmits<{
 .video-canvas__viewfinder {
   position: relative;
   display: grid;
+  aspect-ratio: 16 / 9;
   align-items: center;
-  min-height: min(52vw, 26rem);
   padding: clamp(var(--space-4), 5vw, var(--space-5));
   border: 1px solid color-mix(in srgb, var(--c-ink) 10%, transparent);
   border-radius: 1.125rem;
@@ -103,12 +103,6 @@ const emit = defineEmits<{
     linear-gradient(180deg, rgba(10, 16, 22, 0.96), rgba(18, 26, 35, 0.92));
   box-shadow: var(--shadow-float);
   overflow: hidden;
-}
-
-.video-canvas__viewfinder::before {
-  content: '';
-  display: block;
-  padding-top: 56.25%;
 }
 
 .video-canvas__upload-shell,

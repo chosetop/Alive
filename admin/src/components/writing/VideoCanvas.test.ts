@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -106,5 +110,11 @@ describe('VideoCanvas', () => {
     expect(wrapper.get('[data-video-title]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('[data-video-summary]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('[data-video-upload]').attributes('disabled')).toBeDefined()
+  })
+
+  it('pins the viewfinder to a 16:9 aspect ratio in source as well as DOM metadata', () => {
+    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'VideoCanvas.vue'), 'utf8')
+
+    expect(source).toMatch(/\.video-canvas__viewfinder\s*\{[\s\S]*aspect-ratio:\s*16\s*\/\s*9/)
   })
 })

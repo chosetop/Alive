@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -122,6 +126,14 @@ afterEach(() => {
 })
 
 describe('Worlds', () => {
+  it('uses the desktop main-desk layout and collapses to one column at 48rem', () => {
+    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'Worlds.vue'), 'utf8')
+
+    expect(source).toMatch(/\.list\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1\.2fr\)\s+minmax\(0,\s*0\.9fr\)/)
+    expect(source).toMatch(/\.list\s*>\s*\[data-world-desk='journal'\]\s*\{[\s\S]*grid-row:\s*1\s*\/\s*span\s*2/)
+    expect(source).toMatch(/@media \(max-width:\s*48rem\)[\s\S]*grid-template-columns:\s*1fr/)
+  })
+
   it('renders the supported worlds in fixed order and requests one recent entry per world', async () => {
     const wrapper = mountWorlds()
     await flushPromises()
@@ -285,11 +297,11 @@ describe('Worlds', () => {
   })
 
   it('disposes the scoped transition if the page unmounts during a running world entry', async () => {
-    let release: (() => void) | null = null
+    let release = () => {}
     transition.enterWorld.mockImplementationOnce(
       () =>
         new Promise<void>((resolve) => {
-          release = resolve
+          release = () => resolve()
         }),
     )
 
@@ -299,7 +311,7 @@ describe('Worlds', () => {
     await wrapper.get('[data-world-desk="journal"] [data-world-enter]').trigger('click')
     wrapper.unmount()
     wrappers.splice(wrappers.indexOf(wrapper), 1)
-    release?.()
+    release()
     await flushPromises()
 
     expect(transition.dispose).toHaveBeenCalledOnce()

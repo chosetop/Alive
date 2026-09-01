@@ -52,16 +52,6 @@ const enterLabel = computed(() => {
     :data-world-material="definition.material"
     data-surface="glass"
   >
-    <UiButton
-      class="world-desk__enter-surface"
-      variant="primary"
-      data-world-enter
-      :disabled="!snapshot.canEnter"
-      @click="emit('enter', definition.key)"
-    >
-      <span class="world-desk__enter-copy">{{ enterLabel }}</span>
-    </UiButton>
-
     <div class="world-desk__topline">
       <div @click="emit('enter', definition.key)">
         <p class="world-desk__eyebrow">{{ definition.directoryNoun }}</p>
@@ -111,6 +101,16 @@ const enterLabel = computed(() => {
         重试最近编辑
       </UiButton>
     </div>
+
+    <UiButton
+      class="world-desk__enter-surface"
+      variant="primary"
+      data-world-enter
+      :disabled="!snapshot.canEnter"
+      @click="emit('enter', definition.key)"
+    >
+      <span class="world-desk__enter-copy">{{ enterLabel }}</span>
+    </UiButton>
   </article>
 </template>
 
@@ -189,6 +189,7 @@ const enterLabel = computed(() => {
 .world-desk__settings {
   position: relative;
   z-index: 2;
+  min-height: 2.75rem;
   min-width: 4.5rem;
   pointer-events: auto;
 }
@@ -235,6 +236,7 @@ const enterLabel = computed(() => {
   align-content: start;
   gap: var(--space-2);
   min-height: 7.5rem;
+  padding-bottom: calc(2.75rem + var(--space-4));
 }
 
 .world-desk__label {
@@ -267,6 +269,18 @@ const enterLabel = computed(() => {
   width: fit-content;
   min-height: 2.5rem;
   pointer-events: auto;
+}
+
+@media (max-width: 48rem) {
+  .world-desk {
+    min-height: auto;
+    padding: var(--space-4);
+  }
+
+  .world-desk__body {
+    min-height: auto;
+    padding-bottom: calc(2.75rem + var(--space-3));
+  }
 }
 
 @media (pointer: coarse) {

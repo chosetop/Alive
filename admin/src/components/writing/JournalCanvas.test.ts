@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -61,5 +65,12 @@ describe('JournalCanvas', () => {
 
     expect(wrapper.get('[data-journal-title]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('textarea[aria-label="正文编辑器"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('tightens the page edge on narrow screens without removing the manuscript margin line', () => {
+    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'JournalCanvas.vue'), 'utf8')
+
+    expect(source).toMatch(/@media \(max-width:\s*40rem\)[\s\S]*\.journal-canvas__page\s*\{[\s\S]*padding-inline:\s*var\(--space-4\)/)
+    expect(source).toMatch(/@media \(max-width:\s*40rem\)[\s\S]*\.journal-canvas__edge\s*\{[\s\S]*inset-inline-start:\s*var\(--space-4\)/)
   })
 })

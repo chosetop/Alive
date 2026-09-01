@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -155,6 +159,13 @@ describe('SayingEditor', () => {
     expect(wrapper.find('[data-header-delete]').exists()).toBe(false)
   })
 
+  it('drops the desktop note shadow on narrow screens', () => {
+    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'SayingEditor.vue'), 'utf8')
+
+    expect(source).toMatch(/\.saying-note\s*\{[\s\S]*box-shadow:\s*var\(--shadow-float\)/)
+    expect(source).toMatch(/@media \(max-width:\s*48rem\)[\s\S]*\.saying-note\s*\{[\s\S]*box-shadow:\s*none/)
+  })
+
   it('registers a flush gate and uses the same save path for route updates', async () => {
     const gate = ref<(() => Promise<void>) | null>(null)
     const wrapper = await mountEditor(entry({ id: 73, revision: 5, content_md: '旧句' }), gate)
@@ -194,7 +205,7 @@ describe('SayingEditor', () => {
     await wrapper.get('textarea[aria-label="片语正文"]').setValue('重试后的句子')
     await flushPromises()
 
-    expect(wrapper.get('[data-save-retry]').exists()).toBe(true)
+    expect(wrapper.find('[data-save-retry]').exists()).toBe(true)
 
     await wrapper.get('[data-save-retry]').trigger('click')
     await flushPromises()

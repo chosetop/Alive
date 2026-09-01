@@ -74,6 +74,21 @@ describe('WorldDeskCard', () => {
     expect(wrapper.emitted('settings')).toEqual([['journal']])
   })
 
+  it('keeps settings and enter as separate focusable buttons in visual order', () => {
+    const wrapper = mount(WorldDeskCard, {
+      props: {
+        definition: ADMIN_WORLD_REGISTRY[0],
+        snapshot: snapshot(),
+      },
+    })
+
+    const buttons = wrapper.findAll('button')
+    expect(buttons).toHaveLength(2)
+    expect(buttons.map((button) => button.text().trim())).toEqual(['设置', '进入最近编辑'])
+    expect(buttons[0].attributes('data-world-settings')).toBeDefined()
+    expect(buttons[1].attributes('data-world-enter')).toBeDefined()
+  })
+
   it('treats visible card content as an enter target while keeping settings separate', async () => {
     const wrapper = mount(WorldDeskCard, {
       props: {
@@ -113,20 +128,31 @@ describe('WorldDeskCard', () => {
     expect(wrapper.emitted('retry')).toEqual([['journal']])
   })
 
-  it('shows the empty-state copy when there is no recent entry', () => {
-    const wrapper = mount(WorldDeskCard, {
-      props: {
-        definition: ADMIN_WORLD_REGISTRY[2],
-        snapshot: snapshot({
-          setting: { ...setting(), world: 'video', nav_label: '影像' },
-          recentEntry: null,
-          entryCount: 0,
-          categoryCount: 1,
-        }),
-      },
-    })
+  it('shows the exact empty-state copy for every world', () => {
+    const expectedCopies = [
+      ['journal', '日志', '还没有日志。写下第一篇。'],
+      ['saying', '片语', '还没有片语。先记下一句话。'],
+      ['video', '影像', '还没有影像。选择一段视频开始。'],
+    ] as const
 
-    expect(wrapper.text()).toContain('还没有影像。选择一段视频开始。')
+    for (const [world, label, copy] of expectedCopies) {
+      const definition = ADMIN_WORLD_REGISTRY.find((item) => item.key === world)
+      expect(definition).toBeTruthy()
+      const wrapper = mount(WorldDeskCard, {
+        props: {
+          definition: definition!,
+          snapshot: snapshot({
+            setting: { ...setting(), world, nav_label: label },
+            recentEntry: null,
+            entryCount: 0,
+            categoryCount: world === 'video' ? 1 : 0,
+          }),
+        },
+      })
+
+      expect(wrapper.text()).toContain(copy)
+      wrapper.unmount()
+    }
   })
 
   it('uses a stretched enter surface over the card while keeping the settings action separate', () => {
@@ -138,5 +164,6 @@ describe('WorldDeskCard', () => {
     expect(source).toMatch(/\.world-desk__enter-surface\s*\{[\s\S]*position:\s*absolute/)
     expect(source).toMatch(/\.world-desk__enter-surface\s*\{[\s\S]*inset:\s*0/)
     expect(source).toMatch(/\.world-desk__settings\s*\{[\s\S]*z-index:\s*2/)
+    expect(source).toMatch(/@media \(max-width:\s*48rem\)[\s\S]*\.world-desk\s*\{[\s\S]*min-height:\s*auto/)
   })
 })

@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 
@@ -155,6 +159,19 @@ describe('useWorldTransition', () => {
 
     expect(navigate).toHaveBeenCalledOnce()
     expect(gsapHarness.gsapMock.timeline).not.toHaveBeenCalled()
+  })
+
+  it('keeps both the GSAP and CSS reduced-motion escape hatches in source', () => {
+    const transitionSource = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'useWorldTransition.ts'), 'utf8')
+    const globalCss = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '..', 'style.css'),
+      'utf8',
+    )
+
+    expect(transitionSource).toContain("const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'")
+    expect(transitionSource).toMatch(/if \(card === null \|\| prefersReducedMotion\)/)
+    expect(transitionSource).toMatch(/if \(surface === null \|\| prefersReducedMotion\)/)
+    expect(globalCss).toMatch(/@media \(prefers-reduced-motion:\s*reduce\)/)
   })
 
   it('kills the active timeline, reverts the scoped context, and clears inline styles on dispose', async () => {

@@ -193,6 +193,7 @@ describe('WorkspaceHeader', () => {
     expect(wrapper.find('[data-header-archive]').exists()).toBe(false)
     expect(wrapper.find('[data-header-delete]').exists()).toBe(false)
     expect(wrapper.get('[data-publish]').text()).toContain('发布')
+    expect(wrapper.get('[data-more-actions]').attributes('aria-label')).toBe('更多操作')
 
     await wrapper.get('[data-more-actions]').trigger('click')
     await nextTick()

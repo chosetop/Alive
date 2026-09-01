@@ -49,8 +49,7 @@ export function useWorldTransition(root: Ref<HTMLElement | null>): WorldTransiti
       return
     }
 
-    const runner = context.add(work)
-    if (typeof runner === 'function') runner()
+    context.add(work)
   }
 
   function track(targets: Array<HTMLElement | null>): void {

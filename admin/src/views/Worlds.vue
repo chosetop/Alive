@@ -194,7 +194,7 @@ onBeforeUnmount(() => {
     <header class="head">
       <div>
         <h1 class="title">内容世界</h1>
-        <p class="subtitle">控制哪些世界已开放，以及它们在站点上的名称和默认浏览方式。</p>
+        <p class="subtitle">回到你上次停笔的地方。</p>
       </div>
     </header>
 
@@ -254,19 +254,23 @@ onBeforeUnmount(() => {
 
 .list {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr);
+  grid-template-rows: repeat(2, minmax(12rem, auto));
   gap: var(--space-4);
 }
 
-@media (max-width: 72rem) {
-  .list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.list > [data-world-desk='journal'] {
+  grid-row: 1 / span 2;
 }
 
 @media (max-width: 48rem) {
   .list {
     grid-template-columns: 1fr;
+    grid-template-rows: none;
+  }
+
+  .list > [data-world-desk='journal'] {
+    grid-row: auto;
   }
 }
 </style>
