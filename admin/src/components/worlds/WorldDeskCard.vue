@@ -157,11 +157,17 @@ const enterLabel = computed(() => {
   border-color: transparent;
   background: transparent;
   color: inherit;
+  outline: none;
 }
 
 .world-desk__enter-surface:hover:not(:disabled) .world-desk__enter-copy,
 .world-desk__enter-surface:focus-visible:not(:disabled) .world-desk__enter-copy {
   background: color-mix(in srgb, var(--c-accent) 88%, var(--c-ink));
+}
+
+.world-desk__enter-surface:focus-visible:not(:disabled) .world-desk__enter-copy {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 2px;
 }
 
 .world-desk__enter-copy {
