@@ -143,6 +143,21 @@ const enterLabel = computed(() => {
   box-shadow: none;
 }
 
+/* The stretched hit area is transparent; only its visible CTA copy should
+   react to hover. This prevents the primary-button token from flooding the
+   entire desk surface. */
+.world-desk__enter-surface:hover:not(:disabled),
+.world-desk__enter-surface:focus-visible:not(:disabled) {
+  border-color: transparent;
+  background: transparent;
+  color: inherit;
+}
+
+.world-desk__enter-surface:hover:not(:disabled) .world-desk__enter-copy,
+.world-desk__enter-surface:focus-visible:not(:disabled) .world-desk__enter-copy {
+  background: color-mix(in srgb, var(--c-accent) 88%, var(--c-ink));
+}
+
 .world-desk__enter-copy {
   display: inline-flex;
   align-items: center;
