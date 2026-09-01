@@ -163,7 +163,8 @@ const enterLabel = computed(() => {
 
 .world-desk__topline {
   position: relative;
-  z-index: 0;
+  z-index: 2;
+  pointer-events: none;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -189,6 +190,7 @@ const enterLabel = computed(() => {
   position: relative;
   z-index: 2;
   min-width: 4.5rem;
+  pointer-events: auto;
 }
 
 .world-desk__description {
@@ -227,7 +229,8 @@ const enterLabel = computed(() => {
 
 .world-desk__body {
   position: relative;
-  z-index: 0;
+  z-index: 2;
+  pointer-events: none;
   display: grid;
   align-content: start;
   gap: var(--space-2);
@@ -263,6 +266,7 @@ const enterLabel = computed(() => {
 .world-desk__retry {
   width: fit-content;
   min-height: 2.5rem;
+  pointer-events: auto;
 }
 
 @media (pointer: coarse) {

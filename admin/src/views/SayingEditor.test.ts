@@ -218,4 +218,27 @@ describe('SayingEditor', () => {
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('稍后重试')
   })
+
+  it('flushes edits made while an earlier save is in flight', async () => {
+    const gate = ref<(() => Promise<void>) | null>(null)
+    const first = deferred<EntryDetail>()
+    api.updateEntry.mockReturnValueOnce(first.promise).mockImplementationOnce(async (_id: number, body: Record<string, unknown>) =>
+      entry({ revision: 9, content_md: String(body.content_md ?? '') }),
+    )
+    const wrapper = await mountEditor(entry({ id: 77, revision: 8, content_md: '旧句' }), gate)
+
+    await wrapper.get('textarea[aria-label="片语正文"]').setValue('第一版')
+    const firstSave = gate.value?.()
+    await Promise.resolve()
+    await wrapper.get('textarea[aria-label="片语正文"]').setValue('最终版')
+    const leavePromise = navigation.leaveGuard?.()
+
+    first.resolve(entry({ id: 77, revision: 9, content_md: '第一版' }))
+    await firstSave
+    await leavePromise
+    await flushPromises()
+    await flushPromises()
+
+    expect(api.updateEntry).toHaveBeenNthCalledWith(2, 77, expect.objectContaining({ revision: 9, content_md: '最终版' }))
+  })
 })

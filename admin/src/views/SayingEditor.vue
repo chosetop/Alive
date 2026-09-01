@@ -25,6 +25,13 @@ const error = ref<string | null>(null)
 const tags = ref<Tag[]>([])
 const copied = ref(false)
 const isTouched = computed(() => content.value.trim() !== '' || source.value.trim() !== '' || author.value.trim() !== '')
+const hasUnsavedChanges = computed(() => {
+  if (!entry.value) return isTouched.value
+  return content.value !== entry.value.content_md
+    || visibility.value !== entry.value.visibility
+    || source.value.trim() !== (typeof entry.value.meta.source === 'string' ? entry.value.meta.source : '')
+    || author.value.trim() !== (typeof entry.value.meta.author === 'string' ? entry.value.meta.author : '')
+})
 let creating: Promise<void> | null = null
 let saving: Promise<void> | null = null
 
@@ -75,14 +82,16 @@ async function save(): Promise<void> {
   if (!entry.value) return
   if (saving !== null) {
     await saving
+    if (error.value === null && hasUnsavedChanges.value) await save()
     return
   }
+  const currentEntry = entry.value
   isSaving.value = true
   error.value = null
   saving = (async () => {
     try {
-      entry.value = await entriesApi.updateEntry(entry.value.id, {
-        revision: entry.value.revision,
+      entry.value = await entriesApi.updateEntry(currentEntry.id, {
+        revision: currentEntry.revision,
         content_md: content.value,
         visibility: visibility.value,
         meta: { source: source.value.trim(), author: author.value.trim() },
