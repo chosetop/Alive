@@ -48,8 +48,9 @@ const props = withDefaults(
     compactActions?: boolean
     /** Lets callers reuse the status region without inheriting long-form actions. */
     showActions?: boolean
+    showPublish?: boolean
   }>(),
-  { entryId: null, entryStatus: null, busy: false, compactActions: undefined, showActions: true },
+  { entryId: null, entryStatus: null, busy: false, compactActions: undefined, showActions: true, showPublish: false },
 )
 
 const emit = defineEmits<{
@@ -216,7 +217,7 @@ watch(
       </template>
 
       <UiButton
-        v-if="showsActions"
+        v-if="(showsActions || props.showPublish) && entryStatus"
         variant="primary"
         :disabled="busy || entryStatus === 'published'"
         data-publish

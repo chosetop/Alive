@@ -150,7 +150,7 @@ describe('SayingEditor', () => {
     const wrapper = await mountEditor(entry({ id: 79, status: 'published' }))
 
     expect(wrapper.find('.entry-status').text()).toBe('已发布')
-    expect(wrapper.find('[data-publish]').exists()).toBe(false)
+    expect(wrapper.find('[data-publish]').exists()).toBe(true)
     expect(wrapper.find('[data-header-settings]').exists()).toBe(false)
     expect(wrapper.find('[data-header-delete]').exists()).toBe(false)
   })

@@ -28,6 +28,7 @@ const error = ref<string | null>(null)
 const errorSource = ref<'save' | 'publish' | null>(null)
 const tags = ref<Tag[]>([])
 const copied = ref(false)
+const supplementaryOpen = ref(false)
 const sayingWorldLabel = resolveAdminWorld('saying')?.label ?? '片语'
 const isTouched = computed(() => content.value.trim() !== '' || source.value.trim() !== '' || author.value.trim() !== '')
 const hasUnsavedChanges = computed(() => {
@@ -39,6 +40,7 @@ const hasUnsavedChanges = computed(() => {
 })
 let creating: Promise<void> | null = null
 let saving: Promise<void> | null = null
+let saveTimer: ReturnType<typeof setTimeout> | null = null
 
 const longFormWarning = computed(() => Array.from(content.value.trim()).length > 300)
 const saveStatus = computed<SaveStatus>(() => {
@@ -59,9 +61,23 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (saveTimer !== null) clearTimeout(saveTimer)
   if (flushGate !== null && flushGate.value === ownFlush) flushGate.value = null
   if (writing.activeEntryId === entry.value?.id) writing.setActiveEntry(null)
 })
+
+function scheduleSave(): void {
+  if (saveTimer !== null) clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => {
+    saveTimer = null
+    void save()
+  }, 650)
+}
+
+function handleBodyInput(): void {
+  void createDraft()
+  scheduleSave()
+}
 
 function applyEntry(next: EntryDetail): void {
   entry.value = next
@@ -138,6 +154,7 @@ async function save(): Promise<void> {
 }
 
 async function flushBeforeRouteChange(): Promise<boolean> {
+  if (saveTimer !== null) { clearTimeout(saveTimer); saveTimer = null }
   await save()
   return error.value === null
 }
@@ -177,15 +194,20 @@ onBeforeRouteUpdate(async () => ((await flushBeforeRouteChange()) ? undefined : 
       :entry-status="entry?.status ?? null"
       :save-status="saveStatus"
       :show-actions="false"
+      :show-publish="true"
       @retry="void save()"
+      @publish="void publish()"
     />
 
     <main class="saying-editor">
       <p v-if="error" class="error" role="alert">{{ error }}</p>
-      <textarea v-model="content" autofocus class="body" placeholder="写下一句随口的话……" aria-label="片语正文" @input="void createDraft()" />
+      <section class="saying-note" data-saying-note>
+        <textarea v-model="content" autofocus class="body" data-saying-body placeholder="写下一句随口的话……" aria-label="片语正文" @input="handleBodyInput" />
+      </section>
       <p v-if="longFormWarning" class="warning">这段话已经接近一篇日志。</p>
 
-      <section class="meta" aria-label="片语信息">
+      <button type="button" class="details-toggle" :aria-expanded="supplementaryOpen" @click="supplementaryOpen = !supplementaryOpen">补充信息</button>
+      <section v-if="supplementaryOpen" class="meta" aria-label="片语信息">
         <input v-model="source" placeholder="来源（可选）" aria-label="来源" />
         <input v-model="author" placeholder="原作者（可选）" aria-label="原作者" />
         <select v-model="visibility" aria-label="可见性">
@@ -208,10 +230,6 @@ onBeforeRouteUpdate(async () => ((await flushBeforeRouteChange()) ? undefined : 
         @saved="(revision, nextTags) => { if (entry) { entry.revision = revision; tags = nextTags } }"
       />
 
-      <footer class="actions">
-        <button type="button" :disabled="isSaving || isCreating || isPublishing || !entry" @click="save">{{ isSaving ? '保存中…' : '保存草稿' }}</button>
-        <button type="button" :disabled="isPublishing || !entry || !content.trim()" @click="publish">发布</button>
-      </footer>
     </main>
   </div>
 </template>
