@@ -126,7 +126,7 @@ const enterLabel = computed(() => {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--c-paper) 82%, transparent), transparent 42%),
     var(--c-glass);
-  box-shadow: var(--shadow-float);
+  box-shadow: none;
   backdrop-filter: blur(18px) saturate(130%);
   transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
 }
