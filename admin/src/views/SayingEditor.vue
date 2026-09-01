@@ -25,6 +25,7 @@ const isSaving = ref(false)
 const isCreating = ref(false)
 const isPublishing = ref(false)
 const error = ref<string | null>(null)
+const errorSource = ref<'save' | 'publish' | null>(null)
 const tags = ref<Tag[]>([])
 const copied = ref(false)
 const sayingWorldLabel = resolveAdminWorld('saying')?.label ?? '片语'
@@ -41,7 +42,7 @@ let saving: Promise<void> | null = null
 
 const longFormWarning = computed(() => Array.from(content.value.trim()).length > 300)
 const saveStatus = computed<SaveStatus>(() => {
-  if (error.value !== null) return 'error'
+  if (error.value !== null && errorSource.value === 'save') return 'error'
   if (isSaving.value || isCreating.value) return 'saving'
   if (hasUnsavedChanges.value) return 'pending'
   return 'saved'
@@ -92,6 +93,7 @@ async function createDraft(): Promise<void> {
       source.value = pendingDraft.source
       author.value = pendingDraft.author
     } catch (cause) {
+      errorSource.value = 'save'
       error.value = toUserMessage(cause)
     } finally {
       isCreating.value = false
@@ -112,6 +114,7 @@ async function save(): Promise<void> {
   const currentEntry = entry.value
   isSaving.value = true
   error.value = null
+  errorSource.value = null
   saving = (async () => {
     try {
       entry.value = await entriesApi.updateEntry(currentEntry.id, {
@@ -121,6 +124,7 @@ async function save(): Promise<void> {
         meta: { source: source.value.trim(), author: author.value.trim() },
       })
     } catch (cause) {
+      errorSource.value = 'save'
       error.value = toUserMessage(cause)
     } finally {
       isSaving.value = false
@@ -146,6 +150,7 @@ async function publish(): Promise<void> {
   try {
     entry.value = await entriesApi.publishEntry(entry.value.id, entry.value.revision)
   } catch (cause) {
+    errorSource.value = 'publish'
     error.value = toUserMessage(cause)
   } finally {
     isPublishing.value = false
