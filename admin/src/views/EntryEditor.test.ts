@@ -201,6 +201,34 @@ describe('EntryEditor autosave integration', () => {
     expect(wrapper.get('[data-world-context]').text()).toContain('影像')
   })
 
+  it('renders the video canvas and saves title plus summary from the central workspace', async () => {
+    const server = installMutableServer()
+    server.current = entry({
+      id: 70,
+      world: 'video',
+      revision: 4,
+      title: '落日片段',
+      summary: '海风把最后一点光吹散了。',
+    })
+    const wrapper = await mountEditor(server.current)
+
+    expect(wrapper.get('[data-video-viewfinder]').attributes('data-aspect')).toBe('16:9')
+
+    await wrapper.get('[data-video-title]').setValue('新的影像标题')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(api.updateEntry).toHaveBeenLastCalledWith(server.current.id, {
+      revision: 4,
+      title: '新的影像标题',
+    })
+
+    await wrapper.get('[data-video-summary]').setValue('新的影像说明')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(api.updateEntry).toHaveBeenLastCalledWith(server.current.id, {
+      revision: 5,
+      summary: '新的影像说明',
+    })
+  })
+
   it('schedules Milkdown markdown as content_md without remounting the editor', async () => {
     const server = installMutableServer()
     api.updateEntry.mockResolvedValueOnce(
@@ -1073,6 +1101,8 @@ async function openSettings(wrapper: VueWrapper): Promise<void> {
 }
 
 async function titleField(wrapper: VueWrapper) {
+  if (wrapper.find('[data-journal-title]').exists()) return wrapper.get('[data-journal-title]')
+  if (wrapper.find('[data-video-title]').exists()) return wrapper.get('[data-video-title]')
   if (!wrapper.find('#e-title').exists()) await openSettings(wrapper)
   return wrapper.get('#e-title')
 }
