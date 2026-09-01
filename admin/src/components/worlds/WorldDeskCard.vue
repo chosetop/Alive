@@ -63,7 +63,7 @@ const enterLabel = computed(() => {
     </UiButton>
 
     <div class="world-desk__topline">
-      <div>
+      <div @click="emit('enter', definition.key)">
         <p class="world-desk__eyebrow">{{ definition.directoryNoun }}</p>
         <h2>{{ snapshot.setting.nav_label }}</h2>
       </div>
@@ -77,15 +77,15 @@ const enterLabel = computed(() => {
       </UiButton>
     </div>
 
-    <p class="world-desk__description">{{ definition.description }}</p>
+    <p class="world-desk__description" @click="emit('enter', definition.key)">{{ definition.description }}</p>
 
-    <div class="world-desk__meta">
+    <div class="world-desk__meta" @click="emit('enter', definition.key)">
       <span class="world-desk__status" data-world-status>{{ statusText }}</span>
       <span>{{ snapshot.entryCount }} 篇{{ definition.directoryNoun }}</span>
       <span>{{ snapshot.categoryCount }} 个分类</span>
     </div>
 
-    <div class="world-desk__body">
+    <div class="world-desk__body" @click="emit('enter', definition.key)">
       <template v-if="snapshot.recentEntry">
         <p class="world-desk__label">最近编辑</p>
         <h3>{{ snapshot.recentEntry.title }}</h3>
@@ -106,7 +106,7 @@ const enterLabel = computed(() => {
         class="world-desk__retry"
         variant="secondary"
         data-world-retry
-        @click="emit('retry', definition.key)"
+        @click.stop="emit('retry', definition.key)"
       >
         重试最近编辑
       </UiButton>
@@ -163,7 +163,7 @@ const enterLabel = computed(() => {
 
 .world-desk__topline {
   position: relative;
-  z-index: 2;
+  z-index: 0;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -227,7 +227,7 @@ const enterLabel = computed(() => {
 
 .world-desk__body {
   position: relative;
-  z-index: 2;
+  z-index: 0;
   display: grid;
   align-content: start;
   gap: var(--space-2);

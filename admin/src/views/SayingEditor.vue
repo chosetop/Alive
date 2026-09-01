@@ -26,6 +26,7 @@ const tags = ref<Tag[]>([])
 const copied = ref(false)
 const isTouched = computed(() => content.value.trim() !== '' || source.value.trim() !== '' || author.value.trim() !== '')
 let creating: Promise<void> | null = null
+let saving: Promise<void> | null = null
 
 const longFormWarning = computed(() => Array.from(content.value.trim()).length > 300)
 const flushGate = inject(writingFlushKey, null)
@@ -71,20 +72,31 @@ async function createDraft(): Promise<void> {
 
 async function save(): Promise<void> {
   if (!entry.value && isTouched.value) await createDraft()
-  if (!entry.value || isSaving.value) return
+  if (!entry.value) return
+  if (saving !== null) {
+    await saving
+    return
+  }
   isSaving.value = true
   error.value = null
+  saving = (async () => {
+    try {
+      entry.value = await entriesApi.updateEntry(entry.value.id, {
+        revision: entry.value.revision,
+        content_md: content.value,
+        visibility: visibility.value,
+        meta: { source: source.value.trim(), author: author.value.trim() },
+      })
+    } catch (cause) {
+      error.value = toUserMessage(cause)
+    } finally {
+      isSaving.value = false
+    }
+  })()
   try {
-    entry.value = await entriesApi.updateEntry(entry.value.id, {
-      revision: entry.value.revision,
-      content_md: content.value,
-      visibility: visibility.value,
-      meta: { source: source.value.trim(), author: author.value.trim() },
-    })
-  } catch (cause) {
-    error.value = toUserMessage(cause)
+    await saving
   } finally {
-    isSaving.value = false
+    saving = null
   }
 }
 
