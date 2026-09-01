@@ -179,6 +179,9 @@ async function save(): Promise<void> {
 
 .theme-actions {
   display: grid;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--c-line);
   gap: var(--space-2);
 }
 

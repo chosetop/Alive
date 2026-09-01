@@ -121,13 +121,19 @@ const enterLabel = computed(() => {
   gap: var(--space-4);
   min-height: 22rem;
   padding: var(--space-5);
-  border: 1px solid var(--c-glass-border);
+  border: 1px solid var(--c-line);
   border-radius: var(--radius-surface);
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--c-paper) 82%, transparent), transparent 42%),
     var(--c-glass);
   box-shadow: var(--shadow-float);
   backdrop-filter: blur(18px) saturate(130%);
+  transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
+}
+
+.world-desk:hover {
+  border-color: var(--c-accent);
+  box-shadow: var(--shadow-float), 0 0 0 1px color-mix(in srgb, var(--c-accent) 18%, transparent);
 }
 
 .world-desk__enter-surface {
