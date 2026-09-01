@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { entriesApi, toUserMessage } from '../api'
 import { worldTransitionKey, writingRailKey } from '../composables/useWorldTransition'
@@ -14,6 +15,7 @@ const props = defineProps<{
 }>()
 
 const writing = useWritingStore()
+const router = useRouter()
 const transition = inject(worldTransitionKey, null)
 const railRef = inject(writingRailKey, null)
 const editorSurface = ref<HTMLElement | null>(null)
@@ -78,6 +80,9 @@ async function load(id: string): Promise<void> {
     }
   } catch (cause) {
     if (generation !== loadGeneration) return
+    if (isSwitching && currentEntry !== null) {
+      await router.replace({ name: 'entry-edit', params: { id: String(currentEntry.id) } })
+    }
     if (!isSwitching) {
       entry.value = null
       writing.setActiveWorld(null)
