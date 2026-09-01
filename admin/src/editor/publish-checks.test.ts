@@ -4,7 +4,7 @@ import { getPublishChecks } from './publish-checks'
 
 const complete = {
   title: '标题', slug: 'title', content_md: '正文', summary: '摘要', category_id: 1,
-  cover_url: 'https://example.com/cover.jpg', happened_at: '2026-08-27T00:00:00Z', world: 'journal',
+  cover_url: 'https://example.com/cover.jpg', happened_at: '2026-08-27T00:00:00Z', world: 'journal' as const,
 }
 
 describe('getPublishChecks', () => {
