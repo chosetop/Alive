@@ -145,6 +145,7 @@ const enterLabel = computed(() => {
   justify-content: stretch;
   padding: var(--space-5);
   border-radius: inherit;
+  border: 1px solid transparent;
   background: transparent;
   box-shadow: none;
 }
