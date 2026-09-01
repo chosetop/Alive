@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import * as VueRouter from 'vue-router'
 
 import { entriesApi, toUserMessage } from '../api'
 import { worldTransitionKey, writingRailKey } from '../composables/useWorldTransition'
@@ -27,6 +28,10 @@ const definition = computed(() => resolveAdminWorld(entry.value?.world))
 
 let loadGeneration = 0
 let workspaceEntered = false
+
+VueRouter.onBeforeRouteLeave?.(() => {
+  transition?.reset()
+})
 
 watch(
   () => props.id,

@@ -12,6 +12,7 @@ import WritingLayout from './WritingLayout.vue'
 
 const transition = vi.hoisted(() => ({
   dispose: vi.fn(),
+  reset: vi.fn(),
   enterWorld: vi.fn(),
   enterWorkspace: vi.fn(),
   swapCanvas: vi.fn(),

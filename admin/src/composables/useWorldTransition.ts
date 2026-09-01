@@ -9,6 +9,7 @@ export interface WorldTransition {
   ): Promise<void>
   enterWorkspace(rail: HTMLElement | null, canvas: HTMLElement | null): Promise<void>
   swapCanvas(surface: HTMLElement | null, replace: () => Promise<void>): Promise<void>
+  reset(): void
   dispose(): void
 }
 
@@ -278,8 +279,14 @@ export function useWorldTransition(root: Ref<HTMLElement | null>): WorldTransiti
     matcher = null
   }
 
+  function reset(): void {
+    killActiveTimeline()
+    clearTrackedStyles()
+  }
+
   return {
     dispose,
+    reset,
     enterWorld,
     enterWorkspace,
     swapCanvas,

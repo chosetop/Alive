@@ -41,6 +41,7 @@ vi.mock('./SayingEditor.vue', () => ({
 const wrappers: VueWrapper[] = []
 const transition = {
   dispose: vi.fn(),
+  reset: vi.fn(),
   enterWorld: vi.fn(),
   enterWorkspace: vi.fn().mockResolvedValue(undefined),
   swapCanvas: vi.fn(async (_surface: Element, replace: () => Promise<void>) => {
