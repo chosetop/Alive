@@ -19,11 +19,6 @@ const emit = defineEmits<{
 <template>
   <section class="journal-canvas" data-journal-canvas>
     <div class="journal-canvas__frame">
-      <header class="journal-canvas__meta">
-        <p class="journal-canvas__eyebrow">日志手稿</p>
-        <p class="journal-canvas__context">从标题起笔，正文沿着页边线慢慢展开。</p>
-      </header>
-
       <div class="journal-canvas__page">
         <span class="journal-canvas__edge" aria-hidden="true" />
         <div class="journal-canvas__body">
@@ -36,7 +31,6 @@ const emit = defineEmits<{
             placeholder="写下这篇日志的标题"
             @input="emit('update:title', ($event.target as HTMLInputElement).value)"
           />
-          <p class="journal-canvas__date">此刻的记录</p>
           <MarkdownEditor
             :initial-value="props.content"
             :disabled="props.disabled"

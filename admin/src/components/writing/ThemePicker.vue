@@ -9,6 +9,7 @@ import { UiButton, UiIcon } from '../ui'
 const theme = useThemeStore()
 const saving = ref(false)
 const error = ref<string | null>(null)
+const open = ref(false)
 
 const currentThemeLabel = computed(
   () => THEMES.find((item) => item.name === theme.preview)?.label ?? '',
@@ -64,8 +65,11 @@ async function save(): Promise<void> {
 
 <template>
   <div class="theme-picker" data-theme-picker>
-    <p class="theme-label">主题：{{ currentThemeLabel }}</p>
-    <div class="theme-options" role="radiogroup" aria-label="选择主题">
+    <button class="theme-trigger" type="button" aria-haspopup="menu" :aria-expanded="open" @click="open = !open">
+      <span class="theme-trigger__dot" aria-hidden="true" />
+      <span>主题：{{ currentThemeLabel }}</span>
+    </button>
+    <div v-show="open" class="theme-options" role="radiogroup" aria-label="选择主题">
       <UiButton
         v-for="item in THEMES"
         :key="item.name"
@@ -98,9 +102,26 @@ async function save(): Promise<void> {
 
 <style scoped>
 .theme-picker {
+  position: relative;
   display: grid;
   gap: var(--space-3);
 }
+
+.theme-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.5rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--c-line-strong);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c-surface) 88%, var(--c-accent));
+  color: var(--c-ink-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.theme-trigger:hover, .theme-trigger:focus-visible { border-color: var(--c-accent); color: var(--c-accent); outline: none; }
+.theme-trigger__dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--c-accent); }
 
 .theme-label {
   margin: 0;
@@ -109,12 +130,23 @@ async function save(): Promise<void> {
 }
 
 .theme-options {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  min-width: 11.5rem;
+  padding: .375rem;
+  border: 1px solid var(--c-line);
+  border-radius: .875rem;
+  background: var(--c-surface);
+  box-shadow: var(--shadow-float);
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
 }
 
 .theme-option { justify-content: flex-start; min-width: 0; }
+.theme-option:hover:not(:disabled) { border-color: var(--c-line-strong); background: var(--c-surface-sunken); color: var(--c-ink); }
 .theme-option--current { border-color: var(--c-accent); background: var(--c-surface-sunken); color: var(--c-ink); }
 
 .theme-check { width: 0.875rem; height: 0.875rem; margin-left: auto; }

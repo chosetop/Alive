@@ -8,7 +8,6 @@ import { EntryRecoveryStore } from '../../editor/recovery-store'
 import { useWritingStore, writingFlushKey } from '../../stores/writing'
 import type { EntryListItem, EntryStatus, WorldKey } from '../../types/api'
 import { UiButton, UiIcon, UiIconButton } from '../ui'
-import ThemePicker from './ThemePicker.vue'
 
 /**
  * The article directory.
@@ -330,7 +329,7 @@ function isUnsynced(item: EntryListItem): boolean {
     </UiButton>
 
     <div class="search">
-      <label class="search-label" for="directory-search">{{ searchLabel }}</label>
+      <label class="search-label ui-visually-hidden" for="directory-search">{{ searchLabel }}</label>
       <div class="search-control">
         <span class="search-icon" aria-hidden="true"><UiIcon name="search" /></span>
         <input
@@ -468,7 +467,6 @@ function isUnsynced(item: EntryListItem): boolean {
     <div class="footer">
       <RouterLink class="footer-link" :to="{ name: 'categories' }">分类管理</RouterLink>
       <RouterLink class="footer-link" :to="{ name: 'entries' }">文章列表</RouterLink>
-      <ThemePicker />
     </div>
   </nav>
 </template>
@@ -482,7 +480,7 @@ function isUnsynced(item: EntryListItem): boolean {
   /* min-height: 0 with the overflow below: without it the flex item grows to
      its content and the list scrolls the whole page instead of the pane. */
   min-height: 0;
-  padding: var(--space-4) var(--space-3);
+  padding: var(--space-6) var(--space-3) var(--space-4);
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--c-line-strong) transparent;
@@ -557,10 +555,10 @@ function isUnsynced(item: EntryListItem): boolean {
 }
 
 .group-title {
-  margin-bottom: var(--space-2);
+  margin: 0 0 var(--space-3);
   color: var(--c-ink-faint);
-  font-size: 0.6875rem;
-  font-weight: 500;
+  font-size: 0.875rem;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }

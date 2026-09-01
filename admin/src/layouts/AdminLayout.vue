@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { UiDialog, UiIcon, UiIconButton } from '../components/ui'
+import ThemePicker from '../components/writing/ThemePicker.vue'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
@@ -75,6 +76,7 @@ async function handleLogout(): Promise<void> {
       </div>
 
       <div class="topbar-actions">
+        <ThemePicker />
         <UiIconButton
           class="mobile-nav-trigger"
           label="打开主导航"
