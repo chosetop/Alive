@@ -11,11 +11,11 @@ import {
   type EntryFormState,
 } from '../api'
 import { resolveAdminWorld } from '../content-worlds/registry'
-import MarkdownEditor from '../components/MarkdownEditor.vue'
 import WorkspaceHeader from '../components/writing/WorkspaceHeader.vue'
 import ArticleSettings from '../components/writing/ArticleSettings.vue'
+import JournalCanvas from '../components/writing/JournalCanvas.vue'
 import PublishPanel from '../components/writing/PublishPanel.vue'
-import VideoUpload from '../components/writing/VideoUpload.vue'
+import VideoCanvas from '../components/writing/VideoCanvas.vue'
 import { EntryRecoveryStore } from '../editor/recovery-store'
 import {
   createSaveCoordinator,
@@ -47,6 +47,7 @@ const props = defineProps<{
   id?: string
   blank?: boolean
   world?: string
+  initialEntry?: EntryDetail
 }>()
 
 const router = useRouter()
@@ -172,6 +173,7 @@ async function load(targetId: number | null = entryId.value): Promise<void> {
   if (targetId === null) {
     // A new route is an editing session, not a database command. The first
     // meaningful edit or explicit save creates the server-side draft.
+    writing.setActiveWorld(draftWorld.value)
     resetToBlank()
     return
   }
@@ -182,32 +184,39 @@ async function load(targetId: number | null = entryId.value): Promise<void> {
   loadError.value = null
   categoryError.value = null
   try {
-    const entry = await entriesApi.getEntry(targetId)
+    const entry =
+      props.initialEntry?.id === targetId
+        ? props.initialEntry
+        : await entriesApi.getEntry(targetId)
     if (!isCurrentLoad(generation)) return
-    recoveryDraft = null
-
-    original.value = entry
-    applyEntryToForm(entry)
-    writing.setActiveEntry(entry.id)
-    void loadWorldStatus(entry.world ?? draftWorld.value)
-
-    editorSession.value += 1
-    await bindCoordinator(entry)
-    if (!isCurrentLoad(generation)) return
-    isLoading.value = false
-
-    try {
-      const cats = await categoriesApi.listCategoriesAdmin({
-        world: entry.world ?? draftWorld.value,
-      })
-      if (isCurrentLoad(generation)) categories.value = cats
-    } catch (error) {
-      if (isCurrentLoad(generation)) categoryError.value = toUserMessage(error)
-    }
+    await applyLoadedEntry(entry, generation)
   } catch (error) {
     if (isCurrentLoad(generation)) loadError.value = toUserMessage(error)
   } finally {
     if (isCurrentLoad(generation)) isLoading.value = false
+  }
+}
+
+async function applyLoadedEntry(entry: EntryDetail, generation: number): Promise<void> {
+  recoveryDraft = null
+  original.value = entry
+  writing.setActiveWorld(entry.world ?? draftWorld.value)
+  applyEntryToForm(entry)
+  writing.setActiveEntry(entry.id)
+  void loadWorldStatus(entry.world ?? draftWorld.value)
+
+  editorSession.value += 1
+  await bindCoordinator(entry)
+  if (!isCurrentLoad(generation)) return
+  isLoading.value = false
+
+  try {
+    const cats = await categoriesApi.listCategoriesAdmin({
+      world: entry.world ?? draftWorld.value,
+    })
+    if (isCurrentLoad(generation)) categories.value = cats
+  } catch (error) {
+    if (isCurrentLoad(generation)) categoryError.value = toUserMessage(error)
   }
 }
 
@@ -268,6 +277,17 @@ onBeforeRouteUpdate(async () => ((await flushBeforeRouteChange()) ? undefined : 
 function applyError(error: unknown): void {
   saveError.value = toUserMessage(error)
   fieldErrors.value = (error as { fields?: Record<string, string> }).fields ?? {}
+}
+
+/** Markdown arrives from the editor one way; this is the only writer of contentMd. */
+function handleTitleUpdate(title: string): void {
+  form.value.title = title
+  void ensureEntry().then(() => queueUpdate({ title }))
+}
+
+function handleSummaryUpdate(summary: string): void {
+  form.value.summary = summary
+  void ensureEntry().then(() => queueUpdate({ summary }))
 }
 
 /** Markdown arrives from the editor one way; this is the only writer of contentMd. */
@@ -486,6 +506,8 @@ function resetToBlank(): void {
   loadError.value = null
   saveError.value = null
   fieldErrors.value = {}
+  categories.value = []
+  worldStatus.value = null
   settingsOpen.value = false
   publishOpen.value = false
   editorSession.value += 1
@@ -615,6 +637,7 @@ function createCoordinatorBridge(): CoordinatorBridge {
         place a save state is rendered.
       -->
       <WorkspaceHeader
+        :world-label="worldDefinition?.label ?? '日志'"
         :save-status="autosave.status.value"
         :entry-status="currentStatus"
         :busy="controlsDisabled"
@@ -655,32 +678,25 @@ function createCoordinatorBridge(): CoordinatorBridge {
       </WorkspaceHeader>
 
       <div class="page">
-        <div class="fields">
-          <p class="editor-hint" data-editor-world>
-            {{ worldDefinition?.label }} · {{ worldDefinition?.mediaCapability === 'primary-video' ? '先输入内容，保存后即可添加主视频' : '正文从这里开始' }}
-          </p>
-          <section v-if="worldDefinition?.mediaCapability === 'primary-video' && original === null" class="video-slot video-slot--pending" data-video-slot>
-            <strong>主视频</strong>
-            <p>首次保存内容后，这里会出现选择视频、上传进度和播放预览。</p>
-          </section>
-          <VideoUpload
-            v-else-if="worldDefinition?.mediaCapability === 'primary-video' && original"
-            :entry-id="original.id"
-            :revision="original.revision"
-            :disabled="controlsDisabled"
-            data-video-slot
-            @revision="onMediaRevision"
-          />
-          <!-- Mounted only once the content is known, and keyed by id: Milkdown
-               reads its initial value once, so switching entries must build a
-               new editor rather than try to swap the document underneath. -->
-          <MarkdownEditor
-            :key="`${original?.id ?? 'new'}:${editorSession}`"
-            :initial-value="form.contentMd"
-            :disabled="controlsDisabled"
-            @update="handleContentUpdate"
-          />
-        </div>
+        <JournalCanvas
+          v-if="worldDefinition?.material === 'manuscript'"
+          :key="`${original?.id ?? 'new'}:${editorSession}`"
+          :title="form.title"
+          :content="form.contentMd"
+          :disabled="controlsDisabled"
+          @update:title="handleTitleUpdate"
+          @update:content="handleContentUpdate"
+        />
+        <VideoCanvas
+          v-else-if="worldDefinition?.material === 'viewfinder'"
+          :entry="original"
+          :title="form.title"
+          :summary="form.summary"
+          :disabled="controlsDisabled"
+          @update:title="handleTitleUpdate"
+          @update:summary="handleSummaryUpdate"
+          @revision="onMediaRevision"
+        />
 
         <p v-if="categoryError" class="alert" role="alert">{{ categoryError }}</p>
         <p v-if="localError && (form.title !== '' || form.slug !== '')" class="alert alert--soft">
@@ -749,31 +765,6 @@ function createCoordinatorBridge(): CoordinatorBridge {
   padding: var(--space-6) var(--space-5);
 }
 
-.editor-hint {
-  margin: 0 0 var(--space-3);
-  color: var(--c-ink-faint);
-  font-size: 0.8125rem;
-}
-
-.video-slot--pending {
-  margin-bottom: var(--space-4);
-  padding: var(--space-4);
-  border: 1px dashed var(--c-line-strong);
-  border-radius: var(--radius-control);
-  color: var(--c-ink-muted);
-}
-
-.video-slot--pending strong {
-  display: block;
-  margin-bottom: var(--space-1);
-  color: var(--c-ink);
-}
-
-.video-slot--pending p {
-  margin: 0;
-  font-size: 0.8125rem;
-}
-
 .badge {
   padding: 0.0625rem 0.375rem;
   border: 1px solid var(--c-line-strong);
@@ -790,10 +781,6 @@ function createCoordinatorBridge(): CoordinatorBridge {
 
 .badge--archived {
   color: var(--c-ink-faint);
-}
-
-.fields {
-  margin-bottom: var(--space-5);
 }
 
 .field {

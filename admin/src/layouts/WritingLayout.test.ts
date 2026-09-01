@@ -10,6 +10,13 @@ import { defineComponent, inject, nextTick } from 'vue'
 import { useWritingStore, writingFlushKey, type WritingFlushGate } from '../stores/writing'
 import WritingLayout from './WritingLayout.vue'
 
+const transition = vi.hoisted(() => ({
+  dispose: vi.fn(),
+  enterWorld: vi.fn(),
+  enterWorkspace: vi.fn(),
+  swapCanvas: vi.fn(),
+}))
+
 /**
  * The shell's geometry and its two presentations of the directory. What matters
  * here is that exactly one directory exists at a time and that the canvas track
@@ -26,9 +33,18 @@ const media = {
 vi.mock('../components/writing/ArticleDirectory.vue', () => ({
   default: defineComponent({
     name: 'ArticleDirectory',
-    props: { drawer: { type: Boolean, default: false } },
-    template: '<nav data-stub-directory :data-drawer="drawer ? \'true\' : \'false\'" />',
+    props: {
+      drawer: { type: Boolean, default: false },
+      world: { type: String, required: true },
+    },
+    template: '<nav data-stub-directory :data-drawer="drawer ? \'true\' : \'false\'" :data-world="world" />',
   }),
+}))
+
+vi.mock('../composables/useWorldTransition', () => ({
+  useWorldTransition: () => transition,
+  worldTransitionKey: Symbol('world-transition'),
+  writingRailKey: Symbol('writing-rail'),
 }))
 
 const wrappers: VueWrapper[] = []
@@ -84,6 +100,10 @@ describe('WritingLayout', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     installMatchMedia(false)
+    transition.dispose.mockReset()
+    transition.enterWorld.mockReset()
+    transition.enterWorkspace.mockReset()
+    transition.swapCanvas.mockReset()
   })
 
   afterEach(async () => {
@@ -94,8 +114,12 @@ describe('WritingLayout', () => {
   it('renders the directory as a column at desktop width', async () => {
     const wrapper = await mountLayout()
 
-    expect(wrapper.get('[data-writing-workspace]').attributes('data-directory-open')).toBe('true')
+    expect(wrapper.get('[data-writing-workspace]').attributes('data-directory-open')).toBe('false')
+    expect(wrapper.find('[data-stub-directory]').exists()).toBe(false)
+    useWritingStore().setActiveWorld('journal')
+    await nextTick()
     expect(wrapper.get('[data-stub-directory]').attributes('data-drawer')).toBe('false')
+    expect(wrapper.get('[data-stub-directory]').attributes('data-world')).toBe('journal')
     expect(wrapper.get('[data-stub-canvas]').element).toBeTruthy()
   })
 
@@ -115,6 +139,8 @@ describe('WritingLayout', () => {
 
   it('mounts one directory at a time, never both presentations', async () => {
     const wrapper = await mountLayout()
+    useWritingStore().setActiveWorld('journal')
+    await nextTick()
     expect(wrapper.findAll('[data-stub-directory]')).toHaveLength(1)
 
     await setNarrow(true)
@@ -129,6 +155,8 @@ describe('WritingLayout', () => {
   it('closes the directory on entering the narrow range and reopens on leaving', async () => {
     const wrapper = await mountLayout()
     const store = useWritingStore()
+    store.setActiveWorld('journal')
+    await nextTick()
     expect(store.directoryOpen).toBe(true)
 
     await setNarrow(true)
@@ -150,6 +178,7 @@ describe('WritingLayout', () => {
   it('presents the narrow directory as a modal marked as a drawer', async () => {
     installMatchMedia(true)
     await mountLayout()
+    useWritingStore().setActiveWorld('video')
     useWritingStore().setDirectoryOpen(true)
     await flushPromises()
     await new Promise((resolve) => setTimeout(resolve, 0))
@@ -163,10 +192,11 @@ describe('WritingLayout', () => {
     expect(dialog).not.toBeNull()
     const labelId = dialog?.getAttribute('aria-labelledby')
     expect(labelId).toBeTruthy()
-    expect(document.getElementById(labelId as string)?.textContent?.trim()).toBe('文章目录')
+    expect(document.getElementById(labelId as string)?.textContent?.trim()).toBe('影像目录')
     expect(document.querySelector('[data-stub-directory]')?.getAttribute('data-drawer')).toBe(
       'true',
     )
+    expect(document.querySelector('[data-stub-directory]')?.getAttribute('data-world')).toBe('video')
   })
 
   it('stays in the desktop layout when matchMedia is unavailable', async () => {
@@ -175,8 +205,8 @@ describe('WritingLayout', () => {
     Reflect.deleteProperty(window, 'matchMedia')
     const wrapper = await mountLayout()
 
-    expect(wrapper.get('[data-writing-workspace]').attributes('data-directory-open')).toBe('true')
-    expect(wrapper.get('[data-stub-directory]').attributes('data-drawer')).toBe('false')
+    expect(wrapper.get('[data-writing-workspace]').attributes('data-directory-open')).toBe('false')
+    expect(wrapper.find('[data-stub-directory]').exists()).toBe(false)
   })
 
   it('provides a flush gate that starts empty', async () => {
@@ -215,6 +245,15 @@ describe('WritingLayout', () => {
     expect(media.listeners.size).toBe(0)
   })
 
+  it('disposes the provided world transition on unmount', async () => {
+    const wrapper = await mountLayout()
+
+    wrapper.unmount()
+    wrappers.splice(wrappers.indexOf(wrapper), 1)
+
+    expect(transition.dispose).toHaveBeenCalledOnce()
+  })
+
   it('zeroes the directory track rather than hiding its contents', () => {
     // The collapse has to remove the column from the grid. Hiding the pane while
     // leaving a 14rem track would leave the canvas off-centre with an empty gutter,
@@ -242,6 +281,8 @@ describe('WritingLayout', () => {
 
   it('identifies the writing desk and exposes the real directory resize bounds', async () => {
     const wrapper = await mountLayout()
+    useWritingStore().setActiveWorld('journal')
+    await nextTick()
     const workspace = wrapper.get('[data-writing-workspace]')
     const resize = wrapper.get('[data-directory-resize]')
 
@@ -249,6 +290,17 @@ describe('WritingLayout', () => {
     expect(resize.attributes('role')).toBe('separator')
     expect(resize.attributes('aria-valuemin')).toBe('220')
     expect(resize.attributes('aria-valuemax')).toBe('420')
+  })
+
+  it('gates and keys the directory by the active world', () => {
+    const source = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), 'WritingLayout.vue'),
+      'utf8',
+    )
+
+    expect(source).toContain('v-if="writing.activeWorld"')
+    expect(source).toContain(':key="writing.activeWorld"')
+    expect(source).toContain(':world="writing.activeWorld"')
   })
 
   it('defines a 375px no-overflow contract and a reduced-motion fallback', () => {

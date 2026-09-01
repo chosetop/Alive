@@ -19,14 +19,14 @@ const REMINDERS: Array<[PublishCheck['field'], string]> = [
   ['happened_at', '发生时间'],
 ]
 
-export function getPublishChecks(entry: Pick<EntryDetail, 'title' | 'slug' | 'content_md' | 'summary' | 'category_id' | 'cover_url' | 'happened_at'>): {
+export function getPublishChecks(entry: Pick<EntryDetail, 'title' | 'slug' | 'content_md' | 'summary' | 'category_id' | 'cover_url' | 'happened_at' | 'world'>): {
   blockers: PublishCheck[]
   reminders: PublishCheck[]
 } {
   const missing = new Set<string>()
   if (entry.title.trim() === '') missing.add('title')
   if (entry.slug.trim() === '') missing.add('slug')
-  if (entry.content_md.trim() === '') missing.add('content_md')
+  if (entry.world !== 'video' && entry.content_md.trim() === '') missing.add('content_md')
   if (entry.summary.trim() === '') missing.add('summary')
   if (entry.category_id === 0) missing.add('category_id')
   if (entry.cover_url.trim() === '') missing.add('cover_url')

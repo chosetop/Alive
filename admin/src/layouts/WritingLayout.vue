@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, provide, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, provide, ref } from 'vue'
 
 import ArticleDirectory from '../components/writing/ArticleDirectory.vue'
 import { UiDialog } from '../components/ui'
+import { useWorldTransition, worldTransitionKey, writingRailKey } from '../composables/useWorldTransition'
+import { resolveAdminWorld } from '../content-worlds/registry'
 import { getSiteSettings } from '../api/site'
 import { useThemeStore } from '../stores/theme'
 import { useWritingStore, writingFlushKey, type WritingFlushGate } from '../stores/writing'
@@ -36,6 +38,12 @@ const DIRECTORY_WIDTH_STORAGE_KEY = 'alive:writing-directory-width'
 
 const writing = useWritingStore()
 const theme = useThemeStore()
+const currentDirectoryTitle = computed(
+  () => `${resolveAdminWorld(writing.activeWorld)?.directoryNoun ?? '世界'}目录`,
+)
+const workspaceRoot = ref<HTMLElement | null>(null)
+const railRef = ref<HTMLElement | null>(null)
+const transition = useWorldTransition(workspaceRoot)
 
 const isNarrow = ref(false)
 const directoryWidth = ref(DEFAULT_DIRECTORY_WIDTH)
@@ -51,6 +59,8 @@ let resizing = false
  */
 const flushGate: WritingFlushGate = ref(null)
 provide(writingFlushKey, flushGate)
+provide(worldTransitionKey, transition)
+provide(writingRailKey, railRef)
 
 function applyMatch(matches: boolean): void {
   isNarrow.value = matches
@@ -157,6 +167,7 @@ onBeforeUnmount(() => {
   stopResize()
   mediaQuery?.removeEventListener('change', handleMediaChange)
   mediaQuery = null
+  transition.dispose()
 })
 
 function handleMediaChange(event: MediaQueryListEvent): void {
@@ -166,45 +177,62 @@ function handleMediaChange(event: MediaQueryListEvent): void {
 
 <template>
   <div
+    ref="workspaceRoot"
     class="workspace"
     data-writing-workspace
     data-visual-mode="writing-desk"
     :style="{ '--directory-width': `${directoryWidth}px` }"
-    :data-directory-open="writing.directoryOpen && !isNarrow ? 'true' : 'false'"
+    :data-directory-open="writing.directoryOpen && !isNarrow && writing.activeWorld ? 'true' : 'false'"
   >
     <!--
       Two mount points, one component, and only ever one mounted. Rendering the
       column and the drawer at once would put two copies of every article row in
       the accessibility tree and two identical ids on the search input.
     -->
-    <div v-if="!isNarrow" class="rail" :data-collapsed="writing.directoryOpen ? 'false' : 'true'">
-      <ArticleDirectory v-if="writing.directoryOpen" />
-      <button
-        v-if="writing.directoryOpen"
-        class="rail-resize"
-        type="button"
-        role="separator"
-        aria-label="调整文章目录宽度"
-        :aria-valuemin="MIN_DIRECTORY_WIDTH"
-        :aria-valuemax="MAX_DIRECTORY_WIDTH"
-        :aria-valuenow="directoryWidth"
-        data-directory-resize
-        @pointerdown.prevent="startResize"
-        @keydown="handleResizeKeydown"
-      />
-    </div>
-
-    <UiDialog
-      v-else
-      title="文章目录"
-      hide-title
-      :open="writing.directoryOpen"
-      @update:open="writing.setDirectoryOpen($event)"
-    >
-      <div class="writing-drawer" data-writing-drawer>
-        <ArticleDirectory drawer />
+    <template v-if="writing.activeWorld">
+      <div
+        v-if="!isNarrow"
+        ref="railRef"
+        class="rail"
+        data-writing-rail
+        :data-collapsed="writing.directoryOpen ? 'false' : 'true'"
+      >
+        <ArticleDirectory
+          v-if="writing.directoryOpen"
+          :key="writing.activeWorld"
+          :world="writing.activeWorld"
+        />
+        <button
+          v-if="writing.directoryOpen"
+          class="rail-resize"
+          type="button"
+          role="separator"
+          aria-label="调整文章目录宽度"
+          :aria-valuemin="MIN_DIRECTORY_WIDTH"
+          :aria-valuemax="MAX_DIRECTORY_WIDTH"
+          :aria-valuenow="directoryWidth"
+          data-directory-resize
+          @pointerdown.prevent="startResize"
+          @keydown="handleResizeKeydown"
+        />
       </div>
-    </UiDialog>
+
+      <UiDialog
+        v-else
+        :title="currentDirectoryTitle"
+        hide-title
+        :open="writing.directoryOpen"
+        @update:open="writing.setDirectoryOpen($event)"
+      >
+        <div class="writing-drawer" data-writing-drawer>
+          <ArticleDirectory
+            :key="writing.activeWorld"
+            :world="writing.activeWorld"
+            drawer
+          />
+        </div>
+      </UiDialog>
+    </template>
 
     <main class="canvas">
       <RouterView />

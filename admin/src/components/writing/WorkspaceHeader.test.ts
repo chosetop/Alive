@@ -20,10 +20,18 @@ import WorkspaceHeader from './WorkspaceHeader.vue'
  */
 
 function mountHeader(
-  props: { saveStatus?: SaveStatus; entryStatus?: EntryStatus | null; busy?: boolean } = {},
+  props: {
+    worldLabel?: string
+    entryId?: number | null
+    saveStatus?: SaveStatus
+    entryStatus?: EntryStatus | null
+    busy?: boolean
+    compactActions?: boolean
+    showActions?: boolean
+  } = {},
 ): VueWrapper {
   return mount(WorkspaceHeader, {
-    props: { saveStatus: 'saved', ...props },
+    props: { worldLabel: '日志', entryId: 1, saveStatus: 'saved', ...props },
     global: { stubs: { RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' } } },
   })
 }
@@ -112,13 +120,13 @@ describe('WorkspaceHeader', () => {
 
   it('renders the conflict slot only while the save is conflicted', () => {
     const conflicted = mount(WorkspaceHeader, {
-      props: { saveStatus: 'conflict' },
+      props: { worldLabel: '日志', saveStatus: 'conflict' },
       slots: { conflict: '<button data-test="choice">载入服务端</button>' },
     })
     expect(conflicted.find('[data-test="choice"]').exists()).toBe(true)
 
     const saved = mount(WorkspaceHeader, {
-      props: { saveStatus: 'saved' },
+      props: { worldLabel: '日志', saveStatus: 'saved' },
       slots: { conflict: '<button data-test="choice">载入服务端</button>' },
     })
     expect(saved.find('[data-test="choice"]').exists()).toBe(false)
@@ -158,6 +166,47 @@ describe('WorkspaceHeader', () => {
     expect(wrapper.find('[data-writing-brand]').exists()).toBe(false)
   })
 
+  it('renders the current world breadcrumb once beside the directory toggle', () => {
+    const wrapper = mountHeader({ worldLabel: '片语', entryStatus: 'draft' })
+
+    expect(wrapper.get('[data-world-context]').text()).toBe('世界/片语')
+    expect(wrapper.findAll('[data-save-status]')).toHaveLength(1)
+  })
+
+  it('moves secondary actions into the existing menu when compact actions are requested', async () => {
+    const wrapper = mount(WorkspaceHeader, {
+      attachTo: document.body,
+      props: {
+        worldLabel: '片语',
+        saveStatus: 'saved',
+        entryStatus: 'draft',
+        compactActions: true,
+      },
+      global: {
+        stubs: {
+          RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+        },
+      },
+    })
+
+    expect(wrapper.find('[data-header-settings]').exists()).toBe(false)
+    expect(wrapper.find('[data-header-archive]').exists()).toBe(false)
+    expect(wrapper.find('[data-header-delete]').exists()).toBe(false)
+    expect(wrapper.get('[data-publish]').text()).toContain('发布')
+    expect(wrapper.get('[data-more-actions]').attributes('aria-label')).toBe('更多操作')
+
+    await wrapper.get('[data-more-actions]').trigger('click')
+    await nextTick()
+
+    const items = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).map((item) =>
+      item.textContent?.trim() ?? '',
+    )
+    expect(items).toContain('设置')
+    expect(items).toContain('归档')
+    expect(items).toContain('删除')
+    wrapper.unmount()
+  })
+
   it('offers no publish or menu before the record exists', () => {
     // Publishing something never created has no meaning, and neither does
     // archiving it.
@@ -183,6 +232,30 @@ describe('WorkspaceHeader', () => {
     expect(wrapper.find('[data-more-actions]').exists()).toBe(false)
     expect(wrapper.find('[data-header-delete-confirm]').exists()).toBe(false)
     expect(wrapper.get('[data-publish]').text()).toBe('发布')
+  })
+
+  it('clears a pending delete confirmation when the subject entry changes', async () => {
+    const wrapper = mountHeader({ entryStatus: 'draft', entryId: 11 })
+
+    await wrapper.get('[data-header-delete]').trigger('click')
+    expect(wrapper.find('[data-header-delete-confirm]').exists()).toBe(true)
+
+    await wrapper.setProps({ entryId: 12 })
+
+    expect(wrapper.find('[data-header-delete-confirm]').exists()).toBe(false)
+    expect(wrapper.get('[data-header-delete]').text()).toBe('删除')
+  })
+
+  it('can show entry status without exposing entry actions', () => {
+    const wrapper = mountHeader({
+      entryStatus: 'published',
+      showActions: false,
+    })
+
+    expect(wrapper.find('.entry-status').text()).toBe('已发布')
+    expect(wrapper.find('[data-publish]').exists()).toBe(false)
+    expect(wrapper.find('[data-header-settings]').exists()).toBe(false)
+    expect(wrapper.find('[data-header-delete]').exists()).toBe(false)
   })
 
   it('does not offer publish for something already published', () => {

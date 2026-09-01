@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, type InjectionKey, type Ref } from 'vue'
-import type { EntryListItem } from '../types/api'
+import type { EntryListItem, WorldKey } from '../types/api'
 
 /**
  * How the directory asks the open editor to flush before it navigates away.
@@ -48,6 +48,7 @@ export const useWritingStore = defineStore('writing', () => {
    * nothing highlighted for exactly as long as that round trip takes.
    */
   const activeEntryId = ref<number | null>(null)
+  const activeWorld = ref<WorldKey | null>(null)
   const searchQuery = ref('')
   const directoryEntries = ref<EntryListItem[]>([])
 
@@ -61,6 +62,14 @@ export const useWritingStore = defineStore('writing', () => {
 
   function setActiveEntry(entryId: number | null): void {
     activeEntryId.value = entryId
+  }
+
+  function setActiveWorld(world: WorldKey | null): void {
+    if (activeWorld.value === world) return
+    activeWorld.value = world
+    activeEntryId.value = null
+    searchQuery.value = ''
+    directoryEntries.value = []
   }
 
   function setSearchQuery(query: string): void {
@@ -84,11 +93,13 @@ export const useWritingStore = defineStore('writing', () => {
   return {
     directoryOpen,
     activeEntryId,
+    activeWorld,
     searchQuery,
     directoryEntries,
     toggleDirectory,
     setDirectoryOpen,
     setActiveEntry,
+    setActiveWorld,
     setSearchQuery,
     setDirectoryEntries,
     nextEntryAfterDelete,

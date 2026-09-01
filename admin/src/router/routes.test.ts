@@ -76,6 +76,7 @@ describe('the route table', () => {
     const record = resolver().resolve('/entries/41').matched.at(-1)
 
     expect(record?.props.default).toBe(true)
+    expect(String(record?.components?.default)).toContain('WorldEditorHost.vue')
   })
 
   it('marks only the writing routes as the writing workspace', () => {

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { isNavigationFailure, useRouter } from 'vue-router'
 
 import { entriesApi, toUserMessage } from '../../api'
+import { resolveAdminWorld } from '../../content-worlds/registry'
 import { EntryRecoveryStore } from '../../editor/recovery-store'
 import { useWritingStore, writingFlushKey } from '../../stores/writing'
-import type { EntryListItem, EntryStatus } from '../../types/api'
+import type { EntryListItem, EntryStatus, WorldKey } from '../../types/api'
 import { UiButton, UiIcon, UiIconButton } from '../ui'
 import ThemePicker from './ThemePicker.vue'
 
@@ -54,6 +55,7 @@ const UNTITLED = '无标题草稿'
 
 const props = withDefaults(
   defineProps<{
+    world: WorldKey
     /**
      * True below the drawer breakpoint. Drives the two behaviours that differ
      * there: the pane closes after a selection, and the collapse control is
@@ -67,6 +69,11 @@ const props = withDefaults(
 const router = useRouter()
 const writing = useWritingStore()
 const recoveryStore = new EntryRecoveryStore()
+const worldDefinition = computed(() => resolveAdminWorld(props.world))
+const directoryLabel = computed(() => `${worldDefinition.value?.directoryNoun ?? '文章'}目录`)
+const searchLabel = computed(() => worldDefinition.value?.searchPlaceholder ?? '搜索文章')
+const createLabel = computed(() => worldDefinition.value?.createLabel ?? '新建文章')
+const collapseLabel = computed(() => `${props.drawer ? '关闭' : '收起'}${directoryLabel.value}`)
 
 const recent = ref<EntryListItem[]>([])
 const searchResults = ref<EntryListItem[]>([])
@@ -128,7 +135,7 @@ watch(trimmedQuery, (query) => {
 async function loadRecent(): Promise<void> {
   isLoadingRecent.value = true
   try {
-    const page = await entriesApi.listEntriesAdmin({ page_size: RECENT_PAGE_SIZE })
+    const page = await entriesApi.listEntriesAdmin({ world: props.world, page_size: RECENT_PAGE_SIZE })
     if (disposed) return
     recent.value = page.data
     writing.setDirectoryEntries(page.data)
@@ -158,7 +165,7 @@ async function loadUnsynced(): Promise<void> {
 async function runSearch(query: string): Promise<void> {
   const generation = ++searchGeneration
   try {
-    const page = await entriesApi.listEntriesAdmin({ q: query, page_size: RECENT_PAGE_SIZE })
+    const page = await entriesApi.listEntriesAdmin({ world: props.world, q: query, page_size: RECENT_PAGE_SIZE })
     if (disposed || generation !== searchGeneration) return
     searchResults.value = page.data
     error.value = null
@@ -185,7 +192,7 @@ async function toggleGroup(status: EntryStatus): Promise<void> {
 
   loadingGroups.value = new Set(loadingGroups.value).add(status)
   try {
-    const page = await entriesApi.listEntriesAdmin({ status, page_size: RECENT_PAGE_SIZE })
+    const page = await entriesApi.listEntriesAdmin({ world: props.world, status, page_size: RECENT_PAGE_SIZE })
     if (!disposed) groups.value = { ...groups.value, [status]: page.data }
   } catch (groupFailure) {
     if (!disposed) error.value = toUserMessage(groupFailure)
@@ -235,13 +242,17 @@ async function createArticle(): Promise<void> {
   error.value = null
   try {
     await flushActiveEntry()
-    const created = await entriesApi.createEntry({ world: 'journal' })
-    if (disposed) return
-    recent.value = [created, ...recent.value.filter((item) => item.id !== created.id)]
-    await router.push({ name: 'entry-edit', params: { id: String(created.id) } })
+    if (worldDefinition.value?.editorRouteName === null || worldDefinition.value === null) {
+      throw new Error('missing world route')
+    }
+    const navigationResult = await router.push({
+      name: worldDefinition.value.editorRouteName,
+      params: { world: props.world },
+    })
+    if (isNavigationFailure(navigationResult)) throw navigationResult
     if (props.drawer) writing.setDirectoryOpen(false)
   } catch (createFailure) {
-    if (!disposed) error.value = toUserMessage(createFailure)
+    if (!disposed) error.value = '无法打开新的工作台，当前编辑状态未改变。'
   } finally {
     if (!disposed) isCreating.value = false
   }
@@ -293,7 +304,7 @@ function isUnsynced(item: EntryListItem): boolean {
        how a screen reader user reaches it without walking the canvas. -->
   <nav
     class="directory"
-    aria-label="文章目录"
+    :aria-label="directoryLabel"
     data-article-directory
     data-surface="glass"
     :data-writing-drawer="drawer ? 'true' : undefined"
@@ -301,7 +312,7 @@ function isUnsynced(item: EntryListItem): boolean {
     <div class="brand">
       <RouterLink class="wordmark" to="/dashboard" aria-label="返回 Dashboard" data-directory-brand>Alive</RouterLink>
       <UiIconButton
-        :label="drawer ? '关闭文章目录' : '收起文章目录'"
+        :label="collapseLabel"
         data-directory-collapse
         @click="writing.setDirectoryOpen(false)"
       >
@@ -315,11 +326,11 @@ function isUnsynced(item: EntryListItem): boolean {
       data-directory-new
       @click="createArticle"
     >
-      {{ isCreating ? '新建中…' : '新建文章' }}
+      {{ isCreating ? '打开中…' : createLabel }}
     </UiButton>
 
     <div class="search">
-      <label class="search-label" for="directory-search">搜索文章</label>
+      <label class="search-label" for="directory-search">{{ searchLabel }}</label>
       <div class="search-control">
         <span class="search-icon" aria-hidden="true"><UiIcon name="search" /></span>
         <input
@@ -327,7 +338,7 @@ function isUnsynced(item: EntryListItem): boolean {
           class="search-input"
           type="search"
           autocomplete="off"
-          placeholder="标题、slug 或摘要"
+          :placeholder="searchLabel"
           data-directory-search
           :value="writing.searchQuery"
           @input="writing.setSearchQuery(($event.target as HTMLInputElement).value)"

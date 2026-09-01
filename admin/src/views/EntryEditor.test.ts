@@ -195,6 +195,40 @@ describe('EntryEditor autosave integration', () => {
     expect(wrapper.get('[data-save-status]').text()).toContain('已保存')
   })
 
+  it('passes the current world label into the shared workspace header', async () => {
+    const wrapper = await mountEditor(entry({ id: 46, world: 'video' }))
+
+    expect(wrapper.get('[data-world-context]').text()).toContain('影像')
+  })
+
+  it('renders the video canvas and saves title plus summary from the central workspace', async () => {
+    const server = installMutableServer()
+    server.current = entry({
+      id: 70,
+      world: 'video',
+      revision: 4,
+      title: '落日片段',
+      summary: '海风把最后一点光吹散了。',
+    })
+    const wrapper = await mountEditor(server.current)
+
+    expect(wrapper.get('[data-video-viewfinder]').attributes('data-aspect')).toBe('16:9')
+
+    await wrapper.get('[data-video-title]').setValue('新的影像标题')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(api.updateEntry).toHaveBeenLastCalledWith(server.current.id, {
+      revision: 4,
+      title: '新的影像标题',
+    })
+
+    await wrapper.get('[data-video-summary]').setValue('新的影像说明')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(api.updateEntry).toHaveBeenLastCalledWith(server.current.id, {
+      revision: 5,
+      summary: '新的影像说明',
+    })
+  })
+
   it('schedules Milkdown markdown as content_md without remounting the editor', async () => {
     const server = installMutableServer()
     api.updateEntry.mockResolvedValueOnce(
@@ -480,6 +514,15 @@ describe('EntryEditor autosave integration', () => {
       revision: 7,
       summary: '仍保存到新文章',
     })
+  })
+
+  it('binds a preloaded existing entry without issuing a second getEntry call', async () => {
+    const current = entry({ id: 67, world: 'video', revision: 4 })
+    const wrapper = await mountEditorWithProps({ id: '67', initialEntry: current })
+
+    expect(api.getEntry).not.toHaveBeenCalled()
+    expect(storeFor(wrapper).activeWorld).toBe('video')
+    expect((await titleField(wrapper)).element).toHaveProperty('value', '原始标题')
   })
 
   it('locks the previous entry while the next route loads and keeps it locked after failure', async () => {
@@ -1029,7 +1072,7 @@ function storeFor(wrapper: VueWrapper) {
 }
 
 async function mountEditorWithProps(
-  props: { id?: string },
+  props: { id?: string; initialEntry?: EntryDetail },
   flushGate?: Ref<(() => Promise<void>) | null>,
 ): Promise<VueWrapper> {
   const wrapper = mount(EntryEditor, {
@@ -1058,6 +1101,8 @@ async function openSettings(wrapper: VueWrapper): Promise<void> {
 }
 
 async function titleField(wrapper: VueWrapper) {
+  if (wrapper.find('[data-journal-title]').exists()) return wrapper.get('[data-journal-title]')
+  if (wrapper.find('[data-video-title]').exists()) return wrapper.get('[data-video-title]')
   if (!wrapper.find('#e-title').exists()) await openSettings(wrapper)
   return wrapper.get('#e-title')
 }

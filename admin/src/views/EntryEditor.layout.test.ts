@@ -24,4 +24,14 @@ describe('EntryEditor writing surface', () => {
     expect(source).not.toContain('<label class="label">正文</label>')
     expect(source).not.toContain('所见即所得，存的是 Markdown 源文本。')
   })
+
+  it('dispatches world-specific canvases instead of keeping video inside the generic body form', () => {
+    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'EntryEditor.vue'), 'utf8')
+
+    expect(source).toContain('<JournalCanvas')
+    expect(source).toContain("worldDefinition?.material === 'manuscript'")
+    expect(source).toContain('<VideoCanvas')
+    expect(source).toContain("worldDefinition?.material === 'viewfinder'")
+    expect(source).not.toContain("worldDefinition?.mediaCapability === 'primary-video' && original")
+  })
 })

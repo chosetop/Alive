@@ -6,6 +6,30 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { useWritingStore } from './writing'
+import type { EntryListItem } from '../types/api'
+
+function item(overrides: Partial<EntryListItem> = {}): EntryListItem {
+  return {
+    id: 1,
+    world: 'journal',
+    kind: '',
+    type: 'journal',
+    title: '山中一日',
+    slug: 'a-day',
+    summary: '',
+    cover_url: '',
+    meta: {},
+    word_count: 100,
+    category: null,
+    happened_at: null,
+    published_at: null,
+    status: 'draft',
+    visibility: 'public',
+    created_at: '2026-08-20T00:00:00Z',
+    updated_at: '2026-08-25T10:00:00Z',
+    ...overrides,
+  }
+}
 
 describe('the writing store', () => {
   beforeEach(() => {
@@ -59,6 +83,22 @@ describe('the writing store', () => {
 
     store.setSearchQuery('山中')
     expect(store.searchQuery).toBe('山中')
+  })
+
+  it('switches the active world and resets world-scoped directory state', () => {
+    const store = useWritingStore()
+
+    store.setActiveWorld('journal')
+    store.setActiveEntry(41)
+    store.setSearchQuery('雨')
+    store.setDirectoryEntries([item()])
+
+    store.setActiveWorld('saying')
+
+    expect(store.activeWorld).toBe('saying')
+    expect(store.activeEntryId).toBeNull()
+    expect(store.searchQuery).toBe('')
+    expect(store.directoryEntries).toEqual([])
   })
 
   it('owns no document content or autosave state', () => {
