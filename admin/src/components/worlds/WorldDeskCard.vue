@@ -121,7 +121,7 @@ const enterLabel = computed(() => {
   gap: var(--space-4);
   min-height: 22rem;
   padding: var(--space-5);
-  border: 1px solid var(--c-line);
+  border: 1px solid transparent;
   border-radius: var(--radius-surface);
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--c-paper) 82%, transparent), transparent 42%),
