@@ -256,6 +256,10 @@ function handleMediaChange(event: MediaQueryListEvent): void {
   grid-template-columns: 0 minmax(0, 1fr);
 }
 
+.workspace[data-directory-open='false'] > .canvas {
+  grid-column: 1 / -1;
+}
+
 .rail {
   position: relative;
   min-width: 0;
