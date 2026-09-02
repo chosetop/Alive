@@ -53,6 +53,7 @@ async function loadSnapshot(world: WorldKey, setting: AdminWorldSetting): Promis
   ])
 
   let recentEntry = null
+  let recentContentMd: string | null = null
   let entryCount = 0
   let categoryCount = 0
   let errorMessage: string | null = null
@@ -62,6 +63,14 @@ async function loadSnapshot(world: WorldKey, setting: AdminWorldSetting): Promis
   if (entriesResult.status === 'fulfilled') {
     recentEntry = entriesResult.value.data[0] ?? null
     entryCount = entriesResult.value.meta.total
+    if (world === 'journal' && recentEntry) {
+      try {
+        recentContentMd = (await entriesApi.getEntry(recentEntry.id)).content_md
+      } catch {
+        // The list item still carries a useful summary and remains navigable.
+        // A preview failure must not make the whole world desk unavailable.
+      }
+    }
   } else {
     errorMessage = '暂时无法读取最近编辑，请先重试。'
     canEnter = false
@@ -77,6 +86,7 @@ async function loadSnapshot(world: WorldKey, setting: AdminWorldSetting): Promis
   return {
     setting,
     recentEntry,
+    recentContentMd,
     entryCount,
     categoryCount,
     error: errorMessage,
@@ -231,7 +241,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .page {
-  max-width: 60rem;
+  max-width: 72rem;
 }
 
 .head {
@@ -254,9 +264,10 @@ onBeforeUnmount(() => {
 
 .list {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr);
-  grid-template-rows: repeat(2, minmax(12rem, auto));
-  gap: var(--space-4);
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.9fr);
+  grid-template-rows: repeat(2, minmax(0, auto));
+  column-gap: var(--space-4);
+  row-gap: var(--space-3);
 }
 
 .list > [data-world-desk='journal'] {

@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   listAdminWorlds: vi.fn(),
   updateWorld: vi.fn(),
   listEntriesAdmin: vi.fn(),
+  getEntry: vi.fn(),
   listCategoriesAdmin: vi.fn(),
 }))
 
@@ -36,6 +37,7 @@ vi.mock('../api', async () => {
     },
     entriesApi: {
       listEntriesAdmin: api.listEntriesAdmin,
+      getEntry: api.getEntry,
     },
     categoriesApi: { listCategoriesAdmin: api.listCategoriesAdmin },
   }
@@ -119,6 +121,28 @@ beforeEach(() => {
     meta: { page: 1, page_size: 1, total: world === 'journal' ? 1 : 0 },
   }))
   api.listCategoriesAdmin.mockResolvedValue([])
+  api.getEntry.mockResolvedValue({
+    id: 7,
+    world: 'journal',
+    kind: 'entry',
+    title: '一场缓慢的夏雨',
+    slug: 'summer-rain',
+    summary: '傍晚后的雷声没有追上雨。',
+    cover_url: '',
+    meta: {},
+    word_count: 728,
+    category: null,
+    happened_at: '2026-08-12T10:00:00Z',
+    published_at: null,
+    status: 'draft',
+    visibility: 'private',
+    created_at: '2026-08-12T10:00:00Z',
+    updated_at: '2026-08-30T08:00:00Z',
+    revision: 3,
+    content_md: '雨落在窗台。\n\n屋里的人没有急着关窗。',
+    category_id: 0,
+    tags: [],
+  })
 })
 
 afterEach(() => {
@@ -129,7 +153,7 @@ describe('Worlds', () => {
   it('uses the desktop main-desk layout and collapses to one column at 48rem', () => {
     const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'Worlds.vue'), 'utf8')
 
-    expect(source).toMatch(/\.list\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1\.2fr\)\s+minmax\(0,\s*0\.9fr\)/)
+    expect(source).toMatch(/\.list\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1\.25fr\)\s+minmax\(0,\s*0\.9fr\)/)
     expect(source).toMatch(/\.list\s*>\s*\[data-world-desk='journal'\]\s*\{[\s\S]*grid-row:\s*1\s*\/\s*span\s*2/)
     expect(source).toMatch(/@media \(max-width:\s*48rem\)[\s\S]*grid-template-columns:\s*1fr/)
   })
@@ -146,6 +170,32 @@ describe('Worlds', () => {
     expect(api.listEntriesAdmin).toHaveBeenCalledWith({ world: 'journal', page_size: 1 })
     expect(api.listEntriesAdmin).toHaveBeenCalledWith({ world: 'saying', page_size: 1 })
     expect(api.listEntriesAdmin).toHaveBeenCalledWith({ world: 'video', page_size: 1 })
+  })
+
+  it('loads and renders the recent journal body without world descriptions', async () => {
+    const wrapper = mountWorlds()
+    await flushPromises()
+
+    expect(api.getEntry).toHaveBeenCalledOnce()
+    expect(api.getEntry).toHaveBeenCalledWith(7)
+    expect(wrapper.get('[data-world-desk="journal"] [data-world-preview]').text()).toContain(
+      '屋里的人没有急着关窗。',
+    )
+    expect(wrapper.text()).not.toContain('长文、图片与时间留下的痕迹')
+    expect(wrapper.text()).not.toContain('没有时间轴的短句、片语与轻量记录。')
+    expect(wrapper.text()).not.toContain('主视频、封面与说明。')
+  })
+
+  it('falls back to the recent journal summary when the detail preview fails', async () => {
+    api.getEntry.mockRejectedValueOnce(new Error('detail unavailable'))
+
+    const wrapper = mountWorlds()
+    await flushPromises()
+
+    expect(api.getEntry).toHaveBeenCalledWith(7)
+    expect(wrapper.find('[data-world-desk="journal"] [data-world-preview]').exists()).toBe(false)
+    expect(wrapper.get('[data-world-desk="journal"]').text()).toContain('傍晚后的雷声没有追上雨。')
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
   })
 
   it('navigates to the recent entry when entering a populated world', async () => {

@@ -2,12 +2,14 @@
 import { computed } from 'vue'
 
 import type { AdminWorldDefinition } from '../../content-worlds/registry'
+import { renderMarkdown } from '../../editor/render-preview'
 import type { AdminWorldSetting, EntryListItem, WorldKey, WorldStatus } from '../../types/api'
 import { UiButton } from '../ui'
 
 export interface WorldDeskSnapshot {
   setting: AdminWorldSetting
   recentEntry: EntryListItem | null
+  recentContentMd: string | null
   entryCount: number
   categoryCount: number
   error: string | null
@@ -33,6 +35,14 @@ const STATUS_TEXT: Record<WorldStatus, string> = {
 }
 
 const statusText = computed(() => STATUS_TEXT[props.snapshot.setting.status])
+const previewHtml = computed(() => {
+  if (
+    props.definition.material !== 'manuscript'
+    || !props.snapshot.recentEntry
+    || !props.snapshot.recentContentMd
+  ) return ''
+  return renderMarkdown(props.snapshot.recentContentMd)
+})
 const leadText = computed(() => {
   if (props.snapshot.error) return props.snapshot.error
   if (props.snapshot.recentEntry) return props.snapshot.recentEntry.summary || '继续最近一次编辑。'
@@ -67,15 +77,17 @@ const enterLabel = computed(() => {
       </UiButton>
     </div>
 
-    <p class="world-desk__description" @click="emit('enter', definition.key)">{{ definition.description }}</p>
-
     <div class="world-desk__meta" @click="emit('enter', definition.key)">
       <span class="world-desk__status" data-world-status>{{ statusText }}</span>
       <span>{{ snapshot.entryCount }} 篇{{ definition.directoryNoun }}</span>
       <span>{{ snapshot.categoryCount }} 个分类</span>
     </div>
 
-    <div class="world-desk__body" @click="emit('enter', definition.key)">
+    <div
+      class="world-desk__body"
+      :data-has-preview="previewHtml ? 'true' : undefined"
+      @click="emit('enter', definition.key)"
+    >
       <template v-if="snapshot.recentEntry">
         <p class="world-desk__label">最近编辑</p>
         <h3>{{ snapshot.recentEntry.title }}</h3>
@@ -84,7 +96,14 @@ const enterLabel = computed(() => {
         <p class="world-desk__label">空白工作台</p>
         <h3>{{ definition.createLabel }}</h3>
       </template>
+      <div
+        v-if="previewHtml"
+        class="world-desk__preview"
+        data-world-preview
+        v-html="previewHtml"
+      />
       <p
+        v-else
         class="world-desk__lead"
         :data-world-error="snapshot.error ? 'true' : undefined"
       >
@@ -118,9 +137,10 @@ const enterLabel = computed(() => {
 .world-desk {
   position: relative;
   display: grid;
-  gap: var(--space-4);
-  min-height: 22rem;
-  padding: var(--space-5);
+  grid-template-rows: auto auto minmax(7.5rem, 1fr);
+  gap: var(--space-3);
+  min-height: 20rem;
+  padding: 1.25rem;
   border: 1px solid transparent;
   border-radius: var(--radius-surface);
   background:
@@ -145,7 +165,7 @@ const enterLabel = computed(() => {
   display: flex;
   align-items: end;
   justify-content: stretch;
-  padding: var(--space-5);
+  padding: 1.25rem;
   border-radius: inherit;
   border: 1px solid transparent;
   background: transparent;
@@ -224,16 +244,6 @@ const enterLabel = computed(() => {
   pointer-events: auto;
 }
 
-.world-desk__description {
-  position: relative;
-  z-index: 0;
-  margin: 0;
-  color: var(--c-ink-muted);
-  font-size: 0.9375rem;
-  line-height: 1.6;
-  text-wrap: pretty;
-}
-
 .world-desk__meta {
   position: relative;
   z-index: 0;
@@ -266,7 +276,54 @@ const enterLabel = computed(() => {
   align-content: start;
   gap: var(--space-2);
   min-height: 7.5rem;
-  padding-bottom: calc(2.75rem + var(--space-4));
+  padding-bottom: calc(2.75rem + var(--space-3));
+}
+
+.world-desk__body[data-has-preview='true'] {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.world-desk__preview {
+  min-height: 0;
+  padding: var(--space-4) var(--space-5);
+  overflow: hidden;
+  border-inline-start: 1px solid color-mix(in srgb, var(--c-accent) 32%, var(--c-line));
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: color-mix(in srgb, var(--c-paper) 68%, transparent);
+  color: var(--c-prose);
+  font-family: var(--font-prose);
+  font-size: 0.9375rem;
+  line-height: 1.85;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 82%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 82%, transparent 100%);
+}
+
+.world-desk__preview :deep(h2),
+.world-desk__preview :deep(h3),
+.world-desk__preview :deep(h4) {
+  margin: 1.15em 0 0.45em;
+  color: var(--c-ink);
+  font-family: var(--font-heading);
+  line-height: 1.35;
+}
+
+.world-desk__preview :deep(p),
+.world-desk__preview :deep(blockquote),
+.world-desk__preview :deep(ul),
+.world-desk__preview :deep(ol),
+.world-desk__preview :deep(pre) {
+  margin: 0 0 0.85em;
+}
+
+.world-desk__preview :deep(blockquote) {
+  padding-inline-start: var(--space-4);
+  border-inline-start: 1px solid var(--c-line-strong);
+  color: var(--c-ink-muted);
+}
+
+.world-desk__preview :deep(img) {
+  max-width: 100%;
+  height: auto;
 }
 
 .world-desk__label {
@@ -310,6 +367,11 @@ const enterLabel = computed(() => {
   .world-desk__body {
     min-height: auto;
     padding-bottom: calc(2.75rem + var(--space-3));
+  }
+
+  .world-desk__preview {
+    max-height: 8.5rem;
+    padding: var(--space-3) var(--space-4);
   }
 }
 

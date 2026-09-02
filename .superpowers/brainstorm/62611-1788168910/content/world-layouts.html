@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Alive · 世界入口布局</title>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f5f6f8;
+      --surface: #ffffff;
+      --sunken: #ebedf0;
+      --ink: #17202a;
+      --muted: #62718a;
+      --faint: #8a94a4;
+      --line: #dfe3e8;
+      --accent: #5e6ad2;
+      --success: #2e8b68;
+      --shadow: 0 20px 50px rgba(23, 32, 42, .09);
+      font-family: ui-sans-serif, system-ui, -apple-system, "PingFang SC", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: var(--paper); color: var(--ink); }
+    button { font: inherit; }
+
+    .page { width: min(1500px, calc(100% - 48px)); margin: 0 auto; padding: 42px 0 72px; }
+    .intro { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 32px; align-items: end; margin-bottom: 28px; }
+    .eyebrow { margin: 0 0 8px; color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: .12em; }
+    h1 { margin: 0; font-family: "Songti SC", STSong, serif; font-size: clamp(30px, 4vw, 50px); font-weight: 500; letter-spacing: -.04em; }
+    .lead { max-width: 720px; margin: 12px 0 0; color: var(--muted); line-height: 1.75; }
+    .legend { color: var(--faint); font-size: 12px; text-align: right; line-height: 1.7; }
+
+    .options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: stretch; }
+    .option { position: relative; display: flex; flex-direction: column; min-width: 0; padding: 12px; border: 1px solid transparent; border-radius: 22px; cursor: pointer; transition: border-color 160ms ease, background-color 160ms ease; }
+    .option:hover { border-color: rgba(94, 106, 210, .22); background: rgba(255, 255, 255, .48); }
+    .option.selected { border-color: var(--accent); background: rgba(255, 255, 255, .72); box-shadow: 0 0 0 3px rgba(94, 106, 210, .09); }
+    .option.selected::after { content: "已选择"; position: absolute; top: 22px; right: 22px; z-index: 5; padding: 5px 9px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; }
+    .option-head { display: flex; gap: 12px; align-items: flex-start; padding: 4px 6px 14px; }
+    .letter { display: grid; flex: 0 0 30px; width: 30px; height: 30px; place-items: center; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 700; }
+    .option h2 { margin: 0 0 4px; font-family: "Songti SC", STSong, serif; font-size: 20px; font-weight: 600; }
+    .option-copy { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .recommend { color: var(--accent); font-weight: 700; }
+
+    .mockup { position: relative; flex: 1; min-height: 470px; overflow: hidden; border: 1px solid rgba(23, 32, 42, .09); border-radius: 17px; background: var(--surface); box-shadow: var(--shadow); }
+    .chrome { display: flex; height: 38px; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid var(--line); color: var(--faint); font-size: 9px; letter-spacing: .02em; }
+    .chrome strong { color: var(--ink); font-size: 10px; }
+    .mock-body { position: relative; min-height: 430px; padding: 20px; overflow: hidden; background: linear-gradient(145deg, #f9fafb 0%, #f2f4f7 100%); }
+    .mock-title { margin: 0; font-family: "Songti SC", STSong, serif; font-size: 25px; font-weight: 500; }
+    .mock-subtitle { margin: 5px 0 17px; color: var(--muted); font-size: 9px; }
+
+    .worlds { display: grid; gap: 9px; }
+    .world { position: relative; overflow: hidden; border: 1px solid rgba(23, 32, 42, .09); border-radius: 13px; background: rgba(255, 255, 255, .92); box-shadow: 0 5px 16px rgba(23, 32, 42, .04); }
+    .world-name { font-family: "Songti SC", STSong, serif; font-size: 17px; }
+    .status { display: inline-flex; align-items: center; gap: 4px; color: var(--success); font-size: 8px; }
+    .status::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+    .status.closed { color: var(--faint); }
+    .meta { color: var(--faint); font-size: 8px; line-height: 1.5; }
+    .enter { padding: 6px 9px; border: 0; border-radius: 8px; background: var(--ink); color: #fff; font-size: 8px; cursor: pointer; }
+    .settings { border: 0; background: none; color: var(--muted); font-size: 8px; }
+    .play { align-self: flex-start; margin: 14px 6px 2px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-size: 11px; cursor: pointer; }
+    .play:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* A: a calm shelf with medium-specific interior composition. */
+    .layout-a { grid-template-columns: 1.15fr .85fr; grid-template-rows: 1fr 1fr; height: 290px; }
+    .layout-a .journal { grid-row: 1 / 3; padding: 18px 15px 15px 25px; }
+    .layout-a .journal::before { content: ""; position: absolute; inset: 0 auto 0 13px; width: 1px; background: rgba(94, 106, 210, .22); }
+    .layout-a .saying, .layout-a .video { padding: 14px; }
+    .journal-preview { margin: 27px 0 22px; }
+    .journal-preview i { display: block; width: 88%; height: 3px; margin: 0 0 8px; border-radius: 999px; background: #d7dce3; }
+    .journal-preview i:nth-child(2) { width: 72%; }
+    .journal-preview i:nth-child(3) { width: 81%; }
+    .quote { display: grid; min-height: 52px; place-items: center; padding: 8px; color: var(--ink); font-family: "Songti SC", STSong, serif; font-size: 13px; text-align: center; }
+    .viewfinder { aspect-ratio: 16 / 7; margin: 10px 0; border-radius: 8px; background: #20242c; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+    .world-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+    /* B: last-touched world dominates. */
+    .layout-b { grid-template-columns: 1fr 1fr; grid-template-rows: 1.55fr .75fr; height: 290px; }
+    .layout-b .journal { grid-column: 1 / 3; padding: 18px 20px; }
+    .layout-b .saying, .layout-b .video { padding: 12px; }
+    .continue-row { display: grid; grid-template-columns: 1fr 84px; gap: 13px; align-items: end; margin-top: 30px; }
+    .continue-title { margin: 4px 0; font-family: "Songti SC", STSong, serif; font-size: 15px; }
+    .mini-media { aspect-ratio: 16 / 8; border-radius: 7px; background: #262b34; }
+
+    /* C: an index / atlas. */
+    .layout-c { grid-template-columns: 1fr; height: 290px; }
+    .layout-c .world { display: grid; grid-template-columns: 54px 1fr auto; gap: 11px; align-items: center; padding: 12px 13px; }
+    .material { display: grid; width: 54px; height: 52px; place-items: center; border-radius: 9px; background: var(--sunken); color: var(--muted); font-family: "Songti SC", STSong, serif; font-size: 11px; }
+    .material.video-material { background: #222731; color: #fff; }
+
+    .workspace-layer { position: absolute; z-index: 10; inset: 0; display: grid; grid-template-columns: 90px 1fr; visibility: hidden; background: var(--paper); }
+    .workspace-rail { padding: 13px 9px; border-right: 1px solid var(--line); background: rgba(255,255,255,.7); }
+    .workspace-rail strong { font-family: "Songti SC", STSong, serif; font-size: 11px; }
+    .rail-row { height: 4px; margin-top: 13px; border-radius: 99px; background: #d7dce3; }
+    .rail-row:nth-child(3) { width: 68%; }
+    .workspace-canvas { position: relative; padding: 17px 22px 30px; background: var(--surface); }
+    .workspace-canvas::before { content: ""; position: absolute; top: 0; bottom: 0; left: 13px; width: 1px; background: rgba(94, 106, 210,.18); }
+    .workspace-top { display: flex; align-items: center; justify-content: space-between; color: var(--faint); font-size: 8px; }
+    .workspace-title { margin: 45px 0 15px; font-family: "Songti SC", STSong, serif; font-size: 22px; font-weight: 500; }
+    .prose-line { width: 88%; height: 4px; margin: 0 0 10px; border-radius: 99px; background: #dde1e6; }
+    .prose-line:nth-child(4) { width: 70%; }
+
+    .notes { margin-top: 17px; padding: 0 6px; color: var(--muted); font-size: 11px; line-height: 1.65; }
+    .notes strong { color: var(--ink); }
+
+    @media (max-width: 1050px) {
+      .options { grid-template-columns: 1fr; }
+      .mockup { min-height: 420px; }
+      .mock-body { min-height: 380px; }
+    }
+
+    @media (max-width: 640px) {
+      .page { width: min(100% - 24px, 1500px); padding-top: 24px; }
+      .intro { grid-template-columns: 1fr; }
+      .legend { text-align: left; }
+      .option { padding: 8px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="intro">
+      <div>
+        <p class="eyebrow">ALIVE · 世界入口</p>
+        <h1>哪一种更像“同一间书房”？</h1>
+        <p class="lead">三个方案共享纸张、便笺与取景框的材料语言。请重点比较进入世界前的信息层级，以及哪个布局最自然地把你带回最近编辑的内容。</p>
+      </div>
+      <div class="legend">点击整张方案卡选择<br />点击“播放进入转场”查看 GSAP 动画</div>
+    </header>
+
+    <section class="options">
+      <article class="option" data-choice="a" onclick="selectOption(this)">
+        <div class="option-head">
+          <div class="letter">A</div>
+          <div>
+            <h2>三张工作台 <span class="recommend">· 推荐</span></h2>
+            <p class="option-copy">地位平等，内部构图不同；最能表达一间书房中的三种创作。</p>
+          </div>
+        </div>
+        <div class="mockup" id="mock-a">
+          <div class="chrome"><strong>Alive / 世界</strong><span>lzx · 退出</span></div>
+          <div class="mock-body">
+            <h3 class="mock-title">世界</h3>
+            <p class="mock-subtitle">回到你上次停笔的地方</p>
+            <div class="worlds layout-a">
+              <section class="world journal door">
+                <div class="world-bottom"><span class="world-name">日志</span><span class="status">已开放</span></div>
+                <div class="journal-preview"><i></i><i></i><i></i></div>
+                <div class="meta">最近编辑 ·《一场缓慢的夏雨》<br />12 篇内容 · 4 个分类</div>
+                <div class="world-bottom" style="margin-top:18px"><button class="enter">进入日志</button><button class="settings">设置</button></div>
+              </section>
+              <section class="world saying door">
+                <div class="world-bottom"><span class="world-name">片语</span><span class="status closed">未开放</span></div>
+                <div class="quote">“风经过窗边时，<br />房间忽然安静。”</div>
+                <div class="world-bottom"><span class="meta">7 条</span><button class="enter">进入</button></div>
+              </section>
+              <section class="world video door">
+                <div class="world-bottom"><span class="world-name">影像</span><span class="status closed">未开放</span></div>
+                <div class="viewfinder"></div>
+                <div class="world-bottom"><span class="meta">3 段</span><button class="enter">进入</button></div>
+              </section>
+            </div>
+            <div class="workspace-layer">
+              <aside class="workspace-rail"><strong>日志</strong><div class="rail-row"></div><div class="rail-row"></div><div class="rail-row"></div></aside>
+              <div class="workspace-canvas"><div class="workspace-top"><span>‹ 世界</span><span>已保存 · 发布</span></div><h4 class="workspace-title">一场缓慢的夏雨</h4><div class="prose-line"></div><div class="prose-line"></div><div class="prose-line"></div><div class="prose-line"></div></div>
+            </div>
+          </div>
+        </div>
+        <button class="play" onclick="playTransition(event, 'mock-a')">播放进入转场</button>
+        <p class="notes"><strong>特点：</strong>三种世界一眼可辨，又不会互相争夺主次。桌面端最有空间感，移动端需要改为纵向排列。</p>
+      </article>
+
+      <article class="option" data-choice="b" onclick="selectOption(this)">
+        <div class="option-head">
+          <div class="letter">B</div>
+          <div>
+            <h2>最近的桌面</h2>
+            <p class="option-copy">把最近进入的世界放大，其余两个退居下方，强调继续创作。</p>
+          </div>
+        </div>
+        <div class="mockup" id="mock-b">
+          <div class="chrome"><strong>Alive / 世界</strong><span>lzx · 退出</span></div>
+          <div class="mock-body">
+            <h3 class="mock-title">世界</h3>
+            <p class="mock-subtitle">继续上一次创作</p>
+            <div class="worlds layout-b">
+              <section class="world journal door">
+                <div class="world-bottom"><span class="world-name">日志</span><span class="status">正在使用</span></div>
+                <div class="continue-row"><div><div class="meta">最近编辑</div><div class="continue-title">一场缓慢的夏雨</div><div class="meta">今天 14:08 · 已保存</div></div><button class="enter">继续写</button></div>
+              </section>
+              <section class="world saying door"><div class="world-bottom"><span class="world-name">片语</span><span class="status closed">未开放</span></div><div class="quote">一句话的位置</div></section>
+              <section class="world video door"><div class="world-bottom"><span class="world-name">影像</span><span class="status closed">未开放</span></div><div class="mini-media"></div></section>
+            </div>
+            <div class="workspace-layer">
+              <aside class="workspace-rail"><strong>日志</strong><div class="rail-row"></div><div class="rail-row"></div><div class="rail-row"></div></aside>
+              <div class="workspace-canvas"><div class="workspace-top"><span>‹ 世界</span><span>已保存 · 发布</span></div><h4 class="workspace-title">一场缓慢的夏雨</h4><div class="prose-line"></div><div class="prose-line"></div><div class="prose-line"></div><div class="prose-line"></div></div>
+            </div>
+          </div>
+        </div>
+        <button class="play" onclick="playTransition(event, 'mock-b')">播放进入转场</button>
+        <p class="notes"><strong>特点：</strong>继续创作最快，但世界的视觉权重会随使用记录变化，页面结构不够稳定。</p>
+      </article>
+
+      <article class="option" data-choice="c" onclick="selectOption(this)">
+        <div class="option-head">
+          <div class="letter">C</div>
+          <div>
+            <h2>世界索引</h2>
+            <p class="option-copy">三行纵向排列，像书架目录；信息读取最快，也最克制。</p>
+          </div>
+        </div>
+        <div class="mockup" id="mock-c">
+          <div class="chrome"><strong>Alive / 世界</strong><span>lzx · 退出</span></div>
+          <div class="mock-body">
+            <h3 class="mock-title">世界</h3>
+            <p class="mock-subtitle">选择一张工作台</p>
+            <div class="worlds layout-c">
+              <section class="world door"><div class="material">手稿</div><div><div class="world-bottom"><span class="world-name">日志</span><span class="status">已开放</span></div><div class="meta">最近编辑《一场缓慢的夏雨》· 12 篇</div></div><button class="enter">进入</button></section>
+              <section class="world door"><div class="material">片语</div><div><div class="world-bottom"><span class="world-name">片语</span><span class="status closed">未开放</span></div><div class="meta">最近编辑“风经过窗边时……”· 7 条</div></div><button class="enter">进入</button></section>
+              <section class="world door"><div class="material video-material">16:9</div><div><div class="world-bottom"><span class="world-name">影像</span><span class="status closed">未开放</span></div><div class="meta">最近编辑《凌晨四点》· 3 段</div></div><button class="enter">进入</button></section>
+            </div>
+            <div class="workspace-layer">
+              <aside class="workspace-rail"><strong>日志</strong><div class="rail-row"></div><div class="rail-row"></div><div class="rail-row"></div></aside>
+              <div class="workspace-canvas"><div class="workspace-top"><span>‹ 世界</span><span>已保存 · 发布</span></div><h4 class="workspace-title">一场缓慢的夏雨</h4><div class="prose-line"></div><div class="prose-line"></div><div class="prose-line"></div><div class="prose-line"></div></div>
+            </div>
+          </div>
+        </div>
+        <button class="play" onclick="playTransition(event, 'mock-c')">播放进入转场</button>
+        <p class="notes"><strong>特点：</strong>清晰、稳定、移动端适配自然；但“进入世界”的空间感最弱，更接近精致列表。</p>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    function selectOption(element) {
+      document.querySelectorAll('.option').forEach((item) => item.classList.remove('selected'));
+      element.classList.add('selected');
+      if (typeof toggleSelect === 'function') toggleSelect(element);
+    }
+
+    function playTransition(event, mockId) {
+      event.stopPropagation();
+      const mock = document.getElementById(mockId);
+      const doors = mock.querySelectorAll('.door');
+      const firstDoor = doors[0];
+      const layer = mock.querySelector('.workspace-layer');
+      const rail = mock.querySelector('.workspace-rail');
+      const canvas = mock.querySelector('.workspace-canvas');
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      gsap.killTweensOf([doors, layer, rail, canvas]);
+      gsap.set([doors, layer, rail, canvas], { clearProps: 'all' });
+      if (reduced) {
+        gsap.set(layer, { autoAlpha: 1 });
+        window.setTimeout(() => gsap.set(layer, { clearProps: 'all' }), 900);
+        return;
+      }
+
+      const tl = gsap.timeline({ defaults: { ease: 'power3.inOut' } });
+      tl.addLabel('leave')
+        .to(Array.from(doors).slice(1), { autoAlpha: 0, y: 10, duration: .18, stagger: .025 }, 'leave')
+        .to(firstDoor, { scale: 1.018, duration: .2, transformOrigin: '50% 50%' }, 'leave')
+        .to(mock.querySelectorAll('.mock-title, .mock-subtitle'), { autoAlpha: 0, y: -7, duration: .16 }, 'leave')
+        .addLabel('enter', 'leave+=.16')
+        .set(layer, { autoAlpha: 1 }, 'enter')
+        .fromTo(rail, { x: -16, autoAlpha: 0 }, { x: 0, autoAlpha: 1, duration: .34 }, 'enter')
+        .fromTo(canvas, { y: 10, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .38 }, 'enter+=.03')
+        .to({}, { duration: .8 })
+        .to(layer, { autoAlpha: 0, duration: .22, ease: 'power2.out' })
+        .set([doors, layer, rail, canvas, mock.querySelectorAll('.mock-title, .mock-subtitle')], { clearProps: 'all' });
+    }
+
+    window.addEventListener('load', () => {
+      if (!window.gsap || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      gsap.from('.option', { y: 18, autoAlpha: 0, duration: .5, stagger: .07, ease: 'power2.out', clearProps: 'all' });
+    });
+  </script>
+</body>
+</html>

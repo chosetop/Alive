@@ -46,6 +46,7 @@ function snapshot(overrides: Partial<WorldDeskSnapshot> = {}): WorldDeskSnapshot
   return {
     setting: setting(),
     recentEntry: recentEntry(),
+    recentContentMd: '雨落在窗台。\n\n屋里的人没有急着关窗。',
     entryCount: 12,
     categoryCount: 4,
     error: null,
@@ -97,12 +98,24 @@ describe('WorldDeskCard', () => {
       },
     })
 
-    await wrapper.get('.world-desk__description').trigger('click')
+    await wrapper.get('[data-world-preview]').trigger('click')
     expect(wrapper.emitted('enter')).toEqual([['journal']])
 
     await wrapper.get('[data-world-settings]').trigger('click')
     expect(wrapper.emitted('enter')).toEqual([['journal']])
     expect(wrapper.emitted('settings')).toEqual([['journal']])
+  })
+
+  it('renders recent journal Markdown as a read-only preview without the world description', () => {
+    const wrapper = mount(WorldDeskCard, {
+      props: {
+        definition: ADMIN_WORLD_REGISTRY[0],
+        snapshot: snapshot(),
+      },
+    })
+
+    expect(wrapper.get('[data-world-preview]').text()).toContain('屋里的人没有急着关窗。')
+    expect(wrapper.text()).not.toContain(ADMIN_WORLD_REGISTRY[0].description)
   })
 
   it('blocks entry on a recent-load failure and offers an inline retry', async () => {

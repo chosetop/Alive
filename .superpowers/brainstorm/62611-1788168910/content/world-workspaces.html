@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Alive · 三个世界工作台</title>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f5f6f8;
+      --surface: #fff;
+      --sunken: #ebedf0;
+      --ink: #17202a;
+      --prose: #292621;
+      --muted: #62718a;
+      --faint: #8a94a4;
+      --line: #dfe3e8;
+      --accent: #5e6ad2;
+      --danger: #a5342c;
+      font-family: ui-sans-serif, system-ui, -apple-system, "PingFang SC", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: var(--paper); color: var(--ink); }
+    button { font: inherit; }
+    .page { width: min(1240px, calc(100% - 40px)); margin: 0 auto; padding: 34px 0 60px; }
+    .intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; margin-bottom: 22px; }
+    .eyebrow { margin: 0 0 7px; color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .12em; }
+    h1 { margin: 0; font-family: "Songti SC", STSong, serif; font-size: clamp(28px, 4vw, 44px); font-weight: 500; letter-spacing: -.035em; }
+    .lead { max-width: 680px; margin: 10px 0 0; color: var(--muted); font-size: 14px; line-height: 1.7; }
+    .world-tabs { display: flex; gap: 6px; padding: 5px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.72); }
+    .world-tab { padding: 8px 15px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); cursor: pointer; }
+    .world-tab.active { background: var(--ink); color: #fff; box-shadow: 0 5px 14px rgba(23,32,42,.16); }
+
+    .stage { position: relative; height: min(690px, calc(100vh - 240px)); min-height: 530px; overflow: hidden; border: 1px solid rgba(23,32,42,.1); border-radius: 23px; background: var(--surface); box-shadow: 0 25px 70px rgba(23,32,42,.11); }
+    .workspace { position: absolute; inset: 0; display: grid; grid-template-columns: 230px minmax(0, 1fr); visibility: hidden; }
+    .workspace.active { visibility: visible; }
+    .rail { position: relative; display: flex; min-width: 0; flex-direction: column; padding: 18px 13px 14px; border-right: 1px solid var(--line); background: rgba(245,246,248,.82); }
+    .rail-head { display: flex; align-items: center; justify-content: space-between; padding: 0 6px 13px; }
+    .rail-title { font-family: "Songti SC", STSong, serif; font-size: 18px; }
+    .new { display: grid; width: 27px; height: 27px; place-items: center; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); cursor: pointer; }
+    .search { margin-bottom: 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.8); color: var(--faint); font-size: 10px; }
+    .rail-section { margin: 7px 7px 5px; color: var(--faint); font-size: 9px; letter-spacing: .05em; }
+    .entry { margin: 2px 0; padding: 10px 9px; border-radius: 10px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+    .entry.active { background: var(--surface); color: var(--ink); box-shadow: 0 2px 7px rgba(23,32,42,.06); }
+    .entry time { display: block; margin-top: 3px; color: var(--faint); font-size: 8px; }
+    .rail-foot { margin-top: auto; padding-top: 11px; border-top: 1px solid var(--line); }
+    .rail-link { display: block; width: 100%; padding: 8px 7px; border: 0; background: none; color: var(--muted); font-size: 10px; text-align: left; }
+
+    .desk { position: relative; min-width: 0; overflow: auto; background: var(--surface); }
+    .topbar { position: sticky; z-index: 5; top: 0; display: flex; height: 52px; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid rgba(223,227,232,.75); background: rgba(255,255,255,.84); backdrop-filter: blur(18px); }
+    .crumb { color: var(--muted); font-size: 10px; }
+    .crumb strong { color: var(--ink); font-weight: 600; }
+    .actions { display: flex; align-items: center; gap: 10px; }
+    .save { color: var(--faint); font-size: 9px; }
+    .action { padding: 7px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); font-size: 9px; }
+    .publish { border-color: var(--ink); background: var(--ink); color: #fff; }
+
+    .journal-canvas { position: relative; width: min(100% - 40px, 760px); min-height: calc(100% - 52px); margin: 0 auto; padding: 74px 50px 100px 62px; }
+    .journal-canvas::before { content: ""; position: absolute; inset: 0 auto 0 35px; width: 1px; background: rgba(94,106,210,.18); }
+    .journal-kicker { margin: 0 0 14px; color: var(--faint); font-size: 10px; }
+    .journal-title { width: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); font-family: "Songti SC", STSong, serif; font-size: clamp(30px, 4vw, 44px); line-height: 1.3; }
+    .journal-body { margin-top: 36px; color: var(--prose); font-family: "Songti SC", STSong, serif; font-size: 17px; line-height: 2; }
+    .journal-body p { margin: 0 0 20px; }
+    .caret { display: inline-block; width: 1px; height: 1.2em; margin-left: 2px; vertical-align: -.18em; background: var(--accent); }
+
+    .saying-desk { display: grid; min-height: calc(100% - 52px); place-items: center; padding: 52px; background: radial-gradient(circle at 50% 45%, #fff 0%, #fff 35%, #f7f8fa 100%); }
+    .note { position: relative; width: min(100%, 680px); padding: 52px 50px 42px; border: 1px solid rgba(23,32,42,.09); border-radius: 18px; background: #fff; box-shadow: 0 18px 55px rgba(23,32,42,.07); }
+    .note::before { content: "片语"; position: absolute; top: 20px; left: 24px; color: var(--faint); font-size: 9px; letter-spacing: .12em; }
+    .quote-editor { min-height: 150px; color: var(--prose); font-family: "Songti SC", STSong, serif; font-size: clamp(25px, 3vw, 37px); line-height: 1.75; text-align: center; }
+    .note-meta { display: flex; align-items: center; justify-content: space-between; margin-top: 30px; padding-top: 15px; border-top: 1px solid var(--line); color: var(--faint); font-size: 9px; }
+    .disclosure { border: 0; background: none; color: var(--muted); font-size: 9px; }
+
+    .video-desk { width: min(100% - 48px, 900px); margin: 0 auto; padding: 36px 0 80px; }
+    .viewfinder { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 18px; background: linear-gradient(145deg, #262c36, #171b22); box-shadow: 0 18px 48px rgba(23,32,42,.2); }
+    .viewfinder::before { content: ""; position: absolute; inset: 14px; border: 1px solid rgba(255,255,255,.11); border-radius: 12px; }
+    .playmark { position: absolute; inset: 50% auto auto 50%; width: 0; height: 0; transform: translate(-40%,-50%); border-top: 18px solid transparent; border-bottom: 18px solid transparent; border-left: 27px solid rgba(255,255,255,.86); }
+    .video-state { position: absolute; right: 22px; bottom: 20px; color: rgba(255,255,255,.72); font-size: 9px; }
+    .video-copy { display: grid; grid-template-columns: 1fr auto; gap: 22px; align-items: start; padding: 28px 8px 0; }
+    .video-title { margin: 0 0 10px; font-family: "Songti SC", STSong, serif; font-size: 30px; font-weight: 500; }
+    .video-description { max-width: 620px; margin: 0; color: var(--muted); font-family: "Songti SC", STSong, serif; font-size: 14px; line-height: 1.8; }
+    .replace { padding: 8px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--muted); font-size: 9px; }
+
+    .question { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 18px; }
+    .choice { padding: 14px 15px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.72); cursor: pointer; transition: 160ms ease; }
+    .choice:hover { border-color: rgba(94,106,210,.4); }
+    .choice.selected { border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 3px rgba(94,106,210,.09); }
+    .choice strong { display: block; margin-bottom: 4px; font-size: 12px; }
+    .choice span { color: var(--muted); font-size: 10px; line-height: 1.5; }
+
+    @media (max-width: 760px) {
+      .page { width: calc(100% - 20px); padding-top: 20px; }
+      .intro { display: block; }
+      .world-tabs { width: 100%; margin-top: 16px; }
+      .world-tab { flex: 1; padding-inline: 6px; }
+      .stage { height: 650px; }
+      .workspace { grid-template-columns: 1fr; }
+      .rail { display: none; }
+      .journal-canvas { width: 100%; padding-inline: 36px 25px; }
+      .journal-canvas::before { left: 20px; }
+      .saying-desk { padding: 24px; }
+      .note { padding: 50px 24px 34px; }
+      .video-desk { width: calc(100% - 24px); }
+      .video-copy { grid-template-columns: 1fr; }
+      .question { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="intro">
+      <div>
+        <p class="eyebrow">A 方案展开 · 三张工作台</p>
+        <h1>共同的书房，不同的创作姿态</h1>
+        <p class="lead">左侧内容架与顶部状态栏保持稳定；真正发生变化的只有中央画布。切换三个世界，感受差异是否恰到好处。</p>
+      </div>
+      <nav class="world-tabs" aria-label="切换世界预览">
+        <button class="world-tab active" data-world="journal" onclick="switchWorld('journal', this)">日志</button>
+        <button class="world-tab" data-world="saying" onclick="switchWorld('saying', this)">片语</button>
+        <button class="world-tab" data-world="video" onclick="switchWorld('video', this)">影像</button>
+      </nav>
+    </header>
+
+    <section class="stage">
+      <div class="workspace active" data-workspace="journal">
+        <aside class="rail">
+          <div class="rail-head"><span class="rail-title">日志</span><button class="new">＋</button></div>
+          <div class="search">搜索日志</div><div class="rail-section">最近编辑</div>
+          <div class="entry active">一场缓慢的夏雨<time>今天 14:08 · 已保存</time></div>
+          <div class="entry">从海边回来以后<time>昨天 · 已发布</time></div>
+          <div class="entry">书桌左边的光<time>8 月 26 日 · 草稿</time></div>
+          <div class="rail-foot"><button class="rail-link">全部日志</button><button class="rail-link">分类</button><button class="rail-link">世界设置</button></div>
+        </aside>
+        <main class="desk">
+          <header class="topbar"><span class="crumb">世界 / <strong>日志</strong></span><div class="actions"><span class="save">已保存</span><button class="action">设置</button><button class="action publish">发布</button></div></header>
+          <div class="journal-canvas"><p class="journal-kicker">2026 年 8 月 31 日 · 日志</p><div class="journal-title">一场缓慢的夏雨</div><div class="journal-body"><p>午后的云压得很低，雨没有立刻落下来。</p><p>我把窗推开一点，听见远处的树叶先响了。房间里的光慢慢暗下去，书页却显得更白。<span class="caret"></span></p></div></div>
+        </main>
+      </div>
+
+      <div class="workspace" data-workspace="saying">
+        <aside class="rail">
+          <div class="rail-head"><span class="rail-title">片语</span><button class="new">＋</button></div>
+          <div class="search">搜索片语</div><div class="rail-section">最近编辑</div>
+          <div class="entry active">风经过窗边时……<time>刚刚 · 草稿</time></div>
+          <div class="entry">那些没有说完的话……<time>昨天 · 已发布</time></div>
+          <div class="entry">天色比想象中更早……<time>8 月 28 日 · 已发布</time></div>
+          <div class="rail-foot"><button class="rail-link">全部片语</button><button class="rail-link">标签</button><button class="rail-link">世界设置</button></div>
+        </aside>
+        <main class="desk">
+          <header class="topbar"><span class="crumb">世界 / <strong>片语</strong></span><div class="actions"><span class="save">草稿已保存</span><button class="action">设置</button><button class="action publish">发布</button></div></header>
+          <div class="saying-desk"><article class="note"><div class="quote-editor">风经过窗边时，<br />房间忽然安静。<span class="caret"></span></div><footer class="note-meta"><span>46 字 · 不列出</span><button class="disclosure">补充来源、作者与标签 ↓</button></footer></article></div>
+        </main>
+      </div>
+
+      <div class="workspace" data-workspace="video">
+        <aside class="rail">
+          <div class="rail-head"><span class="rail-title">影像</span><button class="new">＋</button></div>
+          <div class="search">搜索影像</div><div class="rail-section">最近编辑</div>
+          <div class="entry active">凌晨四点<time>今天 10:24 · 已上传</time></div>
+          <div class="entry">海边的一分钟<time>8 月 29 日 · 草稿</time></div>
+          <div class="entry">回家的路<time>8 月 24 日 · 已发布</time></div>
+          <div class="rail-foot"><button class="rail-link">全部影像</button><button class="rail-link">分类</button><button class="rail-link">世界设置</button></div>
+        </aside>
+        <main class="desk">
+          <header class="topbar"><span class="crumb">世界 / <strong>影像</strong></span><div class="actions"><span class="save">已保存</span><button class="action">设置</button><button class="action publish">发布</button></div></header>
+          <div class="video-desk"><div class="viewfinder"><span class="playmark"></span><span class="video-state">01:42 · 上传完成</span></div><div class="video-copy"><div><h2 class="video-title">凌晨四点</h2><p class="video-description">天还没有亮，街道已经开始发出很轻的声音。这是一段没有旁白的记录。</p></div><button class="replace">替换影像</button></div></div>
+        </main>
+      </div>
+    </section>
+
+    <section class="question" aria-label="选择差异程度">
+      <div class="choice" data-choice="workspace-right" onclick="choose(this)"><strong>这套结构正合适</strong><span>保留同一书房，中央画布按媒介变化。</span></div>
+      <div class="choice" data-choice="workspace-stronger" onclick="choose(this)"><strong>差异可以再强一点</strong><span>让三个世界拥有更明显的材料与空间性格。</span></div>
+      <div class="choice" data-choice="workspace-quieter" onclick="choose(this)"><strong>还可以更统一</strong><span>减少便笺和取景框感，让它们更接近同一个编辑器。</span></div>
+    </section>
+  </main>
+
+  <script>
+    let activeWorld = 'journal';
+    function switchWorld(next, button) {
+      if (next === activeWorld) return;
+      const current = document.querySelector(`[data-workspace="${activeWorld}"]`);
+      const incoming = document.querySelector(`[data-workspace="${next}"]`);
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      document.querySelectorAll('.world-tab').forEach(tab => tab.classList.toggle('active', tab === button));
+      activeWorld = next;
+      if (reduced || !window.gsap) {
+        current.classList.remove('active'); incoming.classList.add('active');
+        return;
+      }
+      gsap.timeline({ defaults: { ease: 'power2.inOut' } })
+        .to(current, { autoAlpha: 0, y: 7, duration: .16 })
+        .set(current, { clearProps: 'all' })
+        .add(() => { current.classList.remove('active'); incoming.classList.add('active'); })
+        .fromTo(incoming, { autoAlpha: 0, y: 9 }, { autoAlpha: 1, y: 0, duration: .28, clearProps: 'all' })
+        .from(incoming.querySelectorAll('.entry'), { autoAlpha: 0, x: -7, stagger: .035, duration: .2, clearProps: 'all' }, '<.03');
+    }
+    function choose(element) {
+      document.querySelectorAll('.choice').forEach(item => item.classList.remove('selected'));
+      element.classList.add('selected');
+      if (typeof toggleSelect === 'function') toggleSelect(element);
+    }
+    window.addEventListener('load', () => {
+      if (!window.gsap || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      gsap.from('.stage', { autoAlpha: 0, y: 14, duration: .45, ease: 'power2.out', clearProps: 'all' });
+    });
+  </script>
+</body>
+</html>

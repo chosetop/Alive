@@ -327,6 +327,14 @@ a.nav-link:hover {
   padding: var(--space-8) var(--space-6);
 }
 
+/* Utility pages own their readable max-width. Give that page frame the full
+   content track, then centre it so a wide monitor adds balanced breathing room
+   instead of one large empty field on the right. */
+.content > :deep(.page) {
+  width: 100%;
+  margin-inline: auto;
+}
+
 .mobile-drawer {
   min-width: min(18rem, calc(100vw - var(--space-6)));
 }
