@@ -1,0 +1,13 @@
+.git
+.worktrees
+.superpowers
+**/.DS_Store
+**/.env
+**/.env.*
+**/node_modules
+**/.nuxt
+**/.output
+**/.vite
+**/dist
+backend/bin
+backend/tmp

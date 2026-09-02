@@ -8,6 +8,15 @@ describe('resolveApiBase', () => {
     )
   })
 
+  it('uses the private container origin during SSR without exposing it to the browser', () => {
+    expect(
+      resolveApiBase('', true, 'http://localhost:8081', 'http://gateway:8081'),
+    ).toBe('http://gateway:8081')
+    expect(
+      resolveApiBase('', false, 'http://localhost:8081', 'http://gateway:8081'),
+    ).toBe('http://localhost:8081')
+  })
+
   it('uses the browser origin when no public origin is configured', () => {
     expect(resolveApiBase('', false, 'https://p30s-mac-mini.tail3a5bd9.ts.net')).toBe(
       'https://p30s-mac-mini.tail3a5bd9.ts.net',

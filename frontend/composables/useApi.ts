@@ -52,7 +52,12 @@ function cleanQuery(query: ApiQuery | undefined): Record<string, string> | undef
 export function useApi() {
   const config = useRuntimeConfig()
   const browserOrigin = import.meta.client ? window.location.origin : ''
-  const baseURL = `${resolveApiBase(config.public.apiBase, Boolean(import.meta.server), browserOrigin)}${API_PREFIX}`
+  const baseURL = `${resolveApiBase(
+    config.public.apiBase,
+    Boolean(import.meta.server),
+    browserOrigin,
+    config.apiInternalBase,
+  )}${API_PREFIX}`
 
   // Only forwards on the server; returns {} in the browser, where the cookie is
   // attached by credentials: 'include'.

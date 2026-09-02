@@ -2,7 +2,9 @@ export function resolveApiBase(
   configuredOrigin: string,
   isServer: boolean,
   browserOrigin = '',
+  serverOrigin = '',
 ): string {
+  if (isServer && serverOrigin) return serverOrigin
   if (!isServer && configuredOrigin) {
     try {
       const configured = new URL(configuredOrigin)

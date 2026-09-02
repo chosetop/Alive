@@ -49,10 +49,14 @@ export default defineNuxtConfig({
   },
 
   runtimeConfig: {
+    // Container deployments use the service-network hostname during SSR.
+    // This value is private and is never serialized into the browser bundle.
+    apiInternalBase: '',
     public: {
       // Overridden at runtime by NUXT_PUBLIC_API_BASE.
-      // Falls back to the local backend so a fresh clone runs without a .env.
-      apiBase: 'http://localhost:8080',
+      // Empty means same-origin in a production browser. The API resolver still
+      // maps the direct Nuxt development port to the local Go API.
+      apiBase: '',
     },
   },
 })

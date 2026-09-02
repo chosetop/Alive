@@ -1,6 +1,13 @@
+import { resolveApiBase } from '../../utils/api-base'
+
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig(event)
-  const base = String(config.public.apiBase || 'http://localhost:8080/api/v1').replace(/\/$/, '')
+  const base = `${resolveApiBase(
+    config.public.apiBase,
+    true,
+    '',
+    config.apiInternalBase,
+  )}/api/v1`
   const origin = getRequestURL(event).origin
   const urls = [`${origin}/`, `${origin}/journal`, `${origin}/sayings`]
   try {
