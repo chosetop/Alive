@@ -610,7 +610,10 @@ func TestServiceCreateUser(t *testing.T) {
 }
 
 func TestServicePruneExpiredSessions(t *testing.T) {
-	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	// The in-memory store prunes against the real clock, matching the database's
+	// NOW(). Keep this test's baseline current so the "live" fixture does not
+	// become expired merely because the calendar moved past a hard-coded date.
+	now := time.Now().UTC().Truncate(time.Second)
 	ctx := context.Background()
 
 	clock := now
