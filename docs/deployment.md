@@ -75,6 +75,100 @@ npm run dev                      # http://localhost:3000
 
 本地 API 使用 `SESSION_COOKIE_SECURE=false`，并保持一个 hostname（推荐全部使用 `localhost`）；`localhost` 与 `127.0.0.1` 的 host-only cookie 不互通。
 
+## Docker 本地设备版
+
+Docker Compose 版本面向“把 Alive 复制到另一台电脑，在那台电脑本机直接使用”的场景。目标电脑只需要 Docker Desktop（或带 Compose 插件的 Docker Engine），不需要单独安装 Go、Node、Nginx、PostgreSQL 或迁移工具。
+
+如果只需要在新电脑上完成首次启动，请直接阅读 [在其他电脑上启动 Alive](./docker-quick-start.md)。
+
+拓扑如下：
+
+```text
+http://localhost:8081
+        │
+        ▼
+   Nginx gateway
+   ├── /admin/  → Admin 静态文件
+   ├── /api/*   → backend:8080
+   └── /        → frontend:3000
+                       │
+                       ▼
+                 PostgreSQL volume
+```
+
+数据库健康后，`migrate` 一次性容器先应用 `backend/migrations`；只有迁移成功，Backend 才会启动。Frontend 的 SSR 请求使用容器网络里的 `http://backend:8080`，浏览器请求仍走当前页面的同源 `/api`，容器服务名不会进入浏览器。
+
+### 首次启动
+
+在项目根目录执行：
+
+```bash
+cp .env.docker.example .env
+```
+
+编辑 `.env`，把 `ALIVE_DB_PASSWORD` 换成只含字母、数字、连字符或下划线的长随机值。这个文件已被根 `.gitignore` 忽略，不要提交、打进镜像或发给其他人。
+
+构建并启动：
+
+```bash
+docker compose up -d --build
+docker compose ps
+curl -fsS http://localhost:8081/health/ready
+```
+
+首次安装需要创建站主账号。密码只从交互式终端读取，不会进入命令历史：
+
+```bash
+docker compose exec backend /app/cli user:create --username lzx
+```
+
+随后打开：
+
+```text
+前台：http://localhost:8081/
+后台：http://localhost:8081/admin/login
+```
+
+默认端口只绑定 `127.0.0.1`，其他设备不能访问。不要为了局域网分享直接把 `ALIVE_BIND_ADDRESS` 改成 `0.0.0.0`：当前本地设备版使用 HTTP 与非 Secure Cookie；跨设备或公网部署应使用本文前面的 HTTPS 生产拓扑，并把 Backend 切到 production 安全配置。
+
+### 日常操作与升级
+
+```bash
+# 查看状态和日志
+docker compose ps
+docker compose logs -f --tail=200
+
+# 停止，但保留数据库
+docker compose down
+
+# 拉取新代码后重新构建并启动；migration 会先应用新版本
+docker compose up -d --build
+```
+
+不要执行 `docker compose down -v`。`-v` 会删除 `alive-postgres` 命名卷，也就是删除这台电脑上的文章、账号和站点设置。
+
+### 备份与恢复
+
+备份从数据库容器流到宿主机文件，镜像本身永远不包含文章数据：
+
+```bash
+docker compose exec -T db pg_dump -U alive -d alive --format=custom \
+  > "alive-$(date +%Y%m%d-%H%M%S).dump"
+```
+
+恢复会覆盖目标数据库里的同名对象，只能对确认过的空安装或隔离恢复环境执行。先停止会访问数据库的应用容器，再恢复并重新启动：
+
+```bash
+docker compose stop gateway frontend backend
+docker compose exec -T db pg_restore \
+  --clean --if-exists --no-owner --exit-on-error \
+  -U alive -d alive < alive-YYYYMMDD-HHMMSS.dump
+docker compose up -d
+curl -fsS http://localhost:8081/health/ready
+```
+
+从现有非 Docker 安装迁移到另一台电脑时，也使用 custom-format `pg_dump`；不要把 PostgreSQL 数据目录直接复制进 Docker volume。OSS 开启时，数据库备份只包含媒体记录，不包含阿里云 OSS 对象本身；对象与凭据需要独立管理。
+
 ## PostgreSQL 备份
 
 使用 custom format，便于选择性恢复和 `pg_restore` 的错误检查。备份文件应写入受权限保护的备份目录，并由运维系统加密；示例不包含真实凭据：
