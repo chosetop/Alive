@@ -591,15 +591,23 @@ func TestSayingsEndpointsUseTheSayingShape(t *testing.T) {
 	}
 }
 
-func TestSayingShortIDRejectsInvalidPathsBeforeLookup(t *testing.T) {
-	handler, _ := newTestServer(t, testAuthorID)
+func TestSayingDetailAcceptsSlug(t *testing.T) {
+	handler, store := newTestServer(t, testAuthorID)
+	store.Seed(entry.Entry{
+		ID:         7,
+		Slug:       "saying-77",
+		World:      contentworld.Saying,
+		Status:     entry.StatusPublished,
+		Visibility: entry.VisibilityPublic,
+		ContentMD:  "一句已经发布的片语",
+	})
 
-	rec := do(t, handler, http.MethodGet, "/api/v1/sayings/not-valid", "")
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400\nbody: %s", rec.Code, rec.Body.String())
+	rec := do(t, handler, http.MethodGet, "/api/v1/sayings/saying-77", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200\nbody: %s", rec.Code, rec.Body.String())
 	}
-	if code := errorCode(t, rec); code != "INVALID_INPUT" {
-		t.Fatalf("code = %q, want INVALID_INPUT", code)
+	if got := stringField(t, dataObject(t, rec), "short_id"); got != "saying-77" {
+		t.Fatalf("short_id = %q, want saying-77", got)
 	}
 }
 

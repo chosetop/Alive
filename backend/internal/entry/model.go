@@ -187,8 +187,16 @@ func ValidateTitle(title string) error {
 // ValidateForPublish checks the fields that must be complete before an entry is
 // visible outside the editor. Drafts deliberately do not use this validator.
 func ValidateForPublish(e Entry) error {
-	if err := ValidateTitle(e.Title); err != nil {
-		return err
+	if e.World == contentworld.Saying {
+		if e.Title != "" {
+			if err := validateDraftTitle(e.Title); err != nil {
+				return err
+			}
+		}
+	} else {
+		if err := ValidateTitle(e.Title); err != nil {
+			return err
+		}
 	}
 	if err := ValidateSlug(e.Slug); err != nil {
 		return err

@@ -456,7 +456,7 @@ slug 由客户端提供，**不从标题派生**：从中文标题派生需要�
 
 `draft` 或 `archived` → `published`。
 
-发布是草稿宽松校验结束的边界：`title`、`slug`、`content_md` 必须完整，`visibility` 必须合法。正文为空或只有空白时返回 400 `INVALID_INPUT` 且 `fields.content_md`；其他字段也在各自的 `fields` 下报告。校验失败时仍保持草稿。
+发布是草稿宽松校验结束的边界：日志与影像的 `title`、所有内容的 `slug` 和 `content_md` 必须完整，`visibility` 必须合法；片语不需要 `title`。正文为空或只有空白时返回 400 `INVALID_INPUT` 且 `fields.content_md`；其他字段也在各自的 `fields` 下报告。校验失败时仍保持草稿。
 
 **`published_at` 只在第一次发布时写入，之后永不移动。** 撤回再发布，这个字段仍然是最初那个值（已实测：三次发布之间隔了 2 秒，返回值逐字符相同）。
 

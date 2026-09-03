@@ -113,6 +113,24 @@ func TestValidateForPublish(t *testing.T) {
 	}
 }
 
+func TestValidateForPublishAllowsUntitledSaying(t *testing.T) {
+	e := entry.Entry{
+		World:      contentworld.Saying,
+		Slug:       "one-line",
+		ContentMD:  "只是一句。",
+		Visibility: entry.VisibilityPublic,
+	}
+
+	if err := entry.ValidateForPublish(e); err != nil {
+		t.Fatalf("ValidateForPublish() = %v, want nil for an untitled saying", err)
+	}
+
+	e.Title = strings.Repeat("a", entry.MaxTitleLength+1)
+	if err := entry.ValidateForPublish(e); !errors.Is(err, entry.ErrInvalidTitle) {
+		t.Fatalf("ValidateForPublish() = %v, want ErrInvalidTitle for an over-long saying title", err)
+	}
+}
+
 func TestValidateWorld(t *testing.T) {
 	valid := []string{"journal", "saying", "video"}
 	for _, world := range valid {

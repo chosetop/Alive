@@ -24,7 +24,7 @@ export function getPublishChecks(entry: Pick<EntryDetail, 'title' | 'slug' | 'co
   reminders: PublishCheck[]
 } {
   const missing = new Set<string>()
-  if (entry.title.trim() === '') missing.add('title')
+  if (entry.world !== 'saying' && entry.title.trim() === '') missing.add('title')
   if (entry.slug.trim() === '') missing.add('slug')
   if (entry.world !== 'video' && entry.content_md.trim() === '') missing.add('content_md')
   if (entry.summary.trim() === '') missing.add('summary')

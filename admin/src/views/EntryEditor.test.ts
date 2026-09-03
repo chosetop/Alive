@@ -909,7 +909,11 @@ describe('EntryEditor autosave integration', () => {
     await flushPromises()
     await vi.advanceTimersByTimeAsync(1000)
     expect(api.createEntry).toHaveBeenCalledWith({ world: 'journal' })
-    expect(api.updateEntry).toHaveBeenCalledWith(99, { revision: 1, content_md: '新草稿正文' })
+    expect(api.updateEntry).toHaveBeenCalledWith(99, {
+      revision: 1,
+      slug: 'journal-99',
+      content_md: '新草稿正文',
+    })
   })
 
   it('keeps a created draft usable when loading categories fails', async () => {
@@ -934,6 +938,7 @@ describe('EntryEditor autosave integration', () => {
 
     expect(api.updateEntry).toHaveBeenCalledWith(140, {
       revision: 3,
+      slug: 'journal-140',
       content_md: '分类失败仍可编辑',
     })
   })

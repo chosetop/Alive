@@ -331,7 +331,6 @@ function isUnsynced(item: EntryListItem): boolean {
     <div class="search">
       <label class="search-label ui-visually-hidden" for="directory-search">{{ searchLabel }}</label>
       <div class="search-control">
-        <span class="search-icon" aria-hidden="true"><UiIcon name="search" /></span>
         <input
           id="directory-search"
           class="search-input"

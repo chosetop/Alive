@@ -159,6 +159,16 @@ describe('SayingEditor', () => {
     expect(wrapper.find('[data-header-delete]').exists()).toBe(false)
   })
 
+  it('keeps slug, visibility, and tags together in always-visible saying settings', async () => {
+    const wrapper = await mountEditor(entry({ id: 80 }))
+
+    expect(wrapper.find('button[aria-expanded]').exists()).toBe(false)
+    expect(wrapper.find('[data-saying-settings]').exists()).toBe(true)
+    expect(wrapper.get('input[aria-label="片语 slug"]')).toBeTruthy()
+    expect(wrapper.get('select[aria-label="公开状态"]')).toBeTruthy()
+    expect(wrapper.get('[data-tag-picker]')).toBeTruthy()
+  })
+
   it('drops the desktop note shadow on narrow screens', () => {
     const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'SayingEditor.vue'), 'utf8')
 
@@ -171,11 +181,13 @@ describe('SayingEditor', () => {
     const wrapper = await mountEditor(entry({ id: 73, revision: 5, content_md: '旧句' }), gate)
 
     await wrapper.get('textarea[aria-label="片语正文"]').setValue('新句子')
+    await wrapper.get('input[aria-label="片语 slug"]').setValue('new-saying')
     await gate.value?.()
     await flushPromises()
 
     expect(api.updateEntry).toHaveBeenCalledWith(73, {
       revision: 5,
+      slug: 'new-saying',
       content_md: '新句子',
       visibility: 'public',
       meta: { source: '摘录', author: '某人' },
@@ -183,6 +195,25 @@ describe('SayingEditor', () => {
 
     await expect(navigation.updateGuard?.()).resolves.toBeUndefined()
     expect(api.updateEntry).toHaveBeenCalledTimes(2)
+  })
+
+  it('generates a stable saying slug when the created draft has none', async () => {
+    api.createEntry.mockResolvedValue(entry({ id: 92, revision: 1, slug: '' }))
+    const gate = ref<(() => Promise<void>) | null>(null)
+    const wrapper = await mountEditor(undefined, gate)
+
+    await wrapper.get('textarea[aria-label="片语正文"]').setValue('自动生成链接')
+    await flushPromises()
+    await gate.value?.()
+    await flushPromises()
+
+    expect(api.updateEntry).toHaveBeenCalledWith(92, {
+      revision: 1,
+      slug: 'saying-92',
+      content_md: '自动生成链接',
+      visibility: 'public',
+      meta: { source: '', author: '' },
+    })
   })
 
   it('vetoes route changes when saving the current saying fails', async () => {
@@ -214,6 +245,7 @@ describe('SayingEditor', () => {
     expect(api.createEntry).toHaveBeenCalledTimes(2)
     expect(api.updateEntry).toHaveBeenCalledWith(91, {
       revision: 1,
+      slug: 'saying-entry',
       content_md: '重试后的句子',
       visibility: 'public',
       meta: { source: '', author: '' },

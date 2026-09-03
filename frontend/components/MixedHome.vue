@@ -26,4 +26,5 @@ const [{ data: journals }, { data: sayings }, { data: videos }] = await Promise.
 <style scoped>
 .mixed-home{display:grid;gap:3rem}
 .mixed-home h2{font-size:var(--text-lg);margin-bottom:1rem}
+#journal-preview{font-size:1.5rem}
 </style>

@@ -22,4 +22,9 @@ describe('getPublishChecks', () => {
     const checks = getPublishChecks({ ...complete, world: 'video', content_md: '' })
     expect(checks.blockers.map((check) => check.field)).not.toContain('content_md')
   })
+
+  it('does not require a title for saying entries', () => {
+    const checks = getPublishChecks({ ...complete, world: 'saying', title: '' })
+    expect(checks.blockers.map((check) => check.field)).not.toContain('title')
+  })
 })

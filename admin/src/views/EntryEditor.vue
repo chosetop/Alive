@@ -24,6 +24,7 @@ import {
 } from '../editor/save-coordinator'
 import { useEntryAutosave } from '../editor/useEntryAutosave'
 import { getPublishChecks } from '../editor/publish-checks'
+import { defaultEntrySlug } from '../editor/entry-slug'
 import { useWritingStore, writingFlushKey } from '../stores/writing'
 import type {
   Category,
@@ -210,6 +211,12 @@ async function applyLoadedEntry(entry: EntryDetail, generation: number): Promise
   if (!isCurrentLoad(generation)) return
   isLoading.value = false
 
+  if (entry.slug === '') {
+    const generatedSlug = defaultEntrySlug(entry.world ?? draftWorld.value, entry.id)
+    form.value.slug = generatedSlug
+    queueUpdate({ slug: generatedSlug })
+  }
+
   try {
     const cats = await categoriesApi.listCategoriesAdmin({
       world: entry.world ?? draftWorld.value,
@@ -304,8 +311,12 @@ async function ensureEntry(): Promise<void> {
     if (!isActive || original.value !== null) return
     original.value = entry
     writing.setActiveEntry(entry.id)
+    const generatedSlug = entry.slug === '' ? defaultEntrySlug(entry.world ?? draftWorld.value, entry.id) : null
+    if (generatedSlug !== null) form.value.slug = generatedSlug
     void loadWorldStatus(entry.world ?? draftWorld.value)
     await bindCoordinator(entry)
+    isLoading.value = false
+    if (generatedSlug !== null) queueUpdate({ slug: generatedSlug })
   } catch (error) {
     loadError.value = toUserMessage(error)
   } finally {

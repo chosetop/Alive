@@ -29,7 +29,24 @@ const API_PREFIX = '/api/v1'
  */
 export function resolveApiOrigin(configuredBaseUrl: string | undefined, currentOrigin: string): string {
   if (!configuredBaseUrl?.trim()) return currentOrigin
-  return configuredBaseUrl.replace(/\/$/, '')
+  const configured = configuredBaseUrl.replace(/\/$/, '')
+  try {
+    const configuredUrl = new URL(configured)
+    const currentUrl = new URL(currentOrigin)
+    const isLocalApi = configuredUrl.hostname === 'localhost' || configuredUrl.hostname === '127.0.0.1'
+
+    const isLanOrTailnetHost =
+      /^(10|127|169\.254|192\.168)\./.test(currentUrl.hostname) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(currentUrl.hostname) ||
+      currentUrl.hostname.endsWith('.ts.net')
+
+    if (isLocalApi && isLanOrTailnetHost) {
+      return `${currentUrl.protocol}//${currentUrl.hostname}:${configuredUrl.port || '80'}`
+    }
+  } catch {
+    // Keep the configured value when either origin is not a valid URL.
+  }
+  return configured
 }
 
 const ORIGIN = resolveApiOrigin(import.meta.env.VITE_API_BASE_URL, globalThis.location?.origin ?? '')

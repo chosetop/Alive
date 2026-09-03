@@ -95,24 +95,22 @@ useHead({
 
 <template>
   <article v-if="entry" class="entry">
-    <NuxtLink class="back" to="/journal">日志</NuxtLink>
+    <div class="back">
+      <NuxtLink to="/journal">日志</NuxtLink>
+      <span class="back__meta" aria-label="文章信息">
+        <time v-if="date" class="date" :datetime="toDateAttribute(date)">{{ formatFullDate(date) }}</time>
+        <NuxtLink
+          v-if="entry.category"
+          :to="journal?.categoryPath(entry.category.slug) ?? `/journal/categories/${entry.category.slug}`"
+          class="cat"
+        >
+          {{ entry.category.name }}
+        </NuxtLink>
+        <span class="words">{{ entry.word_count }} 字</span>
+      </span>
+    </div>
     <header class="head">
       <h1 class="title">{{ entry.title }}</h1>
-
-      <div class="entry-meta" aria-label="文章信息">
-        <time v-if="date" class="date" :datetime="toDateAttribute(date)">{{ formatFullDate(date) }}</time>
-        <div class="meta-row">
-          <span class="type">{{ journal?.label ?? '日志' }}</span>
-          <NuxtLink
-            v-if="entry.category"
-            :to="journal?.categoryPath(entry.category.slug) ?? `/journal/categories/${entry.category.slug}`"
-            class="cat"
-          >
-            {{ entry.category.name }}
-          </NuxtLink>
-          <span class="words">{{ entry.word_count }} 字</span>
-        </div>
-      </div>
     </header>
 
     <!-- eslint-disable-next-line vue/no-v-html -->
@@ -158,7 +156,10 @@ useHead({
 }
 
 .back {
-  display: inline-block;
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-3);
   margin-bottom: var(--space-7);
   color: var(--c-ink-muted);
   font-family: var(--font-ui);
@@ -166,7 +167,24 @@ useHead({
   text-decoration: none;
 }
 
-.back:hover {
+.back__meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+  color: var(--c-ink-faint);
+  font-size: var(--text-xs);
+}
+
+.back__meta .date {
+  color: var(--c-ink-muted);
+}
+
+.back__meta .cat {
+  color: var(--c-ink-faint);
+}
+
+.back > a:hover {
   color: var(--c-accent);
 }
 
@@ -180,15 +198,6 @@ useHead({
   max-width: 28rem;
   font-size: clamp(2rem, 6vw, 3.5rem);
   line-height: 1.25;
-}
-
-.entry-meta {
-  display: grid;
-  gap: var(--space-3);
-  padding-block: var(--space-3);
-  border-block: 1px solid var(--c-line);
-  color: var(--c-ink-muted);
-  font-family: var(--font-ui);
 }
 
 .date {
@@ -219,6 +228,103 @@ useHead({
   max-width: 42rem;
 }
 
+.foot {
+  margin-top: var(--space-9);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--c-line);
+}
+
+.neighbors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+
+.neighbor {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: 3px;
+  border: 1px solid var(--c-line);
+  background: color-mix(in srgb, var(--c-paper) 72%, var(--c-paper-sunken));
+  color: var(--c-ink-muted);
+  text-decoration: none;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-mid) var(--ease-out),
+    transform var(--duration-mid) var(--ease-out);
+}
+
+.neighbor--next {
+  text-align: right;
+}
+
+.neighbor:not(.neighbor--unavailable)::after {
+  position: absolute;
+  top: var(--space-4);
+  color: var(--c-ink-faint);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  transition: color var(--duration-fast) var(--ease-out), transform var(--duration-mid) var(--ease-out);
+}
+
+.neighbor--previous:not(.neighbor--unavailable)::after {
+  right: var(--space-4);
+  content: '←';
+}
+
+.neighbor--next:not(.neighbor--unavailable)::after {
+  left: var(--space-4);
+  content: '→';
+}
+
+.neighbor:not(.neighbor--unavailable):hover {
+  transform: translateY(-2px);
+  border-color: var(--c-line-strong);
+  background: var(--c-paper);
+  color: var(--c-accent);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--c-accent) 12%, transparent);
+}
+
+.neighbor--previous:not(.neighbor--unavailable):hover::after {
+  color: var(--c-accent);
+  transform: translateX(-3px);
+}
+
+.neighbor--next:not(.neighbor--unavailable):hover::after {
+  color: var(--c-accent);
+  transform: translateX(3px);
+}
+
+.neighbor__direction {
+  color: var(--c-ink-faint);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+
+.neighbor__title {
+  overflow-wrap: anywhere;
+  color: var(--c-ink);
+  font-size: var(--text-sm);
+  line-height: var(--leading-tight);
+}
+
+.neighbor--unavailable {
+  border-color: transparent;
+  background: var(--c-paper-sunken);
+  color: var(--c-ink-faint);
+  box-shadow: none;
+}
+
+.neighbor--unavailable .neighbor__title {
+  color: var(--c-ink-faint);
+}
+
 @media (max-width: 34rem) {
   .head {
     gap: var(--space-4);
@@ -227,6 +333,14 @@ useHead({
 
   .title {
     font-size: clamp(1.875rem, 10vw, 2.75rem);
+  }
+
+  .neighbors {
+    grid-template-columns: 1fr;
+  }
+
+  .neighbor--next {
+    text-align: left;
   }
 }
 </style>

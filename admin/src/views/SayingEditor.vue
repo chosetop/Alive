@@ -6,6 +6,7 @@ import { entriesApi, toUserMessage } from '../api'
 import { resolveAdminWorld } from '../content-worlds/registry'
 import TagPicker from '../components/writing/TagPicker.vue'
 import WorkspaceHeader from '../components/writing/WorkspaceHeader.vue'
+import { defaultEntrySlug } from '../editor/entry-slug'
 import type { Tag } from '../api/tags'
 import type { SaveStatus } from '../editor/save-coordinator'
 import type { EntryDetail, EntryVisibility } from '../types/api'
@@ -18,6 +19,7 @@ const props = defineProps<{
 const writing = useWritingStore()
 const entry = ref<EntryDetail | null>(null)
 const content = ref('')
+const slug = ref('')
 const source = ref('')
 const author = ref('')
 const visibility = ref<EntryVisibility>('public')
@@ -28,12 +30,12 @@ const error = ref<string | null>(null)
 const errorSource = ref<'save' | 'publish' | null>(null)
 const tags = ref<Tag[]>([])
 const copied = ref(false)
-const supplementaryOpen = ref(false)
 const sayingWorldLabel = resolveAdminWorld('saying')?.label ?? '片语'
 const isTouched = computed(() => content.value.trim() !== '' || source.value.trim() !== '' || author.value.trim() !== '')
 const hasUnsavedChanges = computed(() => {
   if (!entry.value) return isTouched.value
   return content.value !== entry.value.content_md
+    || slug.value !== entry.value.slug
     || visibility.value !== entry.value.visibility
     || source.value.trim() !== (typeof entry.value.meta.source === 'string' ? entry.value.meta.source : '')
     || author.value.trim() !== (typeof entry.value.meta.author === 'string' ? entry.value.meta.author : '')
@@ -83,10 +85,12 @@ function applyEntry(next: EntryDetail): void {
   entry.value = next
   writing.setActiveEntry(next.id)
   content.value = next.content_md
+  slug.value = next.slug || defaultEntrySlug(next.world, next.id)
   visibility.value = next.visibility
   source.value = typeof next.meta.source === 'string' ? next.meta.source : ''
   author.value = typeof next.meta.author === 'string' ? next.meta.author : ''
   tags.value = next.tags ?? []
+  if (next.slug === '') scheduleSave()
 }
 
 async function createDraft(): Promise<void> {
@@ -135,6 +139,7 @@ async function save(): Promise<void> {
     try {
       entry.value = await entriesApi.updateEntry(currentEntry.id, {
         revision: currentEntry.revision,
+        slug: slug.value,
         content_md: content.value,
         visibility: visibility.value,
         meta: { source: source.value.trim(), author: author.value.trim() },
@@ -206,29 +211,36 @@ onBeforeRouteUpdate(async () => ((await flushBeforeRouteChange()) ? undefined : 
       </section>
       <p v-if="longFormWarning" class="warning">这段话已经接近一篇日志。</p>
 
-      <button type="button" class="details-toggle" :aria-expanded="supplementaryOpen" @click="supplementaryOpen = !supplementaryOpen">补充信息</button>
-      <section v-if="supplementaryOpen" class="meta" aria-label="片语信息">
-        <input v-model="source" placeholder="来源（可选）" aria-label="来源" />
-        <input v-model="author" placeholder="原作者（可选）" aria-label="原作者" />
-        <select v-model="visibility" aria-label="可见性">
-          <option value="public">公开</option>
-          <option value="unlisted">不列出</option>
-          <option value="private">私密</option>
-        </select>
+      <section v-if="entry" class="saying-settings" data-saying-settings aria-label="片语设置">
+        <h2>片语设置</h2>
+        <label class="setting-field">
+          <span>slug</span>
+          <input v-model="slug" aria-label="片语 slug" placeholder="例如 one-line" @input="scheduleSave" />
+        </label>
+        <label class="setting-field">
+          <span>公开状态</span>
+          <select v-model="visibility" aria-label="公开状态" @change="scheduleSave">
+            <option value="public">公开</option>
+            <option value="unlisted">不列出</option>
+            <option value="private">私密</option>
+          </select>
+        </label>
+        <div class="setting-fields">
+          <input v-model="source" placeholder="来源（可选）" aria-label="来源" @input="scheduleSave" />
+          <input v-model="author" placeholder="原作者（可选）" aria-label="原作者" @input="scheduleSave" />
+        </div>
+        <TagPicker
+          :entry-id="entry.id"
+          :revision="entry.revision"
+          :selected="tags"
+          @saved="(revision, nextTags) => { if (entry) { entry.revision = revision; tags = nextTags } }"
+        />
+        <p class="permalink-hint">发布后会生成永久链接；“不列出”不会出现在列表，但知道链接的人仍可访问。</p>
+        <div v-if="entry.status === 'published' && entry.slug" class="permalink" data-permalink>
+          <code>/sayings/{{ entry.slug }}</code>
+          <button type="button" @click="copyPermalink">{{ copied ? '已复制' : '复制链接' }}</button>
+        </div>
       </section>
-      <p class="permalink-hint">发布后会生成永久链接；“不列出”不会出现在列表，但知道链接的人仍可访问。</p>
-      <div v-if="entry?.status === 'published' && entry.slug" class="permalink" data-permalink>
-        <code>/sayings/{{ entry.slug }}</code>
-        <button type="button" @click="copyPermalink">{{ copied ? '已复制' : '复制链接' }}</button>
-      </div>
-
-      <TagPicker
-        v-if="entry"
-        :entry-id="entry.id"
-        :revision="entry.revision"
-        :selected="tags"
-        @saved="(revision, nextTags) => { if (entry) { entry.revision = revision; tags = nextTags } }"
-      />
 
     </main>
   </div>
@@ -242,10 +254,8 @@ onBeforeRouteUpdate(async () => ((await flushBeforeRouteChange()) ? undefined : 
   padding: var(--space-6) var(--space-5) var(--space-8);
 }
 
-.actions,
-.meta {
+.setting-fields {
   display: flex;
-  align-items: center;
   gap: var(--space-3);
 }
 
@@ -283,16 +293,33 @@ select {
   text-align: center;
 }
 
-.details-toggle {
-  margin-top: var(--space-4);
+.saying-settings {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  padding: var(--space-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-surface);
+  background: var(--c-surface-sunken);
 }
 
-.meta {
-  margin-top: var(--space-4);
+.saying-settings h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.setting-field {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--c-ink-muted);
+  font-size: 0.8125rem;
+}
+
+.setting-fields {
   flex-wrap: wrap;
 }
 
-.meta input {
+.setting-fields input {
   flex: 1 1 12rem;
 }
 
@@ -349,6 +376,10 @@ select {
   .permalink {
     flex-wrap: wrap;
     align-items: flex-start;
+  }
+
+  .setting-fields {
+    display: grid;
   }
 }
 </style>

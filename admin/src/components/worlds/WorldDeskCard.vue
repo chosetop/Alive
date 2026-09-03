@@ -275,6 +275,7 @@ const enterLabel = computed(() => {
 }
 
 .world-desk__preview {
+  max-height: 18rem;
   min-height: 0;
   padding: var(--space-4) var(--space-5);
   overflow: hidden;

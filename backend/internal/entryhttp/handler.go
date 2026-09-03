@@ -122,7 +122,7 @@ func (h *Handler) Register(api *gin.RouterGroup, requireAuth gin.HandlerFunc) {
 	api.GET("/journals", h.List)
 	api.GET("/journals/:slug", h.GetBySlug)
 	api.GET("/sayings", h.ListSayings)
-	api.GET("/sayings/:shortID", h.GetSayingByShortID)
+	api.GET("/sayings/:slug", h.GetSayingBySlug)
 	api.GET("/videos", h.ListVideos)
 	api.GET("/videos/:slug", h.GetVideoBySlug)
 }
@@ -353,20 +353,15 @@ func (h *Handler) ListSayings(c *gin.Context) {
 	})
 }
 
-// GetSayingByShortID returns one public or unlisted saying by its permanent id.
-func (h *Handler) GetSayingByShortID(c *gin.Context) {
+// GetSayingBySlug returns one public or unlisted saying by its permanent slug.
+func (h *Handler) GetSayingBySlug(c *gin.Context) {
 	world := contentworld.Saying
-	shortID := c.Param("shortID")
-	if err := validateSayingShortID(shortID); err != nil {
-		httpx.Error(c, invalidField("short_id",
-			"must be 10 characters from 23456789abcdefghjkmnpqrstuvwxyz", err))
-		return
-	}
+	slug := c.Param("slug")
 
-	found, err := h.service.GetLinkByWorldSlug(c.Request.Context(), world, shortID)
+	found, err := h.service.GetLinkByWorldSlug(c.Request.Context(), world, slug)
 	if err != nil {
 		if errors.Is(err, entry.ErrEntryNotFound) {
-			httpx.Error(c, apperr.NotFound("no entry matches this short id"))
+			httpx.Error(c, apperr.NotFound("no entry matches this slug"))
 			return
 		}
 
@@ -377,7 +372,7 @@ func (h *Handler) GetSayingByShortID(c *gin.Context) {
 		return
 	}
 
-	previous, next, err := h.sayingNeighbors(c.Request.Context(), shortID)
+	previous, next, err := h.sayingNeighbors(c.Request.Context(), slug)
 	if err != nil {
 		h.logger.ErrorContext(c.Request.Context(), "read saying neighbors failed",
 			slog.String("error", err.Error()),
@@ -845,27 +840,6 @@ func sayingOrderKeyFor(e entry.Entry) sayingOrderKey {
 		when = e.CreatedAt
 	}
 	return sayingOrderKey{when: when, id: e.ID}
-}
-
-const sayingShortIDLength = 10
-
-var sayingShortIDAlphabet = map[rune]struct{}{
-	'2': {}, '3': {}, '4': {}, '5': {}, '6': {}, '7': {}, '8': {}, '9': {},
-	'a': {}, 'b': {}, 'c': {}, 'd': {}, 'e': {}, 'f': {}, 'g': {}, 'h': {},
-	'j': {}, 'k': {}, 'm': {}, 'n': {}, 'p': {}, 'q': {}, 'r': {}, 's': {},
-	't': {}, 'u': {}, 'v': {}, 'w': {}, 'x': {}, 'y': {}, 'z': {},
-}
-
-func validateSayingShortID(shortID string) error {
-	if len(shortID) != sayingShortIDLength {
-		return errors.New("invalid short id length")
-	}
-	for _, r := range shortID {
-		if _, ok := sayingShortIDAlphabet[r]; !ok {
-			return errors.New("invalid short id alphabet")
-		}
-	}
-	return nil
 }
 
 // entryID reads the :id path parameter.

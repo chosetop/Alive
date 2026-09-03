@@ -152,10 +152,15 @@ afterEach(() => {
 describe('Worlds', () => {
   it('uses the desktop main-desk layout and collapses to one column at 48rem', () => {
     const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'Worlds.vue'), 'utf8')
+    const cardSource = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '../components/worlds/WorldDeskCard.vue'),
+      'utf8',
+    )
 
     expect(source).toMatch(/\.list\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1\.25fr\)\s+minmax\(0,\s*0\.9fr\)/)
     expect(source).toMatch(/\.list\s*>\s*\[data-world-desk='journal'\]\s*\{[\s\S]*grid-row:\s*1\s*\/\s*span\s*2/)
     expect(source).toMatch(/@media \(max-width:\s*48rem\)[\s\S]*grid-template-columns:\s*1fr/)
+    expect(cardSource).toMatch(/\.world-desk__preview\s*\{[\s\S]*max-height:\s*18rem;[\s\S]*overflow:\s*hidden;/)
   })
 
   it('renders the supported worlds in fixed order and requests one recent entry per world', async () => {
