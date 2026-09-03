@@ -1,10 +1,17 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { useThemeStore } from '../../stores/theme'
 import ThemePicker from './ThemePicker.vue'
+
+const site = vi.hoisted(() => ({ update: vi.fn() }))
+
+vi.mock('../../api/site', () => ({
+  getSiteSettings: vi.fn(),
+  updateSiteSettings: site.update,
+}))
 
 describe('ThemePicker', () => {
   it('shows the preserved 薰衣草 label in the theme picker', () => {
@@ -53,5 +60,27 @@ describe('ThemePicker', () => {
     }
 
     expect(wrapper.find('[data-theme-actions]').exists()).toBe(false)
+  })
+
+  it('closes the menu after the selected theme is saved', async () => {
+    site.update.mockResolvedValue({
+      default_theme: 'lamp',
+      revision: 2,
+      updated_at: '2026-09-03T00:00:00Z',
+    })
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useThemeStore().hydrate({ default_theme: 'ink', revision: 1, updated_at: '' })
+    const wrapper = mount(ThemePicker, { attachTo: document.body, global: { plugins: [pinia] } })
+
+    await wrapper.get('.theme-trigger').trigger('click')
+    await wrapper.get('[data-theme-option="lamp"]').trigger('click')
+    await wrapper.get('[data-theme-save]').trigger('click')
+    await flushPromises()
+    await nextTick()
+
+    expect(site.update).toHaveBeenCalledWith({ default_theme: 'lamp', revision: 1 })
+    expect(wrapper.get('.theme-menu').isVisible()).toBe(false)
+    wrapper.unmount()
   })
 })

@@ -46,7 +46,7 @@ const previewHtml = computed(() => {
 const leadText = computed(() => {
   if (props.snapshot.error) return props.snapshot.error
   if (props.snapshot.recentEntry) return props.snapshot.recentEntry.summary || '继续最近一次编辑。'
-  return props.definition.emptyCopy
+  return '还没有内容。开始第一篇。'
 })
 
 const enterLabel = computed(() => {
@@ -64,7 +64,6 @@ const enterLabel = computed(() => {
   >
     <div class="world-desk__topline">
       <div @click="emit('enter', definition.key)">
-        <p class="world-desk__eyebrow">{{ definition.directoryNoun }}</p>
         <h2>{{ snapshot.setting.nav_label }}</h2>
       </div>
       <UiButton
@@ -79,7 +78,7 @@ const enterLabel = computed(() => {
 
     <div class="world-desk__meta" @click="emit('enter', definition.key)">
       <span class="world-desk__status" data-world-status>{{ statusText }}</span>
-      <span>{{ snapshot.entryCount }} 篇{{ definition.directoryNoun }}</span>
+      <span>{{ snapshot.entryCount }} 篇内容</span>
       <span>{{ snapshot.categoryCount }} 个分类</span>
     </div>
 
@@ -94,7 +93,7 @@ const enterLabel = computed(() => {
       </template>
       <template v-else>
         <p class="world-desk__label">空白工作台</p>
-        <h3>{{ definition.createLabel }}</h3>
+        <h3>开始创作</h3>
       </template>
       <div
         v-if="previewHtml"
@@ -226,14 +225,6 @@ const enterLabel = computed(() => {
   font-family: var(--font-heading);
   font-size: clamp(1.4rem, 2vw, 1.8rem);
   line-height: 1.05;
-}
-
-.world-desk__eyebrow {
-  margin: 0 0 var(--space-2);
-  color: var(--c-ink-faint);
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .world-desk__settings {

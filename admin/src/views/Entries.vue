@@ -2,8 +2,9 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { categoriesApi, entriesApi, toUserMessage } from '../api'
-import type { Category, EntryListItem, EntryStatus, WorldKey } from '../types/api'
+import type { Category, EntryDetail, EntryListItem, EntryPatchFields, EntryStatus, WorldKey } from '../types/api'
 import EntryRow from '../components/EntryRow.vue'
+import ArticleSettings from '../components/writing/ArticleSettings.vue'
 
 /**
  * The article list: a todo queue first, an archive second.
@@ -33,6 +34,12 @@ const categories = ref<Category[]>([])
 const isLoading = ref(true)
 const loadError = ref<string | null>(null)
 const categoriesError = ref<string | null>(null)
+const settingsEntry = ref<EntryDetail | null>(null)
+const settingsCategories = ref<Category[]>([])
+const settingsPatch = ref<EntryPatchFields>({})
+const settingsOpen = ref(false)
+const settingsSaving = ref(false)
+const settingsError = ref<string | null>(null)
 
 const route = useRoute()
 const router = useRouter()
@@ -52,6 +59,7 @@ const totalPages = computed(() => (total.value === 0 ? 0 : Math.ceil(total.value
 const hasPrev = computed(() => page.value > 1)
 const hasNext = computed(() => page.value < totalPages.value)
 const isEmpty = computed(() => !isLoading.value && items.value.length === 0)
+const settingsDirty = computed(() => Object.keys(settingsPatch.value).length > 0)
 
 async function load(): Promise<void> {
   isLoading.value = true
@@ -182,6 +190,74 @@ const emptyMessage = computed(() => {
       return '还没有内容。写第一篇之后它会出现在这里。'
   }
 })
+
+async function openQuickSettings(item: EntryListItem): Promise<void> {
+  settingsError.value = null
+  try {
+    const detail = await entriesApi.getEntry(item.id)
+    const itemCategories = await categoriesApi.listCategoriesAdmin({ world: detail.world })
+    settingsEntry.value = detail
+    settingsCategories.value = itemCategories
+    settingsPatch.value = {}
+    settingsOpen.value = true
+  } catch (cause) {
+    settingsError.value = toUserMessage(cause)
+  }
+}
+
+function updateQuickSettings(fields: EntryPatchFields): void {
+  if (!settingsEntry.value) return
+  settingsEntry.value = { ...settingsEntry.value, ...fields }
+  settingsPatch.value = { ...settingsPatch.value, ...fields }
+  settingsError.value = null
+}
+
+function closeQuickSettings(open: boolean): void {
+  if (open) return
+  settingsOpen.value = false
+  settingsEntry.value = null
+  settingsCategories.value = []
+  settingsPatch.value = {}
+  settingsError.value = null
+}
+
+async function saveQuickSettings(): Promise<void> {
+  const entry = settingsEntry.value
+  if (!entry || !settingsDirty.value || settingsSaving.value) return
+
+  settingsSaving.value = true
+  settingsError.value = null
+  try {
+    const saved = await entriesApi.updateEntry(entry.id, {
+      revision: entry.revision,
+      ...settingsPatch.value,
+    })
+    const category = settingsCategories.value.find((item) => item.id === saved.category_id) ?? null
+    settingsEntry.value = { ...saved, category }
+    settingsPatch.value = {}
+    items.value = items.value.map((item) => (item.id === saved.id ? { ...saved, category } : item))
+  } catch (cause) {
+    settingsError.value = toUserMessage(cause)
+  } finally {
+    settingsSaving.value = false
+  }
+}
+
+async function deleteFromSettings(): Promise<void> {
+  const entry = settingsEntry.value
+  if (!entry || settingsSaving.value) return
+  settingsSaving.value = true
+  settingsError.value = null
+  try {
+    await entriesApi.deleteEntry(entry.id)
+    closeQuickSettings(false)
+    await load()
+  } catch (cause) {
+    settingsError.value = toUserMessage(cause)
+  } finally {
+    settingsSaving.value = false
+  }
+}
 </script>
 
 <template>
@@ -258,7 +334,7 @@ const emptyMessage = computed(() => {
 
     <template v-else>
       <ul class="list">
-        <EntryRow v-for="item in items" :key="item.id" :entry="item" />
+        <EntryRow v-for="item in items" :key="item.id" :entry="item" @settings="openQuickSettings" />
       </ul>
 
       <!-- Shown only when there is more than one page. A pager reading
@@ -270,6 +346,25 @@ const emptyMessage = computed(() => {
       </nav>
       <p v-else class="count">共 {{ total }} 条</p>
     </template>
+
+    <p v-if="settingsError && !settingsOpen" class="alert" role="alert">{{ settingsError }}</p>
+
+    <ArticleSettings
+      v-if="settingsEntry"
+      :open="settingsOpen"
+      :entry="settingsEntry"
+      :categories="settingsCategories"
+      :disabled="settingsSaving"
+      :dirty="settingsDirty"
+      :saving="settingsSaving"
+      :save-error="settingsError"
+      :show-rich-actions="false"
+      saveable
+      @update:open="closeQuickSettings"
+      @update="updateQuickSettings"
+      @save="saveQuickSettings"
+      @delete="deleteFromSettings"
+    />
   </div>
 </template>
 

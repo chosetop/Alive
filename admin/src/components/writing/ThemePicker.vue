@@ -56,6 +56,7 @@ async function save(): Promise<void> {
   error.value = null
   try {
     await theme.saveDefault()
+    open.value = false
   } catch (saveFailure) {
     if ((saveFailure as { status?: number }).status === 409) {
       try {
@@ -63,6 +64,7 @@ async function save(): Promise<void> {
         theme.hydrate(await getSiteSettings())
         theme.previewTheme(desired)
         await theme.saveDefault()
+        open.value = false
         return
       } catch (retryFailure) {
         error.value = toUserMessage(retryFailure)

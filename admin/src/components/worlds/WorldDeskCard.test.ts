@@ -75,6 +75,22 @@ describe('WorldDeskCard', () => {
     expect(wrapper.emitted('settings')).toEqual([['journal']])
   })
 
+  it('uses only the author-defined world name inside the card', () => {
+    const wrapper = mount(WorldDeskCard, {
+      props: {
+        definition: ADMIN_WORLD_REGISTRY[0],
+        snapshot: snapshot({
+          setting: { ...setting(), nav_label: '随手记' },
+          entryCount: 12,
+        }),
+      },
+    })
+
+    expect(wrapper.get('h2').text()).toBe('随手记')
+    expect(wrapper.text()).toContain('12 篇内容')
+    expect(wrapper.text()).not.toContain('日志')
+  })
+
   it('keeps settings and enter as separate focusable buttons in visual order', () => {
     const wrapper = mount(WorldDeskCard, {
       props: {
@@ -141,14 +157,14 @@ describe('WorldDeskCard', () => {
     expect(wrapper.emitted('retry')).toEqual([['journal']])
   })
 
-  it('shows the exact empty-state copy for every world', () => {
-    const expectedCopies = [
-      ['journal', '日志', '还没有日志。写下第一篇。'],
-      ['saying', '片语', '还没有片语。先记下一句话。'],
-      ['video', '影像', '还没有影像。选择一段视频开始。'],
+  it('uses a world-neutral empty state beneath every author-defined name', () => {
+    const worlds = [
+      ['journal', '手记'],
+      ['saying', '闪念'],
+      ['video', '镜头'],
     ] as const
 
-    for (const [world, label, copy] of expectedCopies) {
+    for (const [world, label] of worlds) {
       const definition = ADMIN_WORLD_REGISTRY.find((item) => item.key === world)
       expect(definition).toBeTruthy()
       const wrapper = mount(WorldDeskCard, {
@@ -163,7 +179,9 @@ describe('WorldDeskCard', () => {
         },
       })
 
-      expect(wrapper.text()).toContain(copy)
+      expect(wrapper.get('h2').text()).toBe(label)
+      expect(wrapper.text()).toContain('还没有内容。开始第一篇。')
+      expect(wrapper.text()).not.toContain(ADMIN_WORLD_REGISTRY.find((item) => item.key === world)!.label)
       wrapper.unmount()
     }
   })

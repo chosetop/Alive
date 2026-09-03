@@ -15,8 +15,21 @@ const props = withDefaults(
     categories?: Category[]
     tags?: Tag[]
     disabled?: boolean
+    saveable?: boolean
+    dirty?: boolean
+    saving?: boolean
+    saveError?: string | null
+    showRichActions?: boolean
   }>(),
-  { categories: () => [], disabled: false },
+  {
+    categories: () => [],
+    disabled: false,
+    saveable: false,
+    dirty: false,
+    saving: false,
+    saveError: null,
+    showRichActions: true,
+  },
 )
 
 const emit = defineEmits<{
@@ -25,6 +38,7 @@ const emit = defineEmits<{
   revision: [number]
   'tags-saved': [revision: number, tags: Tag[]]
   delete: []
+  save: []
 }>()
 
 const confirmingDelete = ref(false)
@@ -96,7 +110,7 @@ function confirmDelete(): void {
 
       <label class="field" for="e-cover">封面 URL</label>
       <input id="e-cover" type="url" :value="entry.cover_url" placeholder="https://…" :disabled="disabled" @input="update({ cover_url: ($event.target as HTMLInputElement).value })" />
-      <MediaUpload v-if="entry.id > 0 && entry.world === 'journal'" :entry-id="entry.id" :disabled="disabled" @uploaded="update({ cover_url: $event.url })" />
+      <MediaUpload v-if="showRichActions && entry.id > 0 && entry.world === 'journal'" :entry-id="entry.id" :disabled="disabled" @uploaded="update({ cover_url: $event.url })" />
 
       <label class="field" for="e-happened">发生时间</label>
       <input id="e-happened" type="datetime-local" :value="toFormDateTime(entry.happened_at)" :disabled="disabled" @input="update({ happened_at: ($event.target as HTMLInputElement).value === '' ? '0001-01-01T00:00:00Z' : fromFormDateTime(($event.target as HTMLInputElement).value) })" />
@@ -109,7 +123,7 @@ function confirmDelete(): void {
         </label>
       </fieldset>
 
-      <section v-if="entry.world === 'journal' && tags" class="settings-section" aria-label="文章标签">
+      <section v-if="showRichActions && entry.world === 'journal' && tags" class="settings-section" aria-label="文章标签">
         <h3>标签</h3>
         <TagPicker
           :entry-id="entry.id"
@@ -119,6 +133,13 @@ function confirmDelete(): void {
           @saved="(revision, nextTags) => emit('tags-saved', revision, nextTags)"
         />
       </section>
+
+      <div v-if="saveable" class="article-settings__save">
+        <p v-if="saveError" class="article-settings__error" role="alert">{{ saveError }}</p>
+        <UiButton variant="primary" data-settings-save :loading="saving" :disabled="disabled || !dirty" @click="emit('save')">
+          {{ saving ? '保存中…' : '保存修改' }}
+        </UiButton>
+      </div>
 
       <div class="article-settings__danger">
         <template v-if="confirmingDelete">
@@ -163,6 +184,8 @@ function confirmDelete(): void {
 .settings-section h3 { font-size: 0.8125rem; font-weight: 600; }
 .visibility-option { display: flex; align-items: center; gap: var(--space-2); min-height: 2.5rem; }
 .article-settings__danger { margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--c-line); }
+.article-settings__save { display: grid; gap: var(--space-2); margin-top: var(--space-4); }
+.article-settings__error { color: var(--c-danger); font-size: 0.8125rem; }
 .article-settings__danger p { margin-bottom: var(--space-3); color: var(--c-danger); font-size: 0.8125rem; text-wrap: pretty; }
 .article-settings__danger-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 

@@ -3,15 +3,8 @@ import { computed } from 'vue'
 import type { EntryListItem, WorldKey } from '../types/api'
 import { UiIcon } from './ui'
 
-/**
- * One row of the article list.
- *
- * Read-only for now. Publish, unpublish, archive and delete are all real
- * endpoints, but wiring them here before the editor exists would give the
- * screen buttons that change state with no way to look at what changed first.
- */
-
 const props = defineProps<{ entry: EntryListItem }>()
+const emit = defineEmits<{ settings: [EntryListItem] }>()
 
 const STATUS_LABEL: Record<EntryListItem['status'], string> = {
   draft: '草稿',
@@ -76,20 +69,18 @@ function formatDate(value: string): string {
 
 <template>
   <li class="row">
-    <div class="main">
-      <div class="head">
-        <RouterLink class="title" :to="{ name: 'entry-edit', params: { id: entry.id } }">
-          <span>{{ entry.title || '未命名草稿' }}</span><UiIcon class="title-icon" name="chevron-right" />
-        </RouterLink>
+    <button class="main" type="button" data-entry-settings @click="emit('settings', entry)">
+      <span class="head">
+        <span class="title">{{ entry.title || '未命名草稿' }}</span>
         <span class="badge" :class="`badge--${entry.status}`" :data-status="entry.status">{{
           STATUS_LABEL[entry.status]
         }}</span>
         <span v-if="visibilityLabel" class="badge badge--muted">{{ visibilityLabel }}</span>
-      </div>
+      </span>
 
-      <p v-if="entry.summary" class="summary">{{ entry.summary }}</p>
+      <span v-if="entry.summary" class="summary">{{ entry.summary }}</span>
 
-      <div class="meta">
+      <span class="meta">
         <span class="type">{{ WORLD_LABEL[entry.world] }}</span>
         <code v-if="entry.slug" class="slug metadata-secondary">{{ entry.slug }}</code>
         <!-- Uncategorised is a normal state, so it is stated rather than left
@@ -98,24 +89,45 @@ function formatDate(value: string): string {
         <span v-else class="cat cat--none metadata-secondary">未分类</span>
         <span class="words metadata-secondary">{{ entry.word_count }} 字</span>
         <span class="time">{{ timeLabel.prefix }} {{ timeLabel.value }}</span>
-      </div>
-    </div>
+      </span>
+    </button>
+    <RouterLink class="body-edit" data-body-edit :to="{ name: 'entry-edit', params: { id: entry.id } }">
+      编辑正文<UiIcon class="body-edit__icon" name="chevron-right" />
+    </RouterLink>
   </li>
 </template>
 
 <style scoped>
 .row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   padding: var(--space-4);
   transition: background-color var(--motion-fast) ease;
 }
+
+.row:hover { background: var(--c-surface-sunken); }
 
 .row + .row {
   border-top: 1px solid var(--c-line);
 }
 
 .main {
+  display: block;
+  flex: 1;
   min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: transform var(--motion-fast) ease;
 }
+
+.main:focus-visible { outline: 2px solid var(--c-focus); outline-offset: 0.25rem; }
+.main:active { transform: scale(0.995); }
 
 .head {
   display: flex;
@@ -139,11 +151,26 @@ function formatDate(value: string): string {
   text-decoration: none;
 }
 
-.title-icon { width: 0.875rem; height: 0.875rem; }
+.body-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+  min-height: 2.25rem;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-control);
+  color: var(--c-ink-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.body-edit:hover { background: var(--c-surface-sunken); color: var(--c-ink); text-decoration: none; }
+.body-edit__icon { width: 0.75rem; height: 0.75rem; }
 
 @media (max-width: 40rem) {
   .metadata-secondary { display: none; }
   .meta { gap: var(--space-2); }
+  .body-edit { min-height: 2.75rem; }
 }
 
 .badge {
@@ -173,6 +200,7 @@ function formatDate(value: string): string {
 }
 
 .summary {
+  display: block;
   margin-bottom: var(--space-2);
   color: var(--c-ink-muted);
   font-size: 0.875rem;

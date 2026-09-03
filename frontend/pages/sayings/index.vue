@@ -92,12 +92,7 @@ useHead({
 <template>
   <div class="sayings-page">
     <header class="head">
-      <div>
-        <p class="kicker">片语</p>
         <h1 ref="heading" tabindex="-1" class="title">片语</h1>
-        <p class="desc">让句子保持轻一点，只展示内容本身。</p>
-      </div>
-
       <SayingViewPicker :view="view" @change="choose" />
     </header>
 
@@ -125,7 +120,7 @@ useHead({
 
 .head {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-6);
 }

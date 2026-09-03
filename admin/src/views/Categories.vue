@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { buildCategoryPatch, categoriesApi, isEmptyPatch, toUserMessage, worldsApi } from '../api'
-import type { Category, WorldKey, WorldStatus } from '../types/api'
+import { buildCategoryPatch, categoriesApi, isEmptyPatch, toUserMessage } from '../api'
+import type { Category, WorldKey } from '../types/api'
 import CategoryForm from '../components/CategoryForm.vue'
 import { UiButton, UiIcon } from '../components/ui'
 
@@ -16,7 +16,11 @@ import { UiButton, UiIcon } from '../components/ui'
 
 const items = ref<Category[]>([])
 const selectedWorld = ref<WorldKey>('journal')
-const worldStatus = ref<WorldStatus | null>(null)
+const WORLD_OPTIONS: ReadonlyArray<{ key: WorldKey; label: string }> = [
+  { key: 'journal', label: '日志' },
+  { key: 'saying', label: '片语' },
+  { key: 'video', label: '影像' },
+]
 const isLoading = ref(true)
 /** Load failure. Kept apart from `formError` so a failed save cannot blank the list. */
 const loadError = ref<string | null>(null)
@@ -46,24 +50,20 @@ async function load(): Promise<void> {
   }
 }
 
-async function loadWorldStatus(): Promise<void> {
-  try {
-    const settings = await worldsApi.listAdminWorlds()
-    worldStatus.value = settings.find((item) => item.world === selectedWorld.value)?.status ?? null
-  } catch {
-    worldStatus.value = null
-  }
-}
-
 onMounted(() => {
   void load()
-  void loadWorldStatus()
 })
 
 function openCreate(): void {
   formError.value = null
   fieldErrors.value = {}
   editing.value = 'new'
+}
+
+function selectWorld(world: WorldKey): void {
+  if (selectedWorld.value === world) return
+  selectedWorld.value = world
+  void load()
 }
 
 function openEdit(item: Category): void {
@@ -150,24 +150,26 @@ async function handleDelete(id: number): Promise<void> {
     <header class="head" data-page-header>
       <div class="head-copy">
         <h1 class="title">分类</h1>
-        <p class="subtitle">分类是站点导航，不是内容。超过两层就是你自己都记不住的信号。</p>
-        <p v-if="worldStatus" class="world-status" data-world-status>
-          当前世界：{{ worldStatus === 'open' ? '已开放' : worldStatus === 'hidden' ? '暂时隐藏' : '未开放' }}。分类可以提前配置，开放后会显示在站点导航中。
-        </p>
       </div>
       <UiButton variant="primary" data-primary-action :disabled="editing !== null" @click="openCreate">
         <UiIcon class="button-icon" name="plus" />新建分类
       </UiButton>
     </header>
 
-    <label class="world-field">
-      <span class="world-field__label">世界</span>
-      <select class="world-field__input" :value="selectedWorld" @change="selectedWorld = ($event.target as HTMLSelectElement).value as WorldKey; void load(); void loadWorldStatus()">
-        <option value="journal">日志</option>
-        <option value="saying">片语</option>
-        <option value="video">影像</option>
-      </select>
-    </label>
+    <div class="world-filter" data-world-filter role="group" aria-label="按世界筛选">
+      <button
+        v-for="option in WORLD_OPTIONS"
+        :key="option.key"
+        class="world-filter__option"
+        :class="{ 'world-filter__option--active': selectedWorld === option.key }"
+        type="button"
+        :data-world-option="option.key"
+        :aria-pressed="selectedWorld === option.key"
+        @click="selectWorld(option.key)"
+      >
+        {{ option.label }}
+      </button>
+    </div>
 
     <CategoryForm
       v-if="editing !== null"
@@ -246,16 +248,62 @@ async function handleDelete(id: number): Promise<void> {
   letter-spacing: -0.02em;
 }
 
-.subtitle {
-  margin: 0;
-  color: var(--c-ink-muted);
-  font-size: 0.875rem;
+.world-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 2.75rem;
+  margin-bottom: var(--space-5);
+  padding: 0.25rem;
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-control);
+  background: var(--c-surface-sunken);
 }
 
-.world-status {
-  margin: var(--space-2) 0 0;
-  color: var(--c-ink-faint);
-  font-size: 0.8125rem;
+.world-filter__option {
+  min-width: 4rem;
+  min-height: 2.25rem;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: calc(var(--radius-control) - 0.25rem);
+  background: transparent;
+  color: var(--c-ink-muted);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: color var(--motion-fast) ease, background-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease, transform var(--motion-fast) ease;
+}
+
+.world-filter__option:hover {
+  color: var(--c-ink);
+}
+
+.world-filter__option:active {
+  transform: scale(0.96);
+}
+
+.world-filter__option:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 1px;
+}
+
+.world-filter__option--active {
+  background: var(--c-surface);
+  box-shadow: var(--shadow-control);
+  color: var(--c-ink);
+  font-weight: 500;
+}
+
+@media (max-width: 30rem) {
+  .world-filter {
+    display: flex;
+    width: 100%;
+  }
+
+  .world-filter__option {
+    flex: 1;
+    min-width: 0;
+  }
 }
 
 .alert {

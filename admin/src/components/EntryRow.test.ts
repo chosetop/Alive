@@ -34,6 +34,18 @@ describe('EntryRow', () => {
     // If a status becomes plain, unstructured text, it loses the stable visual
     // and semantic boundary the list uses to distinguish the authoring queue.
     expect(wrapper.get('[data-status="draft"]').text()).toBe('草稿')
-    expect(wrapper.get('.title').find('svg').exists()).toBe(true)
+    expect(wrapper.get('[data-body-edit]').find('svg').exists()).toBe(true)
+  })
+
+  it('opens quick settings from the row and keeps body editing separate', async () => {
+    const wrapper = mount(EntryRow, {
+      props: { entry },
+      global: { stubs: { RouterLink: { props: ['to'], template: '<a data-body-edit><slot /></a>' } } },
+    })
+
+    await wrapper.get('[data-entry-settings]').trigger('click')
+
+    expect(wrapper.emitted('settings')).toEqual([[entry]])
+    expect(wrapper.get('[data-body-edit]').text()).toBe('编辑正文')
   })
 })

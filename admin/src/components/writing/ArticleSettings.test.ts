@@ -71,6 +71,16 @@ describe('ArticleSettings', () => {
     expect(wrapper.emitted('update')).toEqual([[{ slug: 'new-slug' }]])
   })
 
+  it('offers an explicit save action when used as a quick-settings drawer', async () => {
+    const wrapper = mount(ArticleSettings, {
+      props: { open: true, entry, categories, saveable: true, dirty: true },
+    })
+
+    await wrapper.get('[data-settings-save]').trigger('click')
+
+    expect(wrapper.emitted('save')).toEqual([[]])
+  })
+
   it('does not render the legacy type control', () => {
     const wrapper = mount(ArticleSettings, {
       props: { open: true, entry, categories },

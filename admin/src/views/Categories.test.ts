@@ -61,6 +61,10 @@ describe('Categories', () => {
     // header, rather than becoming a decorative card link.
     expect(wrapper.find('[data-page-header]').exists()).toBe(true)
     expect(wrapper.get('[data-primary-action]').text()).toBe('新建分类')
+    expect(wrapper.find('.subtitle').exists()).toBe(false)
+    expect(wrapper.find('[data-world-status]').exists()).toBe(false)
+    expect(wrapper.get('[data-world-filter]').attributes('role')).toBe('group')
+    expect(wrapper.find('[data-world-filter] select').exists()).toBe(false)
 
     await wrapper.get('[data-primary-action]').trigger('click')
     expect(wrapper.find('form').exists()).toBe(true)
@@ -85,5 +89,20 @@ describe('Categories', () => {
       description: '',
       sort_order: 0,
     })
+  })
+
+  it('switches worlds with three separate segmented buttons', async () => {
+    const wrapper = mountCategories()
+    await flushPromises()
+
+    const options = wrapper.findAll('[data-world-option]')
+    expect(options.map((option) => option.text())).toEqual(['日志', '片语', '影像'])
+    expect(wrapper.get('[data-world-option="journal"]').attributes('aria-pressed')).toBe('true')
+
+    await wrapper.get('[data-world-option="saying"]').trigger('click')
+    await flushPromises()
+
+    expect(api.listCategoriesAdmin).toHaveBeenLastCalledWith({ world: 'saying' })
+    expect(wrapper.get('[data-world-option="saying"]').attributes('aria-pressed')).toBe('true')
   })
 })

@@ -201,13 +201,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="pageRoot" class="page">
-    <header class="head">
-      <div>
-        <h1 class="title">内容世界</h1>
-        <p class="subtitle">回到你上次停笔的地方。</p>
-      </div>
-    </header>
-
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
     <p v-if="isLoading" class="state">载入中…</p>
 
