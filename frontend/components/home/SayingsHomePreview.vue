@@ -19,14 +19,13 @@ const previewItems = computed(() => props.items.slice(0, 3))
     </div>
 
     <div class="stack">
-      <NuxtLink
+      <div
         v-for="item in previewItems"
         :key="item.short_id"
-        :to="`/sayings/${item.short_id}`"
         class="item"
       >
         {{ markdownToText(item.content_md, 70) }}
-      </NuxtLink>
+      </div>
     </div>
   </section>
 </template>
@@ -55,10 +54,14 @@ const previewItems = computed(() => props.items.slice(0, 3))
 }
 
 .item {
+  width: 100%;
   padding-block: var(--space-3);
+  border-inline: 0;
+  border-top: 0;
   border-bottom: 1px solid var(--c-line);
+  background: none;
   color: inherit;
   line-height: 1.7;
-  text-decoration: none;
+  text-align: left;
 }
 </style>

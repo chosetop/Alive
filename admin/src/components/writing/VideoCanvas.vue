@@ -20,13 +20,13 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <section class="video-canvas" data-video-canvas>
+    <section class="video-canvas" data-video-canvas>
     <header class="video-canvas__meta">
       <p class="video-canvas__eyebrow">影像工作台</p>
-      <p class="video-canvas__context">先安放画面，再补充标题与说明。</p>
     </header>
 
-    <section class="video-canvas__viewfinder" data-video-viewfinder data-aspect="16:9">
+      <div class="video-canvas__layout" data-media-layout>
+      <section class="video-canvas__viewfinder" data-video-viewfinder data-aspect="16:9">
       <div v-if="props.entry" class="video-canvas__upload-shell">
         <VideoUpload
           :entry-id="props.entry.id"
@@ -38,9 +38,8 @@ const emit = defineEmits<{
       </div>
       <div v-else class="video-canvas__empty" data-video-empty>
         <strong>主视频会出现在这里</strong>
-        <p>首次有意义输入后创建草稿，随后这里会出现选择视频、上传进度和播放预览。</p>
       </div>
-    </section>
+      </section>
 
     <div class="video-canvas__fields">
       <input
@@ -61,7 +60,8 @@ const emit = defineEmits<{
         placeholder="写下这一段画面的说明、旁白或拍摄线索"
         @input="emit('update:summary', ($event.target as HTMLTextAreaElement).value)"
       />
-    </div>
+      </div>
+      </div>
   </section>
 </template>
 
@@ -70,6 +70,13 @@ const emit = defineEmits<{
   display: grid;
   gap: var(--space-4);
   min-width: 0;
+}
+
+.video-canvas__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(18rem, 0.8fr);
+  align-items: start;
+  gap: var(--space-5);
 }
 
 .video-canvas__meta {
@@ -145,6 +152,10 @@ const emit = defineEmits<{
   background: var(--c-paper);
 }
 
+.video-canvas__fields {
+  min-width: 0;
+}
+
 .video-canvas__title,
 .video-canvas__summary {
   width: 100%;
@@ -181,7 +192,11 @@ const emit = defineEmits<{
   line-height: 1.8;
 }
 
-@media (max-width: 40rem) {
+@media (max-width: 48rem) {
+  .video-canvas__layout {
+    grid-template-columns: 1fr;
+  }
+
   .video-canvas__viewfinder {
     min-height: 14rem;
     padding: var(--space-3);

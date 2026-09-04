@@ -15,6 +15,7 @@ const api = vi.hoisted(() => ({
   createEntry: vi.fn(),
   updateEntry: vi.fn(),
   publishEntry: vi.fn(),
+  listEntriesAdmin: vi.fn(),
 }))
 
 const navigation = vi.hoisted(() => ({
@@ -31,6 +32,7 @@ vi.mock('../api', async () => {
       createEntry: api.createEntry,
       updateEntry: api.updateEntry,
       publishEntry: api.publishEntry,
+      listEntriesAdmin: api.listEntriesAdmin,
     },
   }
 })
@@ -40,6 +42,7 @@ vi.mock('vue-router', async (importOriginal) => {
   return {
     ...actual,
     useRouter: () => ({ push: navigation.push }),
+    useRoute: () => ({ query: {} }),
     onBeforeRouteLeave: (guard: () => Promise<boolean | void>) => {
       navigation.leaveGuard = guard
     },
@@ -128,6 +131,7 @@ describe('SayingEditor', () => {
       }),
     )
     api.publishEntry.mockResolvedValue(entry({ status: 'published', revision: 4 }))
+    api.listEntriesAdmin.mockResolvedValue({ data: [], meta: { page: 1, page_size: 20, total: 0 } })
   })
 
   afterEach(() => {
@@ -150,6 +154,14 @@ describe('SayingEditor', () => {
     expect(wrapper.findAll('[data-save-status]')).toHaveLength(1)
   })
 
+  it('exposes a split writing layout with settings separated from the body', async () => {
+    const wrapper = await mountEditor(entry({ id: 77 }))
+
+    expect(wrapper.get('[data-saying-layout]').classes()).toContain('saying-layout')
+    expect(wrapper.find('[data-saying-body-panel]').exists()).toBe(true)
+    expect(wrapper.find('[data-saying-settings]').exists()).toBe(true)
+  })
+
   it('passes the current entry status into the shared header without exposing long-form actions', async () => {
     const wrapper = await mountEditor(entry({ id: 79, status: 'published' }))
 
@@ -164,9 +176,20 @@ describe('SayingEditor', () => {
 
     expect(wrapper.find('button[aria-expanded]').exists()).toBe(false)
     expect(wrapper.find('[data-saying-settings]').exists()).toBe(true)
-    expect(wrapper.get('input[aria-label="片语 slug"]')).toBeTruthy()
+    expect(wrapper.find('input[aria-label="片语 slug"]').exists()).toBe(false)
     expect(wrapper.get('select[aria-label="公开状态"]')).toBeTruthy()
     expect(wrapper.get('[data-tag-picker]')).toBeTruthy()
+  })
+
+  it('refreshes the directory after publishing a saying', async () => {
+    const current = entry({ id: 81, revision: 3 })
+    api.publishEntry.mockResolvedValue(entry({ ...current, status: 'published', revision: 4 }))
+    const wrapper = await mountEditor(current)
+
+    await wrapper.find('[data-publish]').trigger('click')
+    await flushPromises()
+
+    expect(api.listEntriesAdmin).toHaveBeenCalledWith({ world: 'saying', page_size: 20 })
   })
 
   it('drops the desktop note shadow on narrow screens', () => {
@@ -176,28 +199,50 @@ describe('SayingEditor', () => {
     expect(source).toMatch(/@media \(max-width:\s*48rem\)[\s\S]*\.saying-note\s*\{[\s\S]*box-shadow:\s*none/)
   })
 
+  it('keeps the note and settings at one height while allowing the body to grow', () => {
+    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'SayingEditor.vue'), 'utf8')
+
+    expect(source).toMatch(/\.saying-editor\s*\{[\s\S]*align-items:\s*stretch/)
+    expect(source).toMatch(/function resizeBody\(\): void\s*\{[\s\S]*scrollHeight/)
+    expect(source).toMatch(/@input="handleBodyInput"/)
+    expect(source).toMatch(/\.body\s*\{[\s\S]*overflow:\s*hidden[\s\S]*resize:\s*none/)
+  })
+
+  it('uses a lighter paper surface for saying settings', () => {
+    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'SayingEditor.vue'), 'utf8')
+
+    expect(source).toMatch(/\.saying-settings\s*\{[\s\S]*background:\s*color-mix\(/)
+    expect(source).not.toMatch(/\.saying-settings\s*\{[\s\S]*background:\s*var\(--c-surface-sunken\)/)
+  })
+
   it('registers a flush gate and uses the same save path for route updates', async () => {
     const gate = ref<(() => Promise<void>) | null>(null)
     const wrapper = await mountEditor(entry({ id: 73, revision: 5, content_md: '旧句' }), gate)
 
     await wrapper.get('textarea[aria-label="片语正文"]').setValue('新句子')
-    await wrapper.get('input[aria-label="片语 slug"]').setValue('new-saying')
     await gate.value?.()
     await flushPromises()
 
     expect(api.updateEntry).toHaveBeenCalledWith(73, {
       revision: 5,
-      slug: 'new-saying',
       content_md: '新句子',
       visibility: 'public',
       meta: { source: '摘录', author: '某人' },
     })
 
     await expect(navigation.updateGuard?.()).resolves.toBeUndefined()
-    expect(api.updateEntry).toHaveBeenCalledTimes(2)
+    expect(api.updateEntry).toHaveBeenCalledTimes(1)
   })
 
-  it('generates a stable saying slug when the created draft has none', async () => {
+  it('does not save an unchanged saying while leaving the editor', async () => {
+    await mountEditor(entry({ id: 75, content_md: '未修改的片语' }))
+
+    await expect(navigation.updateGuard?.()).resolves.toBeUndefined()
+
+    expect(api.updateEntry).not.toHaveBeenCalled()
+  })
+
+  it('does not generate or save a slug for a saying draft', async () => {
     api.createEntry.mockResolvedValue(entry({ id: 92, revision: 1, slug: '' }))
     const gate = ref<(() => Promise<void>) | null>(null)
     const wrapper = await mountEditor(undefined, gate)
@@ -209,7 +254,6 @@ describe('SayingEditor', () => {
 
     expect(api.updateEntry).toHaveBeenCalledWith(92, {
       revision: 1,
-      slug: 'saying-92',
       content_md: '自动生成链接',
       visibility: 'public',
       meta: { source: '', author: '' },
@@ -245,7 +289,6 @@ describe('SayingEditor', () => {
     expect(api.createEntry).toHaveBeenCalledTimes(2)
     expect(api.updateEntry).toHaveBeenCalledWith(91, {
       revision: 1,
-      slug: 'saying-entry',
       content_md: '重试后的句子',
       visibility: 'public',
       meta: { source: '', author: '' },

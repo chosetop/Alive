@@ -2,10 +2,10 @@
 import type { TaggedEntry } from '~/types'
 const props = defineProps<{ item: TaggedEntry }>()
 const known = ['journal', 'saying', 'video'].includes(props.item.world)
-const href = props.item.world === 'journal' ? `/journal/${props.item.slug}` : props.item.world === 'saying' && props.item.saying ? `/sayings/${props.item.saying.short_id}` : `/videos/${props.item.slug}`
+const href = props.item.world === 'journal' ? `/journal/${props.item.slug}` : `/videos/${props.item.slug}`
 </script>
 <template>
-  <component :is="known ? 'NuxtLink' : 'UnavailableWorldCard'" v-if="known" :to="href" class="card">
+  <component :is="known && item.world !== 'saying' ? 'NuxtLink' : 'UnavailableWorldCard'" v-if="known" :to="href" class="card">
     <span class="world">{{ item.world }}</span><h2>{{ item.title || item.saying?.content_md || item.slug }}</h2><p v-if="item.excerpt">{{ item.excerpt }}</p>
   </component>
   <UnavailableWorldCard v-else />

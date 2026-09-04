@@ -190,6 +190,7 @@ type entrySummary struct {
 	// publication time.
 	HappenedAt  *time.Time `json:"happened_at"`
 	PublishedAt *time.Time `json:"published_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // entryCategory is the category an entry belongs to, as an entry response carries
@@ -318,24 +319,30 @@ type ownerEntryDetail struct {
 // action addresses an entry by it, and status and visibility because a list that
 // shows drafts alongside published entries has to say which is which.
 //
-// Still no content_md: the admin list is a work queue, and the bodies belong to
-// the detail read.
+// Saying rows include content_md because the writing directory identifies them
+// by their body. Other worlds keep the field omitted.
 type adminEntrySummary struct {
 	entrySummary
 	ID         int64     `json:"id"`
 	Status     string    `json:"status"`
 	Visibility string    `json:"visibility"`
+	ContentMD  string    `json:"content_md,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // newAdminEntrySummary converts a domain entry into the admin list shape.
 func newAdminEntrySummary(e entry.Entry) adminEntrySummary {
+	contentMD := ""
+	if e.World == contentworld.Saying {
+		contentMD = e.ContentMD
+	}
 	return adminEntrySummary{
 		entrySummary: newEntrySummary(e),
 		ID:           e.ID,
 		Status:       string(e.Status),
 		Visibility:   string(e.Visibility),
+		ContentMD:    contentMD,
 		CreatedAt:    e.CreatedAt,
 		UpdatedAt:    e.UpdatedAt,
 	}
@@ -374,6 +381,7 @@ func newEntrySummary(e entry.Entry) entrySummary {
 		Category:    newEntryCategory(e),
 		HappenedAt:  optionalTime(e.HappenedAt),
 		PublishedAt: optionalTime(e.PublishedAt),
+		CreatedAt:   e.CreatedAt,
 	}
 }
 

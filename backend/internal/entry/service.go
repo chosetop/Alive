@@ -177,6 +177,13 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Entry, error) {
 	if err := s.validateCreate(&in); err != nil {
 		return Entry{}, err
 	}
+	if in.World == contentworld.Saying && in.Slug == "" {
+		generated, err := GenerateSayingShortID(nil)
+		if err != nil {
+			return Entry{}, err
+		}
+		in.Slug = generated
+	}
 
 	// Checked before the insert so that the common conflict produces a clear
 	// error. This is not the guarantee: two concurrent creates can both read

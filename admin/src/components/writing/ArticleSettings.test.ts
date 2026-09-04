@@ -41,6 +41,14 @@ const categories: Category[] = [
 ]
 
 describe('ArticleSettings', () => {
+  it('does not render slug settings for sayings', () => {
+    const wrapper = mount(ArticleSettings, {
+      props: { open: true, entry: { ...entry, world: 'saying' }, categories },
+    })
+
+    expect(wrapper.find('#e-slug').exists()).toBe(false)
+  })
+
   it('uses the shared writing-panel action hierarchy', () => {
     const wrapper = mount(ArticleSettings, {
       props: { open: true, entry, categories },

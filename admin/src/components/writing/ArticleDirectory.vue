@@ -84,6 +84,10 @@ const unsyncedIds = ref<Set<number>>(new Set())
 const isLoadingRecent = ref(true)
 const isSearching = ref(false)
 const isCreating = ref(false)
+const isDeleting = ref(false)
+const isManagingRecent = ref(false)
+const selectedRecentIds = ref<Set<number>>(new Set())
+const confirmingBulkDelete = ref(false)
 const error = ref<string | null>(null)
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
@@ -93,8 +97,9 @@ let disposed = false
 const trimmedQuery = computed(() => writing.searchQuery.trim())
 const isSearchMode = computed(() => trimmedQuery.value !== '')
 const visibleRecent = computed(() =>
-  recent.value.filter((item) => writing.directoryEntries.some((entry) => entry.id === item.id)),
+  writing.directoryEntries,
 )
+const selectedRecentCount = computed(() => selectedRecentIds.value.size)
 
 onMounted(() => {
   void loadRecent()
@@ -247,6 +252,7 @@ async function createArticle(): Promise<void> {
     const navigationResult = await router.push({
       name: worldDefinition.value.editorRouteName,
       params: { world: props.world },
+      query: props.world === 'saying' ? { new: String(Date.now()) } : undefined,
     })
     if (isNavigationFailure(navigationResult)) throw navigationResult
     if (props.drawer) writing.setDirectoryOpen(false)
@@ -254,6 +260,66 @@ async function createArticle(): Promise<void> {
     if (!disposed) error.value = '无法打开新的工作台，当前编辑状态未改变。'
   } finally {
     if (!disposed) isCreating.value = false
+  }
+}
+
+function toggleRecentManagement(): void {
+  isManagingRecent.value = !isManagingRecent.value
+  selectedRecentIds.value = new Set()
+  confirmingBulkDelete.value = false
+}
+
+function toggleRecentSelection(entryId: number): void {
+  if (!isManagingRecent.value) return
+  const selected = new Set(selectedRecentIds.value)
+  if (selected.has(entryId)) selected.delete(entryId)
+  else selected.add(entryId)
+  selectedRecentIds.value = selected
+}
+
+function nextEntryAfterBulkDelete(entryIds: Set<number>, activeEntryId: number): number | null {
+  const entries = writing.directoryEntries
+  const index = entries.findIndex((entry) => entry.id === activeEntryId)
+  if (index === -1) return null
+  return entries.slice(index + 1).find((entry) => !entryIds.has(entry.id))?.id
+    ?? entries.slice(0, index).reverse().find((entry) => !entryIds.has(entry.id))?.id
+    ?? null
+}
+
+function requestBulkDelete(): void {
+  if (selectedRecentCount.value > 0) confirmingBulkDelete.value = true
+}
+
+async function deleteSelectedRecent(): Promise<void> {
+  if (isDeleting.value || selectedRecentCount.value === 0) return
+  isDeleting.value = true
+  error.value = null
+  const selectedIds = new Set(selectedRecentIds.value)
+  const activeEntryId = writing.activeEntryId
+  const nextEntryId = activeEntryId !== null && selectedIds.has(activeEntryId)
+    ? nextEntryAfterBulkDelete(selectedIds, activeEntryId)
+    : null
+  try {
+    await flushActiveEntry()
+    for (const entryId of selectedIds) await entriesApi.deleteEntry(entryId)
+
+    recent.value = recent.value.filter((item) => !selectedIds.has(item.id))
+    writing.directoryEntries = writing.directoryEntries.filter((item) => !selectedIds.has(item.id))
+    selectedRecentIds.value = new Set()
+    confirmingBulkDelete.value = false
+
+    if (activeEntryId !== null && selectedIds.has(activeEntryId)) {
+      writing.setActiveEntry(null)
+      if (nextEntryId === null) {
+        await router.replace({ name: props.world === 'saying' ? 'saying-editor-new' : 'entry-new-world', params: { world: props.world }, query: props.world === 'saying' ? { new: String(Date.now()) } : undefined })
+      } else {
+        await router.replace({ name: 'entry-edit', params: { id: String(nextEntryId) } })
+      }
+    }
+  } catch (deleteFailure) {
+    error.value = toUserMessage(deleteFailure)
+  } finally {
+    isDeleting.value = false
   }
 }
 
@@ -280,6 +346,10 @@ async function flushActiveEntry(): Promise<void> {
 }
 
 function titleOf(item: EntryListItem): string {
+  if (props.world === 'saying') {
+    const excerpt = (item.content_md ?? '').replace(/[#*_>`]/g, '').trim()
+    if (excerpt !== '') return excerpt
+  }
   return item.title.trim() === '' ? UNTITLED : item.title
 }
 
@@ -368,7 +438,7 @@ function isUnsynced(item: EntryListItem): boolean {
               data-alive-cursor
               aria-hidden="true"
             />
-            <span class="item-title">{{ titleOf(item) }}</span>
+            <span :class="['item-title', { 'item-title--excerpt': world === 'saying' }]" :data-saying-excerpt="world === 'saying' ? true : undefined">{{ titleOf(item) }}</span>
             <span class="item-meta">
               <span>{{ STATUS_LABEL[item.status] }}</span>
               <span>{{ editedAt(item) }}</span>
@@ -385,17 +455,48 @@ function isUnsynced(item: EntryListItem): boolean {
 
     <template v-else>
       <section class="group" aria-labelledby="directory-recent-heading">
-        <h2 id="directory-recent-heading" class="group-title">最近</h2>
+        <div class="group-heading">
+          <h2 id="directory-recent-heading" class="group-title">最近</h2>
+          <div class="recent-actions">
+            <template v-if="confirmingBulkDelete">
+              <button type="button" class="manage-action manage-action--danger" data-recent-delete-confirm @click="deleteSelectedRecent">
+                确认删除 {{ selectedRecentCount }} 条
+              </button>
+              <button type="button" class="manage-action" @click="confirmingBulkDelete = false">取消</button>
+            </template>
+            <template v-else>
+              <button type="button" class="manage-action" data-recent-manage @click="toggleRecentManagement">
+                {{ isManagingRecent ? '完成' : '管理' }}
+              </button>
+              <button
+                v-if="isManagingRecent && selectedRecentCount > 0"
+                type="button"
+                class="manage-action manage-action--danger"
+                data-recent-delete
+                @click="requestBulkDelete"
+              >删除</button>
+            </template>
+          </div>
+        </div>
         <p v-if="isLoadingRecent" class="state">载入中…</p>
         <p v-else-if="visibleRecent.length === 0" class="state">还没有文章</p>
         <ul v-else class="list" data-directory-recent>
           <li v-for="item in visibleRecent" :key="item.id">
+            <input
+              v-if="isManagingRecent"
+              class="recent-checkbox"
+              type="checkbox"
+              :checked="selectedRecentIds.has(item.id)"
+              :data-recent-select="item.id"
+              :aria-label="`选择${titleOf(item)}`"
+              @change="toggleRecentSelection(item.id)"
+            />
             <button
-              class="item"
+              :class="['item', { 'item--selectable': isManagingRecent }]"
               type="button"
               :data-entry-id="item.id"
               :aria-current="item.id === writing.activeEntryId ? 'true' : undefined"
-              @click="openEntry(item.id)"
+              @click="isManagingRecent ? toggleRecentSelection(item.id) : openEntry(item.id)"
             >
               <span
                 v-if="item.id === writing.activeEntryId"
@@ -403,15 +504,15 @@ function isUnsynced(item: EntryListItem): boolean {
                 data-alive-cursor
                 aria-hidden="true"
               />
-              <span class="item-title">{{ titleOf(item) }}</span>
-              <span class="item-meta">
+                <span :class="['item-title', { 'item-title--excerpt': world === 'saying' }]" :data-saying-excerpt="world === 'saying' ? true : undefined">{{ titleOf(item) }}</span>
+                <span class="item-meta">
                 <span>{{ STATUS_LABEL[item.status] }}</span>
                 <span>{{ editedAt(item) }}</span>
                 <span v-if="isUnsynced(item)" class="dot" data-unsynced>
                   <span class="ui-visually-hidden">未同步</span>
                 </span>
-              </span>
-            </button>
+                </span>
+              </button>
           </li>
         </ul>
       </section>
@@ -448,7 +549,7 @@ function isUnsynced(item: EntryListItem): boolean {
                     data-alive-cursor
                     aria-hidden="true"
                   />
-                  <span class="item-title">{{ titleOf(item) }}</span>
+                  <span :class="['item-title', { 'item-title--excerpt': world === 'saying' }]" :data-saying-excerpt="world === 'saying' ? true : undefined">{{ titleOf(item) }}</span>
                   <span class="item-meta">
                     <span>{{ editedAt(item) }}</span>
                     <span v-if="isUnsynced(item)" class="dot" data-unsynced>
@@ -562,6 +663,47 @@ function isUnsynced(item: EntryListItem): boolean {
   text-transform: uppercase;
 }
 
+.group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.group-heading .group-title {
+  margin-bottom: 0;
+}
+
+.recent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.manage-action {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--c-ink-faint);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.manage-action:hover {
+  color: var(--c-ink);
+}
+
+.manage-action--danger {
+  color: var(--c-danger);
+}
+
+.manage-action--danger:hover {
+  color: var(--c-danger);
+}
+
 .list {
   display: flex;
   flex-direction: column;
@@ -569,6 +711,10 @@ function isUnsynced(item: EntryListItem): boolean {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.list > li {
+  position: relative;
 }
 
 .item {
@@ -603,6 +749,10 @@ function isUnsynced(item: EntryListItem): boolean {
   box-shadow: var(--shadow-control);
 }
 
+.item[aria-current='true'] .item-meta {
+  padding-inline-start: var(--space-2);
+}
+
 .item-cursor {
   position: absolute;
   top: 50%;
@@ -614,10 +764,57 @@ function isUnsynced(item: EntryListItem): boolean {
   transform: translateY(-50%);
 }
 
+.item-cursor + .item-title {
+  padding-inline-start: var(--space-2);
+}
+
+.recent-checkbox {
+  position: absolute;
+  inset-inline-start: var(--space-2);
+  top: 50%;
+  z-index: 1;
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--c-alive);
+  transform: translateY(-50%);
+}
+
+.item--selectable {
+  padding-inline-start: 2.75rem;
+}
+
+.item--selectable .item-cursor {
+  display: none;
+}
+
 .item-title {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.item-title--excerpt {
+  position: relative;
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.35;
+  line-clamp: 2;
+  text-overflow: clip;
+}
+
+.item-title--excerpt::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 45%;
+  height: 1.35em;
+  background: linear-gradient(90deg, transparent, var(--c-surface));
+  content: '';
+  pointer-events: none;
 }
 
 .item-meta {

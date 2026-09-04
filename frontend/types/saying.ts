@@ -7,8 +7,3 @@ export interface SayingListItem {
   author?: string
   category?: { id: number; name: string; slug: string } | null
 }
-
-export interface SayingDetail extends SayingListItem {
-  previous?: { short_id: string }
-  next?: { short_id: string }
-}

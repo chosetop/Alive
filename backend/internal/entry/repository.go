@@ -253,7 +253,7 @@ func (r *Repository) ListPublic(ctx context.Context, world contentworld.Key, cat
 			CategoryName: row.CategoryName, CategorySlug: row.CategorySlug,
 			World: row.World, Kind: row.Kind, Title: row.Title, Slug: row.Slug, Summary: row.Summary,
 			ContentMD: row.ContentMd,
-			CoverURL: row.CoverUrl, Status: row.Status, Visibility: row.Visibility,
+			CoverURL:  row.CoverUrl, Status: row.Status, Visibility: row.Visibility,
 			Meta: row.Meta, WordCount: row.WordCount, HappenedAt: row.HappenedAt,
 			PublishedAt: row.PublishedAt, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		}))
@@ -492,8 +492,8 @@ func (r *Repository) GetByID(ctx context.Context, id int64) (Entry, error) {
 // compares plain substrings, which is what an escaped pattern means, so it would
 // have to learn to strip backslashes if the service escaped instead.
 //
-// No ContentMD: the query does not select it, and the search deliberately does
-// not read it either.
+// Only saying rows carry ContentMD, because their body is the directory label.
+// Other worlds keep the list payload light and continue to identify rows by title.
 func (r *Repository) ListAdmin(ctx context.Context, world *contentworld.Key, categoryID int64, status *Status, search *string, limit, offset int) ([]Entry, int64, error) {
 	var filter *string
 	if status != nil {
@@ -537,13 +537,17 @@ func (r *Repository) ListAdmin(ctx context.Context, world *contentworld.Key, cat
 
 	entries := make([]Entry, 0, len(rows))
 	for _, row := range rows {
+		contentMD := ""
+		if row.ContentMd != nil {
+			contentMD = *row.ContentMd
+		}
 		entries = append(entries, entryFromRow(rowFields{
 			ID: row.ID, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
 			CategoryName: row.CategoryName, CategorySlug: row.CategorySlug,
 			World: row.World, Kind: row.Kind, Title: row.Title,
 			Slug: row.Slug, Summary: row.Summary, CoverURL: row.CoverUrl,
 			Status: row.Status, Visibility: row.Visibility, Meta: row.Meta,
-			WordCount: row.WordCount, HappenedAt: row.HappenedAt,
+			ContentMD: contentMD, WordCount: row.WordCount, HappenedAt: row.HappenedAt,
 			PublishedAt: row.PublishedAt, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		}))
 	}

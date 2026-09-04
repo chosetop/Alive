@@ -76,7 +76,7 @@ describe('VideoCanvas', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('首次有意义输入后创建草稿')
+    expect(wrapper.text()).toContain('主视频会出现在这里')
     expect(wrapper.findComponent({ name: 'VideoUpload' }).exists()).toBe(false)
   })
 
@@ -116,5 +116,13 @@ describe('VideoCanvas', () => {
     const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'VideoCanvas.vue'), 'utf8')
 
     expect(source).toMatch(/\.video-canvas__viewfinder\s*\{[\s\S]*aspect-ratio:\s*16\s*\/\s*9/)
+  })
+
+  it('uses a desktop split with a stable media column and a mobile fallback', () => {
+    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'VideoCanvas.vue'), 'utf8')
+
+    expect(source).toContain('data-media-layout')
+    expect(source).toMatch(/\.video-canvas__layout\s*\{[\s\S]*grid-template-columns:/)
+    expect(source).toMatch(/@media \(max-width: 48rem\)[\s\S]*\.video-canvas__layout\s*\{[\s\S]*grid-template-columns:\s*1fr/)
   })
 })

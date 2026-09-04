@@ -95,7 +95,6 @@ useHead({
           mainEntity: items.value.map((item) => ({
             '@type': 'SocialMediaPosting',
             articleBody: markdownToText(item.content_md, 280),
-            url: sayingsWorld?.entryPath(item.short_id) ?? `/sayings/${item.short_id}`,
           })),
         }),
       ),
@@ -118,7 +117,7 @@ useHead({
 
     <SayingStream v-if="view === 'stream'" :items="items" />
     <SayingWall v-else-if="view === 'wall'" :items="items" />
-    <SayingFocus v-else :items="items" />
+    <SayingStream v-else :items="items" />
 
     <p v-if="items.length === 0" class="empty">这个分类下还没有公开的片语。</p>
 

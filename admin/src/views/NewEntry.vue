@@ -29,7 +29,6 @@ function statusCopy(world: WorldKey): string | null {
   <div class="page">
     <header class="head">
       <h1 class="title">选择内容世界</h1>
-      <p class="subtitle">先决定这条内容属于哪个世界，再进入对应的创作界面。</p>
     </header>
 
     <div class="grid">

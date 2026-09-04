@@ -15,10 +15,7 @@ describe('SayingsHomePreview', () => {
     })
 
     expect(html).toContain('/sayings')
-    expect(html).toContain('href="/sayings/a1"')
-    expect(html).toContain('href="/sayings/b2"')
-    expect(html).toContain('href="/sayings/c3"')
-    expect(html).not.toContain('href="/sayings/d4"')
+    expect(html.match(/class="item"/g)).toHaveLength(3)
     expect(html).toContain('一')
     expect(html).toContain('二')
     expect(html).toContain('三')

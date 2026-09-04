@@ -73,4 +73,11 @@ describe('JournalCanvas', () => {
     expect(source).toMatch(/@media \(max-width:\s*40rem\)[\s\S]*\.journal-canvas__page\s*\{[\s\S]*padding-inline:\s*var\(--space-4\)/)
     expect(source).toMatch(/@media \(max-width:\s*40rem\)[\s\S]*\.journal-canvas__edge\s*\{[\s\S]*inset-inline-start:\s*var\(--space-4\)/)
   })
+
+  it('gives journal body text a more readable editorial scale', () => {
+    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'JournalCanvas.vue'), 'utf8')
+
+    expect(source).toMatch(/\.journal-canvas :deep\(\.editor-shell \.ProseMirror\)\s*\{[\s\S]*font-size:\s*1\.3rem/)
+    expect(source).toMatch(/\.journal-canvas :deep\(\.editor-shell \.ProseMirror p\)\s*\{[\s\S]*font-size:\s*1\.3rem/)
+  })
 })

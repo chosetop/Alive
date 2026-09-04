@@ -12,7 +12,6 @@ const emit = defineEmits<{
 const options: Array<{ view: SayingView; label: string }> = [
   { view: 'stream', label: '流式' },
   { view: 'wall', label: '纸片墙' },
-  { view: 'focus', label: '沉浸' },
 ]
 
 const currentLabel = computed(() => options.find((option) => option.view === props.view)?.label ?? '流式')

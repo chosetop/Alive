@@ -13,9 +13,9 @@ describe('getPublishChecks', () => {
     expect(checks.blockers.map((check) => check.field)).toEqual(['title', 'slug', 'content_md'])
   })
 
-  it('reports optional omissions as ordered reminders', () => {
+  it('does not require an empty happened-at value before publishing', () => {
     const checks = getPublishChecks({ ...complete, summary: '', category_id: 0, cover_url: '', happened_at: null })
-    expect(checks.reminders.map((check) => check.field)).toEqual(['summary', 'category_id', 'cover_url', 'happened_at'])
+    expect(checks.reminders.map((check) => check.field)).toEqual(['category_id'])
   })
 
   it('does not require markdown body content for video entries', () => {

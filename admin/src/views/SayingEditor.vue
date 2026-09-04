@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
-import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute } from 'vue-router'
 
 import { entriesApi, toUserMessage } from '../api'
 import { resolveAdminWorld } from '../content-worlds/registry'
 import TagPicker from '../components/writing/TagPicker.vue'
 import WorkspaceHeader from '../components/writing/WorkspaceHeader.vue'
-import { defaultEntrySlug } from '../editor/entry-slug'
 import type { Tag } from '../api/tags'
 import type { SaveStatus } from '../editor/save-coordinator'
 import type { EntryDetail, EntryVisibility } from '../types/api'
@@ -17,9 +16,10 @@ const props = defineProps<{
 }>()
 
 const writing = useWritingStore()
+const route = useRoute()
 const entry = ref<EntryDetail | null>(null)
 const content = ref('')
-const slug = ref('')
+const bodyElement = ref<HTMLTextAreaElement | null>(null)
 const source = ref('')
 const author = ref('')
 const visibility = ref<EntryVisibility>('public')
@@ -29,13 +29,11 @@ const isPublishing = ref(false)
 const error = ref<string | null>(null)
 const errorSource = ref<'save' | 'publish' | null>(null)
 const tags = ref<Tag[]>([])
-const copied = ref(false)
 const sayingWorldLabel = resolveAdminWorld('saying')?.label ?? '片语'
 const isTouched = computed(() => content.value.trim() !== '' || source.value.trim() !== '' || author.value.trim() !== '')
 const hasUnsavedChanges = computed(() => {
   if (!entry.value) return isTouched.value
   return content.value !== entry.value.content_md
-    || slug.value !== entry.value.slug
     || visibility.value !== entry.value.visibility
     || source.value.trim() !== (typeof entry.value.meta.source === 'string' ? entry.value.meta.source : '')
     || author.value.trim() !== (typeof entry.value.meta.author === 'string' ? entry.value.meta.author : '')
@@ -44,7 +42,6 @@ let creating: Promise<void> | null = null
 let saving: Promise<void> | null = null
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 
-const longFormWarning = computed(() => Array.from(content.value.trim()).length > 300)
 const saveStatus = computed<SaveStatus>(() => {
   if (error.value !== null && errorSource.value === 'save') return 'error'
   if (isSaving.value || isCreating.value) return 'saving'
@@ -60,6 +57,7 @@ onMounted(() => {
   writing.setActiveWorld(props.initialEntry?.world ?? 'saying')
   if (flushGate !== null) flushGate.value = ownFlush
   if (props.initialEntry) applyEntry(props.initialEntry)
+  void nextTick(resizeBody)
 })
 
 onBeforeUnmount(() => {
@@ -77,21 +75,47 @@ function scheduleSave(): void {
 }
 
 function handleBodyInput(): void {
+  resizeBody()
   void createDraft()
   scheduleSave()
+}
+
+function resizeBody(): void {
+  const body = bodyElement.value
+  if (body === null) return
+  body.style.height = 'auto'
+  const minimumHeight = Number.parseFloat(getComputedStyle(body).minHeight) || 0
+  body.style.height = `${Math.max(body.scrollHeight, minimumHeight)}px`
 }
 
 function applyEntry(next: EntryDetail): void {
   entry.value = next
   writing.setActiveEntry(next.id)
   content.value = next.content_md
-  slug.value = next.slug || defaultEntrySlug(next.world, next.id)
   visibility.value = next.visibility
   source.value = typeof next.meta.source === 'string' ? next.meta.source : ''
   author.value = typeof next.meta.author === 'string' ? next.meta.author : ''
   tags.value = next.tags ?? []
-  if (next.slug === '') scheduleSave()
 }
+
+function resetForNewSaying(): void {
+  entry.value = null
+  content.value = ''
+  visibility.value = 'public'
+  source.value = ''
+  author.value = ''
+  tags.value = []
+  error.value = null
+  errorSource.value = null
+  writing.setActiveEntry(null)
+}
+
+watch(
+  () => route.query.new,
+  (next, previous) => {
+    if (next !== previous && entry.value !== null) resetForNewSaying()
+  },
+)
 
 async function createDraft(): Promise<void> {
   if (entry.value || creating !== null) return creating ?? Promise.resolve()
@@ -139,7 +163,6 @@ async function save(): Promise<void> {
     try {
       entry.value = await entriesApi.updateEntry(currentEntry.id, {
         revision: currentEntry.revision,
-        slug: slug.value,
         content_md: content.value,
         visibility: visibility.value,
         meta: { source: source.value.trim(), author: author.value.trim() },
@@ -160,6 +183,7 @@ async function save(): Promise<void> {
 
 async function flushBeforeRouteChange(): Promise<boolean> {
   if (saveTimer !== null) { clearTimeout(saveTimer); saveTimer = null }
+  if (!hasUnsavedChanges.value) return true
   await save()
   return error.value === null
 }
@@ -171,6 +195,13 @@ async function publish(): Promise<void> {
   isPublishing.value = true
   try {
     entry.value = await entriesApi.publishEntry(entry.value.id, entry.value.revision)
+    try {
+      const page = await entriesApi.listEntriesAdmin({ world: 'saying', page_size: 20 })
+      writing.setDirectoryEntries(page.data)
+    } catch (refreshCause) {
+      errorSource.value = 'publish'
+      error.value = toUserMessage(refreshCause)
+    }
   } catch (cause) {
     errorSource.value = 'publish'
     error.value = toUserMessage(cause)
@@ -179,12 +210,6 @@ async function publish(): Promise<void> {
   }
 }
 
-async function copyPermalink(): Promise<void> {
-  if (!entry.value?.slug) return
-  await navigator.clipboard.writeText(`${window.location.origin}/sayings/${entry.value.slug}`)
-  copied.value = true
-  window.setTimeout(() => { copied.value = false }, 1600)
-}
 
 onBeforeRouteLeave(async () => ((await flushBeforeRouteChange()) ? undefined : false))
 onBeforeRouteUpdate(async () => ((await flushBeforeRouteChange()) ? undefined : false))
@@ -204,19 +229,13 @@ onBeforeRouteUpdate(async () => ((await flushBeforeRouteChange()) ? undefined : 
       @publish="void publish()"
     />
 
-    <main class="saying-editor">
+    <main class="saying-editor saying-layout" data-saying-layout>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
-      <section class="saying-note" data-saying-note>
-        <textarea v-model="content" autofocus class="body" data-saying-body placeholder="写下一句随口的话……" aria-label="片语正文" @input="handleBodyInput" />
+      <section class="saying-note" data-saying-note data-saying-body-panel>
+        <textarea ref="bodyElement" v-model="content" autofocus class="body" data-saying-body placeholder="写下一句随口的话……" aria-label="片语正文" @input="handleBodyInput" />
       </section>
-      <p v-if="longFormWarning" class="warning">这段话已经接近一篇日志。</p>
-
       <section v-if="entry" class="saying-settings" data-saying-settings aria-label="片语设置">
         <h2>片语设置</h2>
-        <label class="setting-field">
-          <span>slug</span>
-          <input v-model="slug" aria-label="片语 slug" placeholder="例如 one-line" @input="scheduleSave" />
-        </label>
         <label class="setting-field">
           <span>公开状态</span>
           <select v-model="visibility" aria-label="公开状态" @change="scheduleSave">
@@ -235,11 +254,6 @@ onBeforeRouteUpdate(async () => ((await flushBeforeRouteChange()) ? undefined : 
           :selected="tags"
           @saved="(revision, nextTags) => { if (entry) { entry.revision = revision; tags = nextTags } }"
         />
-        <p class="permalink-hint">发布后会生成永久链接；“不列出”不会出现在列表，但知道链接的人仍可访问。</p>
-        <div v-if="entry.status === 'published' && entry.slug" class="permalink" data-permalink>
-          <code>/sayings/{{ entry.slug }}</code>
-          <button type="button" @click="copyPermalink">{{ copied ? '已复制' : '复制链接' }}</button>
-        </div>
       </section>
 
     </main>
@@ -249,7 +263,11 @@ onBeforeRouteUpdate(async () => ((await flushBeforeRouteChange()) ? undefined : 
 <style scoped>
 .saying-shell { display: flex; min-height: 100%; flex-direction: column; }
 .saying-editor {
-  width: min(100%, 40rem);
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(16rem, 3fr);
+  align-items: stretch;
+  gap: var(--space-6);
+  width: min(100%, 68rem);
   margin: 0 auto;
   padding: var(--space-6) var(--space-5) var(--space-8);
 }
@@ -270,6 +288,9 @@ select {
 }
 
 .saying-note {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
   padding: clamp(var(--space-5), 5vw, var(--space-6));
   border: 1px solid var(--c-line);
   border-radius: 1.125rem;
@@ -280,9 +301,11 @@ select {
 
 .body {
   display: block;
+  flex: 1 1 auto;
   width: 100%;
   min-height: 18rem;
-  resize: vertical;
+  overflow: hidden;
+  resize: none;
   border: 0;
   outline: 0;
   background: transparent;
@@ -296,11 +319,12 @@ select {
 .saying-settings {
   display: grid;
   gap: var(--space-4);
-  margin-top: var(--space-5);
+  margin-top: 0;
   padding: var(--space-4);
   border: 1px solid var(--c-line);
   border-radius: var(--radius-surface);
-  background: var(--c-surface-sunken);
+  background: color-mix(in srgb, var(--c-paper) 90%, var(--c-accent) 10%);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--c-accent) 8%, transparent);
 }
 
 .saying-settings h2 {
@@ -323,34 +347,6 @@ select {
   flex: 1 1 12rem;
 }
 
-.warning {
-  margin-top: var(--space-3);
-  color: var(--c-ink-muted);
-  font-size: 0.9rem;
-}
-
-.permalink-hint {
-  margin-top: var(--space-3);
-  color: var(--c-ink-faint);
-  font-size: 0.8125rem;
-  line-height: 1.5;
-}
-
-.permalink {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-  color: var(--c-ink-muted);
-  font-size: 0.8125rem;
-}
-
-.permalink code {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .error {
   margin-bottom: var(--space-3);
   color: var(--c-danger);
@@ -358,6 +354,7 @@ select {
 
 @media (max-width: 48rem) {
   .saying-editor {
+    grid-template-columns: 1fr;
     width: 100%;
     padding: var(--space-5) var(--space-4) var(--space-6);
   }
@@ -367,15 +364,14 @@ select {
     box-shadow: none;
   }
 
+  .saying-settings {
+    margin-top: 0;
+  }
+
   .body {
     min-height: 14rem;
     font-size: clamp(1.4rem, 7vw, 1.9rem);
     text-align: left;
-  }
-
-  .permalink {
-    flex-wrap: wrap;
-    align-items: flex-start;
   }
 
   .setting-fields {

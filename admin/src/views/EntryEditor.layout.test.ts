@@ -34,4 +34,12 @@ describe('EntryEditor writing surface', () => {
     expect(source).toContain("worldDefinition?.material === 'viewfinder'")
     expect(source).not.toContain("worldDefinition?.mediaCapability === 'primary-video' && original")
   })
+
+  it('defines a wider long-form journal canvas and a desktop media split', () => {
+    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'EntryEditor.vue'), 'utf8')
+
+    expect(source).toContain('data-writing-layout')
+    expect(source).toMatch(/\.page--journal\s*\{[\s\S]*width:\s*min\(100%, 68rem\)/)
+    expect(source).toContain('<VideoCanvas')
+  })
 })

@@ -18,6 +18,11 @@ const WORLD_LABEL: Record<WorldKey, string> = {
   video: '影像',
 }
 
+const displayTitle = computed(() => {
+  if (props.entry.world === 'saying') return props.entry.content_md?.trim() || '未命名片语'
+  return props.entry.title || '未命名草稿'
+})
+
 /**
  * Visibility is shown only when it is not `public`.
  *
@@ -71,7 +76,7 @@ function formatDate(value: string): string {
   <li class="row">
     <button class="main" type="button" data-entry-settings @click="emit('settings', entry)">
       <span class="head">
-        <span class="title">{{ entry.title || '未命名草稿' }}</span>
+        <span :class="['title', { 'title--excerpt': entry.world === 'saying' }]">{{ displayTitle }}</span>
         <span class="badge" :class="`badge--${entry.status}`" :data-status="entry.status">{{
           STATUS_LABEL[entry.status]
         }}</span>
@@ -82,7 +87,7 @@ function formatDate(value: string): string {
 
       <span class="meta">
         <span class="type">{{ WORLD_LABEL[entry.world] }}</span>
-        <code v-if="entry.slug" class="slug metadata-secondary">{{ entry.slug }}</code>
+        <code v-if="entry.world !== 'saying' && entry.slug" class="slug metadata-secondary">{{ entry.slug }}</code>
         <!-- Uncategorised is a normal state, so it is stated rather than left
              blank, which would read as a rendering gap. -->
         <span v-if="entry.category" class="cat metadata-secondary">{{ entry.category.name }}</span>
@@ -144,6 +149,14 @@ function formatDate(value: string): string {
   color: var(--c-ink);
   font-size: 0.9375rem;
   font-weight: 500;
+}
+
+.title--excerpt {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .title:hover {

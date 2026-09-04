@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import type { SayingListItem } from '~/types'
+import { ref } from 'vue'
+import { useSayingMotion } from '~/composables/useSayingMotion'
 
 defineProps<{
   items: SayingListItem[]
 }>()
+const root = ref<HTMLElement | null>(null)
+useSayingMotion(root)
 </script>
 
 <template>
-  <div class="focus">
+  <div ref="root" class="focus">
     <article v-for="item in items" :key="item.short_id" class="stage">
       <SayingItem :item="item" compact />
-      <SayingActions :short-id="item.short_id" />
+      <SayingActions :item="item" />
     </article>
   </div>
 </template>
@@ -36,4 +40,6 @@ defineProps<{
   font-size: clamp(1.5rem, 3vw, 2.4rem);
   line-height: 1.9;
 }
+.stage:hover :deep(.actions) .action,
+.stage:focus-within :deep(.actions) .action { opacity: 1; transform: translateY(0); }
 </style>

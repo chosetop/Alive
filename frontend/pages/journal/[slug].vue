@@ -151,7 +151,7 @@ useHead({
 
 <style scoped>
 .entry {
-  max-width: 48rem;
+  max-width: 52rem;
   margin-inline: auto;
 }
 
@@ -195,9 +195,9 @@ useHead({
 }
 
 .title {
-  max-width: 28rem;
-  font-size: clamp(2rem, 6vw, 3.5rem);
-  line-height: 1.25;
+  max-width: 38rem;
+  font-size: clamp(1.85rem, 5vw, 3rem);
+  line-height: 1.2;
 }
 
 .date {
@@ -225,7 +225,9 @@ useHead({
 
 .prose {
   margin-inline: auto;
-  max-width: 42rem;
+  max-width: 46rem;
+  font-size: clamp(1.05rem, 1.3vw, 1.18rem);
+  line-height: 1.95;
 }
 
 .foot {

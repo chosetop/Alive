@@ -48,4 +48,22 @@ describe('EntryRow', () => {
     expect(wrapper.emitted('settings')).toEqual([[entry]])
     expect(wrapper.get('[data-body-edit]').text()).toBe('编辑正文')
   })
+
+  it('uses a one-line body excerpt instead of title or slug for sayings', () => {
+    const saying: EntryListItem = {
+      ...entry,
+      world: 'saying',
+      title: '',
+      slug: 'legacy-saying-slug',
+      content_md: '这是片语正文，不应该把 slug 当成标题展示。',
+    }
+    const wrapper = mount(EntryRow, {
+      props: { entry: saying },
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+
+    expect(wrapper.get('.title').text()).toBe(saying.content_md)
+    expect(wrapper.get('.title').classes()).toContain('title--excerpt')
+    expect(wrapper.find('.slug').exists()).toBe(false)
+  })
 })

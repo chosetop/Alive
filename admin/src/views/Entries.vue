@@ -265,7 +265,6 @@ async function deleteFromSettings(): Promise<void> {
     <header class="head">
       <div>
         <h1 class="title">内容</h1>
-        <p class="subtitle">草稿是待办队列，归档不是。这里把两者分开。</p>
       </div>
       <RouterLink class="btn btn--primary" :to="{ name: 'entry-new' }">写一篇</RouterLink>
     </header>

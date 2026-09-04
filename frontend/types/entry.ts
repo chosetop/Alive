@@ -54,6 +54,7 @@ export type EntryListItem = {
   /** Nullable: not every entry corresponds to a date. */
   happened_at: string | null
   published_at: string | null
+  created_at: string
 }
 
 /**

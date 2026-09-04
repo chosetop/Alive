@@ -10,7 +10,7 @@ import { entryDate, formatMonthDay, toDateAttribute } from '~/utils/date'
  * current immersive, text-first style.
  */
 
-const props = defineProps<{ entry: EntryListItem }>()
+const props = defineProps<{ entry: EntryListItem; index?: number }>()
 
 const world = computed(() => resolvePublicWorld(props.entry.world))
 
@@ -20,7 +20,7 @@ const href = computed(() => world.value?.entryPath(props.entry.slug) ?? `/${prop
 </script>
 
 <template>
-  <article class="item">
+  <article class="item" :data-chapter="props.index !== undefined ? `Chapter ${String(props.index + 1).padStart(2, '0')}` : undefined">
     <div class="body">
       <div class="text">
         <h3 class="title">

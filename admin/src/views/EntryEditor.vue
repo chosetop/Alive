@@ -688,7 +688,10 @@ function createCoordinatorBridge(): CoordinatorBridge {
         </template>
       </WorkspaceHeader>
 
-      <div class="page">
+      <div
+        :class="['page', { 'page--journal': worldDefinition?.material === 'manuscript' }]"
+        data-writing-layout
+      >
         <JournalCanvas
           v-if="worldDefinition?.material === 'manuscript'"
           :key="`${original?.id ?? 'new'}:${editorSession}`"
@@ -774,6 +777,20 @@ function createCoordinatorBridge(): CoordinatorBridge {
   max-width: 52rem;
   margin-inline: auto;
   padding: var(--space-6) var(--space-5);
+}
+
+.page--journal {
+  width: min(100%, 68rem);
+  max-width: 68rem;
+  padding-top: var(--space-5);
+}
+
+[data-writing-layout] > .journal-canvas {
+  width: 100%;
+}
+
+[data-writing-layout] > .video-canvas {
+  width: 100%;
 }
 
 .badge {

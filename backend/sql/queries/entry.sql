@@ -322,6 +322,7 @@ SELECT
     e.title,
     e.slug,
     e.summary,
+    CASE WHEN e.world = 'saying' THEN e.content_md ELSE NULL END AS content_md,
     e.cover_url,
     e.status,
     e.visibility,

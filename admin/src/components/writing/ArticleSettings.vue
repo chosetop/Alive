@@ -4,7 +4,6 @@ import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import { fromFormDateTime, toFormDateTime } from '../../api'
 import type { Category, EntryDetail, EntryPatchFields, EntryVisibility } from '../../types/api'
 import { UiButton, UiIcon, UiIconButton } from '../ui'
-import MediaUpload from './MediaUpload.vue'
 import TagPicker from './TagPicker.vue'
 import type { Tag } from '../../api/tags'
 
@@ -97,20 +96,15 @@ function confirmDelete(): void {
       <label class="field" for="e-title">标题</label>
       <input id="e-title" :value="entry.title" :disabled="disabled" @input="update({ title: ($event.target as HTMLInputElement).value })" />
 
-      <label class="field" for="e-slug">slug</label>
-      <input id="e-slug" :value="entry.slug" :disabled="disabled" @input="update({ slug: ($event.target as HTMLInputElement).value })" />
+      <template v-if="entry.world !== 'saying'">
+        <label class="field" for="e-slug">slug</label>
+        <input id="e-slug" :value="entry.slug" :disabled="disabled" @input="update({ slug: ($event.target as HTMLInputElement).value })" />
+      </template>
       <label class="field" for="e-category">分类</label>
       <select id="e-category" :value="entry.category_id" :disabled="disabled" @change="update({ category_id: Number(($event.target as HTMLSelectElement).value) })">
         <option value="0">未分类</option>
         <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
       </select>
-
-      <label class="field" for="e-summary">摘要</label>
-      <textarea id="e-summary" :value="entry.summary" :disabled="disabled" @input="update({ summary: ($event.target as HTMLTextAreaElement).value })" />
-
-      <label class="field" for="e-cover">封面 URL</label>
-      <input id="e-cover" type="url" :value="entry.cover_url" placeholder="https://…" :disabled="disabled" @input="update({ cover_url: ($event.target as HTMLInputElement).value })" />
-      <MediaUpload v-if="showRichActions && entry.id > 0 && entry.world === 'journal'" :entry-id="entry.id" :disabled="disabled" @uploaded="update({ cover_url: $event.url })" />
 
       <label class="field" for="e-happened">发生时间</label>
       <input id="e-happened" type="datetime-local" :value="toFormDateTime(entry.happened_at)" :disabled="disabled" @input="update({ happened_at: ($event.target as HTMLInputElement).value === '' ? '0001-01-01T00:00:00Z' : fromFormDateTime(($event.target as HTMLInputElement).value) })" />

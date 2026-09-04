@@ -157,6 +157,6 @@ describe('Entries filters', () => {
       revision: 1,
       title: '新标题',
     })
-    expect(wrapper.get('[data-entry-settings]').text()).toContain('新标题')
+    expect(wrapper.get('[data-entry-settings]').text()).toContain('一句话')
   })
 })

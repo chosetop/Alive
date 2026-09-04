@@ -85,6 +85,20 @@ func TestCreateDefaults(t *testing.T) {
 	}
 }
 
+func TestCreateSayingGeneratesSlugWhenClientOmitsIt(t *testing.T) {
+	service, store := newTestService(t)
+
+	created, err := service.Create(context.Background(), entry.CreateInput{
+		AuthorID: 1, World: contentworld.Saying, ContentMD: "只是一句。",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if created.Slug == "" || store.LastCreate.Slug != created.Slug {
+		t.Fatalf("slug = %q, stored = %q, want an automatically generated id", created.Slug, store.LastCreate.Slug)
+	}
+}
+
 func TestCreateIncompleteDraft(t *testing.T) {
 	service, store := newTestService(t)
 

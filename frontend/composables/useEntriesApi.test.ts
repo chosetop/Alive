@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { useEntriesApi } from './useEntriesApi'
 
 const api = vi.hoisted(() => ({
   getPage: vi.fn(),
@@ -11,8 +12,6 @@ const api = vi.hoisted(() => ({
 vi.mock('./useApi', () => ({
   useApi: () => api,
 }))
-
-import { useEntriesApi } from './useEntriesApi'
 
 describe('useEntriesApi', () => {
   beforeEach(() => {

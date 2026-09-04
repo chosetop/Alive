@@ -144,9 +144,8 @@ export interface EntryCategoryRef {
  * An entry as `GET /admin/entries` returns it: the public list shape plus `id`,
  * `status`, `visibility` and both timestamps.
  *
- * **No `content_md`.** The admin list is a todo queue; body text belongs to the
- * detail read. Including it would inflate the response many times over for
- * something no row on this screen renders.
+ * Saying rows may carry `content_md` so their body, rather than an empty title,
+ * can identify them in the writing directory. Other worlds omit it.
  */
 export interface EntryListItem {
   id: number
@@ -154,6 +153,7 @@ export interface EntryListItem {
   kind: string
   type?: EntryType
   title: string
+  content_md?: string
   slug: string
   summary: string
   cover_url: string

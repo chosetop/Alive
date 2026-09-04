@@ -17,7 +17,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <section class="journal-canvas" data-journal-canvas>
+    <section class="journal-canvas" data-journal-canvas>
     <div class="journal-canvas__frame">
       <div class="journal-canvas__page">
         <span class="journal-canvas__edge" aria-hidden="true" />
@@ -94,6 +94,24 @@ const emit = defineEmits<{
   padding-inline-start: clamp(var(--space-4), 4vw, var(--space-5));
 }
 
+.journal-canvas :deep(.editor-shell) {
+  min-height: 38rem;
+}
+
+.journal-canvas :deep(.editor-shell .milkdown) {
+  max-width: none;
+}
+
+.journal-canvas :deep(.editor-shell .ProseMirror) {
+  font-size: 1.3rem;
+  line-height: 1.95;
+}
+
+.journal-canvas :deep(.editor-shell .ProseMirror p) {
+  font-size: 1.3rem;
+  margin-block: 1.1em;
+}
+
 .journal-canvas__title {
   width: 100%;
   padding: 0;
@@ -125,6 +143,9 @@ const emit = defineEmits<{
 }
 
 @media (max-width: 40rem) {
+  .journal-canvas :deep(.editor-shell) {
+    min-height: 28rem;
+  }
   .journal-canvas__page {
     padding-inline: var(--space-4);
   }

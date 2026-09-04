@@ -619,6 +619,7 @@ SELECT
     e.title,
     e.slug,
     e.summary,
+    CASE WHEN e.world = 'saying' THEN e.content_md ELSE NULL END AS content_md,
     e.cover_url,
     e.status,
     e.visibility,
@@ -666,6 +667,7 @@ type ListAdminEntriesRow struct {
 	Title        string
 	Slug         string
 	Summary      *string
+	ContentMd    *string
 	CoverUrl     *string
 	Status       string
 	Visibility   string
@@ -704,6 +706,7 @@ func (q *Queries) ListAdminEntries(ctx context.Context, arg ListAdminEntriesPara
 			&i.Title,
 			&i.Slug,
 			&i.Summary,
+			&i.ContentMd,
 			&i.CoverUrl,
 			&i.Status,
 			&i.Visibility,

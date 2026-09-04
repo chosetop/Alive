@@ -54,6 +54,16 @@ describe('Tags', () => {
     expect(wrapper.get('button[title]').attributes('disabled')).toBeDefined()
   })
 
+  it('keeps only the left search field and right create action in the toolbar', async () => {
+    const wrapper = mountTags()
+    await flushPromises()
+
+    expect(wrapper.find('label[for="tag-search"]').exists()).toBe(false)
+    expect(wrapper.get('#tag-search').attributes('aria-label')).toBe('搜索标签')
+    expect(wrapper.find('button[type="submit"]').exists()).toBe(false)
+    expect(wrapper.get('[data-primary-action]').text()).toContain('新建标签')
+  })
+
   it('creates and edits tags from the independent management page', async () => {
     const wrapper = mountTags()
     await flushPromises()

@@ -258,11 +258,9 @@ describe('EntryEditor autosave integration', () => {
 
     const changes: Array<[string, string, unknown]> = [
       ['#e-slug', 'new-slug', 'new-slug'],
-      ['#e-summary', '新摘要', '新摘要'],
-      ['#e-cover', 'https://example.com/cover.jpg', 'https://example.com/cover.jpg'],
       ['#e-happened', '2026-08-27T09:30', '2026-08-27T01:30:00.000Z'],
     ]
-    const apiFields = ['slug', 'summary', 'cover_url', 'happened_at']
+    const apiFields = ['slug', 'happened_at']
 
     for (const [index, [selector, formValue, apiValue]] of changes.entries()) {
       await wrapper.get(selector).setValue(formValue)
@@ -275,15 +273,15 @@ describe('EntryEditor autosave integration', () => {
 
     await wrapper.get('#e-category').setValue('7')
     await vi.advanceTimersByTimeAsync(1000)
-    expect(api.updateEntry).toHaveBeenNthCalledWith(5, server.current.id, {
-      revision: 5,
+    expect(api.updateEntry).toHaveBeenNthCalledWith(3, server.current.id, {
+      revision: 3,
       category_id: 7,
     })
 
     await wrapper.get('input[type="radio"][value="private"]').setValue()
     await vi.advanceTimersByTimeAsync(1000)
-    expect(api.updateEntry).toHaveBeenNthCalledWith(6, server.current.id, {
-      revision: 6,
+    expect(api.updateEntry).toHaveBeenNthCalledWith(4, server.current.id, {
+      revision: 4,
       visibility: 'private',
     })
   })
@@ -292,7 +290,7 @@ describe('EntryEditor autosave integration', () => {
     const server = installMutableServer()
     const wrapper = await mountEditor(server.current)
     await openSettings(wrapper)
-    await wrapper.get('#e-summary').setValue('快捷保存')
+    await wrapper.get('#e-happened').setValue('2026-08-27T09:30')
     const plainSave = new KeyboardEvent('keydown', {
       key: 's',
       bubbles: true,
@@ -321,7 +319,7 @@ describe('EntryEditor autosave integration', () => {
     expect(event.defaultPrevented).toBe(true)
     expect(api.updateEntry).toHaveBeenCalledWith(server.current.id, {
       revision: 1,
-      summary: '快捷保存',
+      happened_at: '2026-08-27T01:30:00.000Z',
     })
   })
 
@@ -346,11 +344,11 @@ describe('EntryEditor autosave integration', () => {
     expect(api.publishEntry).toHaveBeenCalledWith(server.current.id, 2)
 
     await openSettings(wrapper)
-    await wrapper.get('#e-summary').setValue('发布后的编辑')
+    await wrapper.get('#e-happened').setValue('2026-08-27T09:30')
     await vi.advanceTimersByTimeAsync(1000)
     expect(api.updateEntry).toHaveBeenLastCalledWith(server.current.id, {
       revision: 3,
-      summary: '发布后的编辑',
+      happened_at: '2026-08-27T01:30:00.000Z',
     })
   })
 
@@ -379,7 +377,7 @@ describe('EntryEditor autosave integration', () => {
     navigation.replace.mockImplementationOnce(async () => events.push('navigate'))
     const wrapper = await mountEditor(server.current)
     await openSettings(wrapper)
-    await wrapper.get('#e-summary').setValue('删除前保存')
+    await wrapper.get('#e-happened').setValue('2026-08-27T09:30')
 
     await wrapper.findAll('button').find((button) => button.text() === '删除')!.trigger('click')
     await wrapper.findAll('button').find((button) => button.text() === '确认删除')!.trigger('click')
@@ -483,7 +481,7 @@ describe('EntryEditor autosave integration', () => {
     expect(api.updateEntry).toHaveBeenCalledOnce()
 
     await openSettings(wrapper)
-    await wrapper.get('#e-summary').setValue('切换前保存')
+    await wrapper.get('#e-happened').setValue('2026-08-27T09:30')
     await expect(navigation.updateGuard?.()).resolves.toBeUndefined()
     expect(api.updateEntry).toHaveBeenCalledTimes(2)
   })
@@ -508,11 +506,11 @@ describe('EntryEditor autosave integration', () => {
 
     expect((await titleField(wrapper)).element).toHaveProperty('value', '新路由文章')
     await openSettings(wrapper)
-    await wrapper.get('#e-summary').setValue('仍保存到新文章')
+    await wrapper.get('#e-happened').setValue('2026-08-27T09:30')
     await vi.advanceTimersByTimeAsync(1000)
     expect(api.updateEntry).toHaveBeenLastCalledWith(51, {
       revision: 7,
-      summary: '仍保存到新文章',
+      happened_at: '2026-08-27T01:30:00.000Z',
     })
   })
 

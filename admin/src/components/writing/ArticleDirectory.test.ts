@@ -1,4 +1,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
@@ -18,6 +21,7 @@ import ArticleDirectory from './ArticleDirectory.vue'
 const api = vi.hoisted(() => ({
   listEntriesAdmin: vi.fn(),
   createEntry: vi.fn(),
+  deleteEntry: vi.fn(),
 }))
 
 const recovery = vi.hoisted(() => ({
@@ -31,7 +35,7 @@ vi.mock('../../api', async () => {
   const errors = await import('../../api/errors')
   return {
     ...errors,
-    entriesApi: { listEntriesAdmin: api.listEntriesAdmin, createEntry: api.createEntry },
+    entriesApi: { listEntriesAdmin: api.listEntriesAdmin, createEntry: api.createEntry, deleteEntry: api.deleteEntry },
   }
 })
 
@@ -101,6 +105,7 @@ describe('ArticleDirectory', () => {
     recovery.listRejection = null
     setActivePinia(createPinia())
     api.listEntriesAdmin.mockResolvedValue(page([item()]))
+    api.deleteEntry.mockResolvedValue(undefined)
   })
 
   afterEach(async () => {
@@ -196,7 +201,7 @@ describe('ArticleDirectory', () => {
 
     expect(api.createEntry).not.toHaveBeenCalled()
     expect(order).toEqual(['flush', 'navigate'])
-    expect(navigation.push).toHaveBeenCalledWith({ name: 'saying-editor-new', params: { world: 'saying' } })
+    expect(navigation.push).toHaveBeenCalledWith(expect.objectContaining({ name: 'saying-editor-new', params: { world: 'saying' }, query: expect.any(Object) }))
   })
 
   it('treats a whitespace-only query as no query at all', async () => {
@@ -350,6 +355,41 @@ describe('ArticleDirectory', () => {
     await flushPromises()
 
     expect(navigation.push).not.toHaveBeenCalled()
+  })
+
+  it('enters recent management mode and reveals selection controls', async () => {
+    api.listEntriesAdmin.mockResolvedValue(page([item({ id: 7 }), item({ id: 8 })]))
+    const wrapper = await mountDirectory()
+
+    expect(wrapper.find('[data-recent-select]').exists()).toBe(false)
+    await wrapper.get('[data-recent-manage]').trigger('click')
+
+    expect(wrapper.findAll('[data-recent-select]')).toHaveLength(2)
+    expect(wrapper.find('[data-recent-delete]').exists()).toBe(false)
+    await wrapper.get('[data-recent-select="7"]').setValue(true)
+    expect(wrapper.get('[data-recent-delete]').text()).toBe('删除')
+  })
+
+  it('deletes all selected recent entries after one confirmation', async () => {
+    api.listEntriesAdmin.mockResolvedValue(page([item({ id: 7 }), item({ id: 8 }), item({ id: 9 })]))
+    const wrapper = await mountDirectory()
+
+    await wrapper.get('[data-recent-manage]').trigger('click')
+    await wrapper.get('[data-recent-select="7"]').setValue(true)
+    await wrapper.get('[data-recent-select="9"]').setValue(true)
+    await wrapper.get('[data-recent-delete]').trigger('click')
+
+    expect(api.deleteEntry).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-recent-delete-confirm]').text()).toContain('2')
+
+    await wrapper.get('[data-recent-delete-confirm]').trigger('click')
+    await flushPromises()
+
+    expect(api.deleteEntry).toHaveBeenNthCalledWith(1, 7)
+    expect(api.deleteEntry).toHaveBeenNthCalledWith(2, 9)
+    expect(wrapper.find('[data-entry-id="7"]').exists()).toBe(false)
+    expect(wrapper.find('[data-entry-id="8"]').exists()).toBe(true)
+    expect(wrapper.find('[data-entry-id="9"]').exists()).toBe(false)
   })
 
   it('marks the open article as current for assistive technology', async () => {
@@ -524,5 +564,31 @@ describe('ArticleDirectory', () => {
     expect(wrapper.get('[data-entry-id="9"] [data-alive-cursor]').attributes('aria-hidden')).toBe(
       'true',
     )
+  })
+
+  it('shows saying body excerpts with a fade container instead of title text', async () => {
+    api.listEntriesAdmin.mockResolvedValue(page([item({ world: 'saying', title: '标题不应展示', content_md: '这是片语正文内容' } as never)]))
+    const wrapper = await mountDirectory({ world: 'saying' })
+
+    expect(wrapper.get('[data-saying-excerpt]').text()).toBe('这是片语正文内容')
+    expect(wrapper.find('[data-saying-excerpt]').classes()).toContain('item-title--excerpt')
+    expect(wrapper.text()).not.toContain('标题不应展示')
+  })
+
+  it('clamps saying excerpts to two lines while fading only from the right', () => {
+    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'ArticleDirectory.vue'), 'utf8')
+    const excerptStyle = source.match(/\.item-title--excerpt\s*\{([\s\S]*?)\}/)?.[1] ?? ''
+    const fadeStyle = source.match(/\.item-title--excerpt::after\s*\{([\s\S]*?)\}/)?.[1] ?? ''
+
+    expect(excerptStyle).toMatch(/-webkit-line-clamp:\s*2/)
+    expect(excerptStyle).toMatch(/line-clamp:\s*2/)
+    expect(fadeStyle).toMatch(/right:\s*0/)
+    expect(fadeStyle).toMatch(/background:\s*linear-gradient\(90deg/)
+    expect(fadeStyle).not.toMatch(/linear-gradient\(180deg/)
+  })
+
+  it('keeps selected metadata aligned with the indented title', () => {
+    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'ArticleDirectory.vue'), 'utf8')
+    expect(source).toMatch(/\.item\[aria-current='true'\]\s+\.item-meta\s*\{[\s\S]*?padding-inline-start:\s*var\(--space-2\)/)
   })
 })

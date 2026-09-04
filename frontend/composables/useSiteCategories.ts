@@ -1,5 +1,4 @@
-import type { Category } from '~/types'
-import type { WorldKey } from '~/types'
+import type { Category, WorldKey } from '~/types'
 
 /**
  * The site's categories, fetched once per render and shared.

@@ -164,10 +164,10 @@ function handleSubmit(): void {
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
 
     <div class="actions">
-      <UiButton type="submit" variant="primary" :disabled="!canSubmit">
+      <UiButton :disabled="isSaving" @click="emit('cancel')">取消</UiButton>
+       <UiButton type="submit" variant="primary" :disabled="!canSubmit">
         {{ isSaving ? '保存中…' : '保存' }}
       </UiButton>
-      <UiButton :disabled="isSaving" @click="emit('cancel')">取消</UiButton>
     </div>
   </form>
 </template>
