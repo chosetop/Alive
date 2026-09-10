@@ -16,6 +16,7 @@ async function mountAdminLayout(path: string): Promise<VueWrapper> {
       { path: '/entries', name: 'entries', component: page },
       { path: '/categories', name: 'categories', component: page },
       { path: '/tags', name: 'tags', component: page },
+      { path: '/music', name: 'music', component: page },
       { path: '/worlds', name: 'worlds', component: page },
       { path: '/entries/new', name: 'entry-new', component: page },
     ],

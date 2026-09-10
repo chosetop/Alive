@@ -24,6 +24,8 @@ import (
 	"github.com/p30huiwei/alive/backend/internal/httpx"
 	"github.com/p30huiwei/alive/backend/internal/mediahttp"
 	"github.com/p30huiwei/alive/backend/internal/middleware"
+	"github.com/p30huiwei/alive/backend/internal/music"
+	"github.com/p30huiwei/alive/backend/internal/musichttp"
 	"github.com/p30huiwei/alive/backend/internal/postgres"
 	"github.com/p30huiwei/alive/backend/internal/site"
 	"github.com/p30huiwei/alive/backend/internal/sitehttp"
@@ -51,6 +53,7 @@ type Dependencies struct {
 	EntryService     *entry.Service
 	EntryTagReplacer entryhttp.TagReplacer
 	MediaService     mediahttp.Service
+	MusicService     *music.Service
 
 	// TaxonomyService is required. Required rather than optional even though the
 	// category endpoints could be left off: the entry list's ?category= filter
@@ -180,6 +183,9 @@ func New(deps Dependencies) *gin.Engine {
 	}
 	entryHandler.Register(api, authHandler.RequireAuth())
 	entryHandler.RegisterAdmin(api, authHandler.RequireAuth())
+	if deps.MusicService != nil {
+		musichttp.NewHandler(deps.MusicService, authorFromSession).Register(api, authHandler.RequireAuth())
+	}
 	if deps.MediaService != nil {
 		mediahttp.NewHandler(deps.MediaService, authorFromSession).Register(api, authHandler.RequireAuth())
 	}

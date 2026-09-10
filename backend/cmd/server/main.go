@@ -20,6 +20,7 @@ import (
 	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/entry"
 	"github.com/p30huiwei/alive/backend/internal/media"
+	"github.com/p30huiwei/alive/backend/internal/music"
 	"github.com/p30huiwei/alive/backend/internal/postgres"
 	"github.com/p30huiwei/alive/backend/internal/router"
 	"github.com/p30huiwei/alive/backend/internal/site"
@@ -102,6 +103,7 @@ func run() error {
 		EntryService:     entryService,
 		EntryTagReplacer: entry.NewRepository(pool),
 		MediaService:     mediaService,
+		MusicService:     music.NewService(music.NewRepository(pool), signer, cfg.OSS.PublicBaseURL, cfg.OSS.PresignTTL),
 		TaxonomyService:  taxonomyService,
 		TagService:       tagService,
 		SiteService:      siteService,

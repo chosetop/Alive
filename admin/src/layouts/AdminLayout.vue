@@ -33,6 +33,7 @@ const navItems = [
   { label: '内容', to: { name: 'entries' }, available: true },
   { label: '分类', to: { name: 'categories' }, available: true },
   { label: '标签', to: { name: 'tags' }, available: true },
+  { label: '音乐', to: { name: 'music' }, available: true },
   { label: '世界', to: { name: 'worlds' }, available: true },
   // Leaves this shell entirely rather than swapping the content pane. That is the
   // point: the writing workspace is a sibling layout, not a page inside this one.

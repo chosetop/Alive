@@ -59,6 +59,11 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('../views/Tags.vue'),
       },
       {
+        path: 'music',
+        name: 'music',
+        component: () => import('../views/Music.vue'),
+      },
+      {
         path: 'worlds',
         name: 'worlds',
         component: () => import('../views/Worlds.vue'),

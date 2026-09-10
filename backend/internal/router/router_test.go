@@ -13,6 +13,7 @@ import (
 	"github.com/p30huiwei/alive/backend/internal/config"
 	"github.com/p30huiwei/alive/backend/internal/contentworld"
 	"github.com/p30huiwei/alive/backend/internal/entry"
+	"github.com/p30huiwei/alive/backend/internal/music"
 	"github.com/p30huiwei/alive/backend/internal/router"
 	"github.com/p30huiwei/alive/backend/internal/site"
 	"github.com/p30huiwei/alive/backend/internal/taxonomy"
@@ -73,6 +74,7 @@ func newRouterWith(cfg *config.Config) http.Handler {
 		TagService:      tagService,
 		SiteService:     siteService,
 		WorldService:    worldService,
+		MusicService:    music.NewService(music.NewRepository(nil), nil, "", time.Minute),
 	})
 }
 
@@ -600,5 +602,16 @@ func TestLoginRateLimitIsPerProcess(t *testing.T) {
 	// A second process starts with its own counts.
 	if got := post(newLimited()); got != http.StatusBadRequest {
 		t.Errorf("first request to a fresh router: status = %d, want 400", got)
+	}
+}
+
+func TestMusicAdminRoutesRequireSession(t *testing.T) {
+	handler := newTestRouter()
+	for _, pair := range [][2]string{{"GET", "/api/v1/admin/music"}, {"POST", "/api/v1/admin/music/uploads/presign"}, {"POST", "/api/v1/admin/music/tracks"}, {"PUT", "/api/v1/admin/music/playlists/1"}, {"DELETE", "/api/v1/admin/music/tracks/1?revision=1"}} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest(pair[0], pair[1], nil))
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("%s %s: %d", pair[0], pair[1], w.Code)
+		}
 	}
 }
