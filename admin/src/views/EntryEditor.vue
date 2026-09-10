@@ -401,6 +401,17 @@ async function transition(action: 'publish' | 'unpublish' | 'archive'): Promise<
           : await entriesApi.archiveEntry(id, revision)
     original.value = transitioned
     await bindCoordinator(transitioned)
+    if (action === 'publish') {
+      try {
+        const page = await entriesApi.listEntriesAdmin({
+          world: transitioned.world ?? draftWorld.value,
+          page_size: 20,
+        })
+        writing.setDirectoryEntries(page.data)
+      } catch (refreshError) {
+        saveError.value = `已发布，但文章目录刷新失败：${toUserMessage(refreshError)}`
+      }
+    }
   } catch (error) {
     applyError(error)
   } finally {

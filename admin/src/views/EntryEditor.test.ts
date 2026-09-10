@@ -12,6 +12,7 @@ import type { EntryDetail, EntryListItem, EntryUpdateRequest } from '../types/ap
 import EntryEditor from './EntryEditor.vue'
 
 const api = vi.hoisted(() => ({
+  listEntriesAdmin: vi.fn(),
   listCategoriesAdmin: vi.fn(),
   getEntry: vi.fn(),
   createEntry: vi.fn(),
@@ -41,6 +42,7 @@ vi.mock('../api', async () => {
     ...errors,
     categoriesApi: { listCategoriesAdmin: api.listCategoriesAdmin },
     entriesApi: {
+      listEntriesAdmin: api.listEntriesAdmin,
       getEntry: api.getEntry,
       createEntry: api.createEntry,
       updateEntry: api.updateEntry,
@@ -153,6 +155,10 @@ describe('EntryEditor autosave integration', () => {
     ])
     api.createEntry.mockResolvedValue(entry({ id: 99, revision: 1, title: '', slug: '' }))
     api.deleteEntry.mockResolvedValue(undefined)
+    api.listEntriesAdmin.mockResolvedValue({
+      data: [],
+      meta: { page: 1, page_size: 20, total: 0, total_pages: 0 },
+    })
   })
 
   afterEach(async () => {
@@ -350,6 +356,26 @@ describe('EntryEditor autosave integration', () => {
       revision: 3,
       happened_at: '2026-08-27T01:30:00.000Z',
     })
+  })
+
+  it('refreshes the journal directory after publishing', async () => {
+    const current = entry({ id: 67, revision: 3 })
+    const published = entry({ ...current, status: 'published', revision: 4 })
+    api.publishEntry.mockResolvedValue(published)
+    api.listEntriesAdmin.mockResolvedValue({
+      data: [listItem({ id: current.id, status: 'published' })],
+      meta: { page: 1, page_size: 20, total: 1, total_pages: 1 },
+    })
+    const wrapper = await mountEditor(current)
+
+    await wrapper.find('[data-publish]').trigger('click')
+    await flushPromises()
+    for (const checkbox of wrapper.findAll('input[type="checkbox"]')) await checkbox.setValue(true)
+    await wrapper.get('[data-publish-confirm]').trigger('click')
+    await flushPromises()
+
+    expect(api.listEntriesAdmin).toHaveBeenCalledWith({ world: 'journal', page_size: 20 })
+    expect(storeFor(wrapper).directoryEntries.map((item) => item.id)).toEqual([current.id])
   })
 
   it('prevents Milkdown edits while a status transition is in flight', async () => {
