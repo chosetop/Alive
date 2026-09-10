@@ -78,9 +78,69 @@ describe('renderMarkdown', () => {
     expect(html).toContain('decoding="async"')
   })
 
+  it('recovers legacy nested image links as images', () => {
+    const html = renderMarkdown(
+      '![]\\([https://alive-lzx.oss-cn-shenzhen.aliyuncs.com/FlowerDance/67788.jpg](https://alive-lzx.oss-cn-shenzhen.aliyuncs.com/FlowerDance/67788.jpg))',
+    )
+
+    expect(html).toContain(
+      '<img src="https://alive-lzx.oss-cn-shenzhen.aliyuncs.com/FlowerDance/67788.jpg"',
+    )
+    expect(html).toContain('alt=""')
+    expect(html).not.toContain('<a href=')
+    expect(html).not.toContain('![]')
+  })
+
+  it('recovers nested image links without the escaped opening parenthesis', () => {
+    const html = renderMarkdown(
+      '![]([https://alive-lzx.oss-cn-shenzhen.aliyuncs.com/FlowerDance/IMG_4470.JPG](https://alive-lzx.oss-cn-shenzhen.aliyuncs.com/FlowerDance/IMG_4470.JPG))',
+    )
+
+    expect(html).toContain(
+      '<img src="https://alive-lzx.oss-cn-shenzhen.aliyuncs.com/FlowerDance/IMG_4470.JPG"',
+    )
+    expect(html).not.toContain('<a href=')
+  })
+
+  it('recovers escaped images whose URL is wrapped in angle brackets', () => {
+    const html = renderMarkdown(
+      '!\\[]\\(<https://alive-lzx.oss-cn-shenzhen.aliyuncs.com/FlowerDance/IMG_4470.JPG>)',
+    )
+
+    expect(html).toContain(
+      '<img src="https://alive-lzx.oss-cn-shenzhen.aliyuncs.com/FlowerDance/IMG_4470.JPG"',
+    )
+    expect(html).not.toContain('<a href=')
+    expect(html).not.toContain('!\\[]')
+  })
+
   describe('configured markdown-it options', () => {
     it('turns a newline inside a paragraph into a break', () => {
       expect(renderMarkdown('one\ntwo')).toContain('<br>')
+    })
+
+    it('keeps a blank line as a paragraph break', () => {
+      expect(renderMarkdown('AAA\n\nBBB')).toBe('<p>AAA</p>\n<p>BBB</p>\n')
+    })
+
+    it('treats legacy HTML break tags as Markdown line breaks', () => {
+      const html = renderMarkdown('one<br />two')
+
+      expect(html).toContain('one<br>')
+      expect(html).not.toContain('&lt;br')
+    })
+
+    it('keeps legacy breaks that were stored on their own lines', () => {
+      const html = renderMarkdown('one\n\n<br />\n\ntwo')
+
+      expect(html).toBe('<p>one</p>\n<br />\n<p>two</p>\n')
+    })
+
+    it('restores every legacy break without leaking its marker', () => {
+      const html = renderMarkdown('one\n\n<br />\n\ntwo\n\n<br />\n\nthree')
+
+      expect(html).toBe('<p>one</p>\n<br />\n<p>two</p>\n<br />\n<p>three</p>\n')
+      expect(html).not.toContain('ALIVE_BLOCK_BREAK')
     })
 
     it('linkifies a bare URL', () => {
@@ -100,6 +160,34 @@ describe('renderMarkdown', () => {
 })
 
 describe('markdownToText', () => {
+  it('does not expose legacy nested image links in descriptions', () => {
+    expect(
+      markdownToText(
+        '![]\\([https://alive-lzx.oss-cn-shenzhen.aliyuncs.com/FlowerDance/67788.jpg](https://alive-lzx.oss-cn-shenzhen.aliyuncs.com/FlowerDance/67788.jpg))',
+      ),
+    ).toBe('')
+  })
+
+  it('does not expose unescaped legacy nested image links in descriptions', () => {
+    expect(
+      markdownToText(
+        '![]([https://alive-lzx.oss-cn-shenzhen.aliyuncs.com/FlowerDance/IMG_4470.JPG](https://alive-lzx.oss-cn-shenzhen.aliyuncs.com/FlowerDance/IMG_4470.JPG))',
+      ),
+    ).toBe('')
+  })
+
+  it('does not expose escaped legacy images in descriptions', () => {
+    expect(
+      markdownToText(
+        '!\\[]\\(<https://alive-lzx.oss-cn-shenzhen.aliyuncs.com/FlowerDance/IMG_4470.JPG>)',
+      ),
+    ).toBe('')
+  })
+
+  it('does not expose legacy HTML break tags in descriptions', () => {
+    expect(markdownToText('one<br />two')).toBe('one two')
+  })
+
   it('strips syntax that would show as literal characters in a snippet', () => {
     const text = markdownToText('## Heading\n\n**bold** and `code` and [link](https://x.com)')
 

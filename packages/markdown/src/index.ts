@@ -60,6 +60,43 @@ const md: MarkdownIt = new MarkdownIt({
   typographer: true,
 })
 
+const legacyBlockBreakMarker = '\uE000ALIVE_BLOCK_BREAK\uE001'
+
+/**
+ * Older editor content may have persisted an HTML break instead of Markdown.
+ * Keep the renderer's raw-HTML guard enabled, but recover this one harmless
+ * legacy representation before parsing so `<br />` is not shown as prose.
+ */
+function normalizeLegacyMarkdown(source: string): string {
+  return source
+    // Some older content wrapped an image URL in a link and escaped the
+    // opening parenthesis: ![]\([url](url)). Recover the intended image before
+    // markdown-it sees the malformed inline syntax.
+    .replace(
+      /!\[\]\s*\\?\(\[([^\]\n]+)\]\(\1\)\)/g,
+      '![]($1)',
+    )
+    // Another editor export escaped the image punctuation and wrapped the
+    // URL in angle brackets: !\[]\(<url>). Recover the standard image form.
+    .replace(
+      /!\\?\[\]\\?\(\<([^>\n]+)\>\)/g,
+      '![]($1)',
+    )
+    // The old editor put an explicit break tag on its own line between
+    // paragraphs. Preserve only that authored break; ordinary blank lines
+    // remain ordinary Markdown paragraph boundaries.
+    .replace(
+      /\n[ \t]*\n[ \t]*<br\s*\/?>[ \t]*\n[ \t]*\n/gi,
+      `\n\n${legacyBlockBreakMarker}\n\n`,
+    )
+    // Two trailing spaces are Markdown's explicit hard-break syntax.
+    .replace(/<br\s*\/?>/gi, '  \n')
+}
+
+function restoreLegacyBlockBreaks(html: string): string {
+  return html.replaceAll(`<p>${legacyBlockBreakMarker}</p>\n`, '<br />\n')
+}
+
 /**
  * Wrap tables so a wide one scrolls inside the measure instead of widening the
  * page. markdown-it emits no wrapper of its own, so one is added around the
@@ -121,7 +158,7 @@ function annotateImages(tokens: ReturnType<MarkdownIt['parse']>): void {
 export function renderMarkdown(source: string): string {
   if (source.trim() === '') return ''
 
-  const tokens = md.parse(source, {})
+  const tokens = md.parse(normalizeLegacyMarkdown(source), {})
 
   // Inline tokens carry their own children, where links and images live.
   const inlineChildren = tokens.flatMap((token) => token.children ?? [])
@@ -130,7 +167,7 @@ export function renderMarkdown(source: string): string {
   markExternalLinks(inlineChildren)
   annotateImages(inlineChildren)
 
-  return md.renderer.render(tokens, md.options, {})
+  return restoreLegacyBlockBreaks(md.renderer.render(tokens, md.options, {}))
 }
 
 /**
@@ -142,7 +179,7 @@ export function renderMarkdown(source: string): string {
  * truncated body.
  */
 export function markdownToText(source: string, limit = 160): string {
-  const text = source
+  const text = normalizeLegacyMarkdown(source)
     // Fenced code blocks, which never make sense in a description.
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/`([^`]*)`/g, '$1')
