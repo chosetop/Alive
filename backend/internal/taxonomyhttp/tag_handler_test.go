@@ -147,7 +147,6 @@ func TestTagAdminRoutesSupportCRUD(t *testing.T) {
 
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/admin/tags", strings.NewReader(`{"name":"京都","slug":"kyoto"}`)))
-	rec.Code = rec.Code
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create status = %d, want 201\nbody: %s", rec.Code, rec.Body.String())
 	}
