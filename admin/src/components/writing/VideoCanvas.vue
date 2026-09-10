@@ -7,6 +7,7 @@ const props = withDefaults(
     entry: EntryDetail | null
     title: string
     summary: string
+    ensureEntry?: () => Promise<number | null>
     disabled?: boolean
   }>(),
   { disabled: false },
@@ -27,17 +28,19 @@ const emit = defineEmits<{
 
       <div class="video-canvas__layout" data-media-layout>
       <section class="video-canvas__viewfinder" data-video-viewfinder data-aspect="16:9">
-      <div v-if="props.entry" class="video-canvas__upload-shell">
+      <div class="video-canvas__upload-shell">
         <VideoUpload
-          :entry-id="props.entry.id"
-          :revision="props.entry.revision"
+          v-if="props.entry || props.ensureEntry"
+          :entry-id="props.entry?.id ?? null"
+          :revision="props.entry?.revision ?? 0"
+          :ensure-entry="props.ensureEntry"
           :disabled="props.disabled"
           data-video-upload
           @revision="emit('revision', $event)"
         />
-      </div>
-      <div v-else class="video-canvas__empty" data-video-empty>
-        <strong>主视频会出现在这里</strong>
+        <div v-else class="video-canvas__empty" data-video-empty>
+          <strong>主视频会出现在这里</strong>
+        </div>
       </div>
       </section>
 
@@ -198,7 +201,9 @@ const emit = defineEmits<{
   }
 
   .video-canvas__viewfinder {
-    min-height: 14rem;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
     padding: var(--space-3);
   }
 

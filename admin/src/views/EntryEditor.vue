@@ -324,6 +324,11 @@ async function ensureEntry(): Promise<void> {
   }
 }
 
+async function ensureVideoEntry(): Promise<number | null> {
+  await ensureEntry()
+  return original.value?.id ?? null
+}
+
 function queueUpdate(fields: EntryPatchFields): void {
   if (controlsDisabled.value) return
   saveError.value = null
@@ -706,6 +711,7 @@ function createCoordinatorBridge(): CoordinatorBridge {
           :entry="original"
           :title="form.title"
           :summary="form.summary"
+          :ensure-entry="ensureVideoEntry"
           :disabled="controlsDisabled"
           @update:title="handleTitleUpdate"
           @update:summary="handleSummaryUpdate"

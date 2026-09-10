@@ -14,7 +14,7 @@ vi.mock('./VideoUpload.vue', async () => {
     default: defineComponent({
       name: 'VideoUpload',
       props: {
-        entryId: { type: Number, required: true },
+        entryId: { type: [Number, null], default: null },
         revision: { type: Number, required: true },
         disabled: { type: Boolean, default: false },
       },
@@ -67,17 +67,18 @@ describe('VideoCanvas', () => {
     expect(wrapper.get('[data-video-summary]').element).toBeTruthy()
   })
 
-  it('shows client-first copy for an unsaved entry and does not mount upload controls', () => {
+  it('shows an upload control for an unsaved entry', () => {
     const wrapper = mount(VideoCanvas, {
       props: {
         entry: null,
         title: '',
         summary: '',
+        ensureEntry: async () => 21,
       },
     })
 
-    expect(wrapper.text()).toContain('主视频会出现在这里')
-    expect(wrapper.findComponent({ name: 'VideoUpload' }).exists()).toBe(false)
+    expect(wrapper.get('[data-video-upload]').text()).toContain('上传')
+    expect(wrapper.findComponent({ name: 'VideoUpload' }).exists()).toBe(true)
   })
 
   it('forwards summary edits and media revision events', async () => {
@@ -124,5 +125,11 @@ describe('VideoCanvas', () => {
     expect(source).toContain('data-media-layout')
     expect(source).toMatch(/\.video-canvas__layout\s*\{[\s\S]*grid-template-columns:/)
     expect(source).toMatch(/@media \(max-width: 48rem\)[\s\S]*\.video-canvas__layout\s*\{[\s\S]*grid-template-columns:\s*1fr/)
+  })
+
+  it('keeps the mobile viewfinder within the canvas width', () => {
+    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'VideoCanvas.vue'), 'utf8')
+
+    expect(source).toMatch(/@media \(max-width: 48rem\)[\s\S]*\.video-canvas__viewfinder\s*\{[\s\S]*width:\s*100%[\s\S]*min-height:\s*0/)
   })
 })
