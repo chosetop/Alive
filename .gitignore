@@ -7,3 +7,8 @@
 
 # Local task/runtime logs.
 .superpowers/
+
+# Local PostgreSQL transfer packages and pre-import safety backups.
+Alive数据交换/
+*.dump
+*.dump.zip
