@@ -131,6 +131,20 @@ func TestValidateForPublishAllowsUntitledSaying(t *testing.T) {
 	}
 }
 
+func TestValidateForPublishAllowsVideoWithoutMarkdownBody(t *testing.T) {
+	e := entry.Entry{
+		World:      contentworld.Video,
+		Title:      "一段影像",
+		Slug:       "a-video",
+		ContentMD:  "",
+		Visibility: entry.VisibilityPublic,
+	}
+
+	if err := entry.ValidateForPublish(e); err != nil {
+		t.Fatalf("ValidateForPublish() = %v, want nil for video without markdown body", err)
+	}
+}
+
 func TestValidateWorld(t *testing.T) {
 	valid := []string{"journal", "saying", "video"}
 	for _, world := range valid {

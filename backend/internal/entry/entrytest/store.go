@@ -43,6 +43,8 @@ type Store struct {
 	FailArchive             error
 	FailGetByID             error
 	FailListAdmin           error
+	FailListPublishedOrder  error
+	FailReorderPublished    error
 	FailSlugExistsExcluding error
 
 	// SlugExistsAlwaysFree makes the pre-check report every slug as available
@@ -58,6 +60,7 @@ type Store struct {
 	CreateCalls              int
 	SlugExistsCalls          int
 	UpdateCalls              int
+	ReorderPublishedCalls    int
 	SlugExistsExcludingCalls int
 
 	// LastCreate records what the service asked to be written. Assertions about
@@ -68,11 +71,49 @@ type Store struct {
 	// LastUpdate records the same for an update. The Set flags are the interesting
 	// part: they are how "leave this alone" is told from "clear this", and a test
 	// asserting on the returned entry alone could not tell the two apart.
-	LastUpdate entry.UpdateParams
+	LastUpdate     entry.UpdateParams
+	LastReorderIDs []int64
 
 	// LastSoftDeleteAt records the timestamp the service supplied, so a test can
 	// assert the delete used the injected clock rather than time.Now.
 	LastSoftDeleteAt time.Time
+}
+
+func (s *Store) ListPublishedForOrdering(ctx context.Context, world contentworld.Key) ([]entry.Entry, error) {
+	if s.FailListPublishedOrder != nil {
+		return nil, s.FailListPublishedOrder
+	}
+	items := make([]entry.Entry, 0)
+	for _, candidate := range s.entries {
+		if candidate.World == world && candidate.Status == entry.StatusPublished {
+			items = append(items, candidate)
+		}
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].ID > items[j].ID })
+	return items, nil
+}
+
+func (s *Store) ReorderPublished(ctx context.Context, world contentworld.Key, orderedIDs []int64) error {
+	s.ReorderPublishedCalls++
+	s.LastReorderIDs = append([]int64(nil), orderedIDs...)
+	if s.FailReorderPublished != nil {
+		return s.FailReorderPublished
+	}
+	published := make(map[int64]struct{})
+	for id, candidate := range s.entries {
+		if candidate.World == world && candidate.Status == entry.StatusPublished {
+			published[id] = struct{}{}
+		}
+	}
+	if len(published) != len(orderedIDs) {
+		return entry.ErrInvalidDisplayOrder
+	}
+	for _, id := range orderedIDs {
+		if _, ok := published[id]; !ok {
+			return entry.ErrInvalidDisplayOrder
+		}
+	}
+	return nil
 }
 
 // NewStore returns an empty store.

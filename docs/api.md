@@ -297,13 +297,9 @@ revision 过期统一返回 409：
 - **传空串（`?category=`）等同于没传。** 前端从表单状态拼查询串时，分类选「全部」发出的就是这个，对它报 400 会打断这个筛选器唯一要服务的场景
 - 分类筛选**只会收窄可见范围，不会放宽**：加了 `category` 之后上面那三个条件一个都不少
 
-**排序（2026-08-25 改）：`COALESCE(happened_at, published_at) DESC, id DESC`。**
+**排序（2026-09-11 改）：`display_order DESC`，时间与 id 只负责稳定地打破同值。**
 
-原来是 `happened_at DESC NULLS LAST`。改的原因是前台按同一个 `COALESCE` 表达式显示日期，于是没有 `happened_at` 的内容被排在末尾、却顶着一个今年的日期，年份分组读出来是 2026、2025、2024、2026。**按一个表达式排序、按另一个表达式显示，就是这个结果。**
-
-`COALESCE` 在这些行上不可能是 NULL：`entries_published_at_check` 要求任何 `published` 内容必须有 `published_at`，所以不需要 `NULLS LAST`。`id DESC` 断同值，这是防止一行出现在两页上的那一半。
-
-配套的表达式索引是 `idx_entries_public_timeline`（migration 000005）。**改 ORDER BY 而不改索引，这个列表就退化成全表排序**：Postgres 只在索引表达式与排序表达式文本一致时才用索引。
+`display_order` 由后台“调整前台顺序”维护。迁移会按原先的发生/发布时间顺序初始化已有内容；之后首次发布的内容排到当前世界顶部，作者可再拖动调整。配套索引是 `idx_entries_world_public_display_order`（migration 000018）。
 
 响应（`data` 是数组，`meta` 见 1.1）：
 
@@ -498,7 +494,7 @@ slug 由客户端提供，**不从标题派生**：从中文标题派生需要�
 
 与 `status` 不同，**`q` 搜不到东西不是错误**，返回 200 和空列表。拼错的状态是格式错误的请求，搜不到的关键词是关于这个集合的真实回答。
 
-**目前不支持 `?category=`**，传了会被忽略。
+`world` 与 `category` 可组合使用；`category` 必须和 `world` 一起传，值为分类 slug。
 
 响应是前台列表形状加 `id`、`status`、`visibility`、`created_at`、`updated_at`。仍然**不含 `content_md`**：后台列表是待办队列，正文属于详情读取。
 
@@ -507,6 +503,20 @@ slug 由客户端提供，**不从标题派生**：从中文标题派生需要�
 需登录。按 id 而非 slug，因为 slug 是被编辑的对象之一。
 
 返回全部状态，形状同 create 的响应，但 **`category` 在这里有值**（这是读，能 join）。
+
+#### `GET /api/v1/admin/entries/order?world=journal`
+
+需登录，不分页。返回指定世界的全部已发布内容，顺序就是前台顺序；包括 `unlisted` 与 `private`，便于作者维护完整序列，但公开列表仍只展示 `public`。
+
+#### `PUT /api/v1/admin/entries/order`
+
+需登录。用完整 id 序列原子替换一个世界的已发布内容顺序：
+
+```json
+{ "world": "journal", "ordered_ids": [9, 3, 7] }
+```
+
+`ordered_ids` 必须不重不漏地包含该世界所有已发布内容，否则返回 400。成功返回 204。排序写入不会改变文章的 `updated_at`。
 
 ---
 

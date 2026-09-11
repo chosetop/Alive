@@ -6,6 +6,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiClientError } from '../api/errors'
+import { UiSelect } from '../components/ui'
 import Worlds from './Worlds.vue'
 
 const api = vi.hoisted(() => ({
@@ -305,7 +306,8 @@ describe('Worlds', () => {
     await wrapper.get('[data-world-desk="saying"] [data-world-settings]').trigger('click')
     expect(wrapper.get('[data-world-settings-panel]').attributes('data-world-key')).toBe('saying')
 
-    await wrapper.get('[data-world-settings-panel] [data-world-status]').setValue('open')
+    wrapper.findAllComponents(UiSelect).find((select) => select.props('label') === '状态')?.vm.$emit('change', 'open')
+    await wrapper.vm.$nextTick()
     await wrapper.get('[data-world-settings-panel] [data-world-save]').trigger('click')
     await flushPromises()
 
@@ -343,7 +345,8 @@ describe('Worlds', () => {
     await flushPromises()
 
     await wrapper.get('[data-world-desk="saying"] [data-world-settings]').trigger('click')
-    await wrapper.get('[data-world-settings-panel] [data-world-status]').setValue('open')
+    wrapper.findAllComponents(UiSelect).find((select) => select.props('label') === '状态')?.vm.$emit('change', 'open')
+    await wrapper.vm.$nextTick()
     await wrapper.get('[data-world-settings-panel] [data-world-save]').trigger('click')
     await flushPromises()
 

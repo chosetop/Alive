@@ -135,7 +135,7 @@ WHERE e.world = sqlc.arg(world)
   AND e.visibility = 'public'
   AND (sqlc.narg(category_id)::bigint IS NULL
        OR e.category_id = sqlc.narg(category_id)::bigint)
-ORDER BY COALESCE(e.happened_at, e.published_at) DESC, e.id DESC
+ORDER BY e.display_order DESC, COALESCE(e.happened_at, e.published_at) DESC, e.id DESC
 LIMIT sqlc.arg(limit_) OFFSET sqlc.arg(offset_);
 
 -- name: CountPublicEntries :one
@@ -208,10 +208,20 @@ UPDATE entries
 SET
     revision = revision + 1,
     status = 'published',
-    published_at = COALESCE(published_at, sqlc.arg(published_at))
-WHERE id = sqlc.arg(id)
-  AND revision = sqlc.arg(expected_revision)
-  AND deleted_at IS NULL
+    published_at = COALESCE(published_at, sqlc.arg(published_at)),
+    display_order = CASE
+      WHEN status <> 'published' THEN (
+        SELECT COALESCE(MAX(other.display_order), 0) + 1
+        FROM entries other
+        WHERE other.world = entries.world
+          AND other.deleted_at IS NULL
+          AND other.status = 'published'
+      )
+      ELSE display_order
+    END
+WHERE entries.id = sqlc.arg(id)
+  AND entries.revision = sqlc.arg(expected_revision)
+  AND entries.deleted_at IS NULL
 RETURNING
     id,
     revision,
@@ -322,7 +332,7 @@ SELECT
     e.title,
     e.slug,
     e.summary,
-    CASE WHEN e.world = 'saying' THEN e.content_md ELSE NULL END AS content_md,
+    CASE WHEN e.world = 'saying' THEN e.content_md ELSE ''::text END AS content_md,
     e.cover_url,
     e.status,
     e.visibility,
@@ -362,6 +372,37 @@ WHERE deleted_at IS NULL
     OR slug ILIKE '%' || sqlc.narg(search)::text || '%'
     OR COALESCE(summary, '') ILIKE '%' || sqlc.narg(search)::text || '%'
   );
+
+-- name: ListPublishedEntriesForOrdering :many
+SELECT
+    e.id,
+    e.author_id,
+    e.category_id,
+    c.name AS category_name,
+    c.slug AS category_slug,
+    e.world,
+    e.kind,
+    e.title,
+    e.slug,
+    e.summary,
+    CASE WHEN e.world = 'saying' THEN e.content_md ELSE ''::text END AS content_md,
+    e.cover_url,
+    e.status,
+    e.visibility,
+    e.meta,
+    e.word_count,
+    e.happened_at,
+    e.published_at,
+    e.created_at,
+    e.updated_at
+FROM entries e
+LEFT JOIN categories c
+    ON c.id = e.category_id
+   AND c.world = e.world
+WHERE e.world = sqlc.arg(world)
+  AND e.deleted_at IS NULL
+  AND e.status = 'published'
+ORDER BY e.display_order DESC, e.id DESC;
 
 -- name: DashboardMetrics :one
 SELECT

@@ -22,27 +22,28 @@ type Category struct {
 }
 
 type Entry struct {
-	ID          int64
-	AuthorID    int64
-	Type        string
-	Title       string
-	Slug        string
-	Summary     *string
-	ContentMd   string
-	CoverUrl    *string
-	Status      string
-	Visibility  string
-	Meta        json.RawMessage
-	WordCount   int32
-	HappenedAt  *time.Time
-	PublishedAt *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	DeletedAt   *time.Time
-	CategoryID  *int64
-	Revision    int64
-	World       string
-	Kind        string
+	ID           int64
+	AuthorID     int64
+	Type         string
+	Title        string
+	Slug         string
+	Summary      *string
+	ContentMd    string
+	CoverUrl     *string
+	Status       string
+	Visibility   string
+	Meta         json.RawMessage
+	WordCount    int32
+	HappenedAt   *time.Time
+	PublishedAt  *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	DeletedAt    *time.Time
+	CategoryID   *int64
+	Revision     int64
+	World        string
+	Kind         string
+	DisplayOrder int64
 }
 
 type EntryMedium struct {
@@ -69,6 +70,45 @@ type Medium struct {
 	DurationSeconds *int32
 	CreatedAt       time.Time
 	Url             string
+}
+
+type MusicAsset struct {
+	ID        int64
+	AuthorID  int64
+	ObjectKey string
+	Url       string
+	Kind      string
+	MimeType  string
+	SizeBytes int64
+	CreatedAt time.Time
+}
+
+type MusicPlaylist struct {
+	ID           int64
+	AuthorID     int64
+	Name         string
+	CoverAssetID *int64
+	IsPublic     bool
+	IsDefault    bool
+	Revision     int64
+}
+
+type MusicPlaylistTrack struct {
+	PlaylistID int64
+	TrackID    int64
+	AuthorID   int64
+	Position   int32
+}
+
+type MusicTrack struct {
+	ID           int64
+	AuthorID     int64
+	Title        string
+	Artist       string
+	AudioAssetID int64
+	CoverAssetID *int64
+	Duration     float64
+	Revision     int64
 }
 
 type Session struct {

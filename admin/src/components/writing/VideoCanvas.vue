@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { EntryDetail } from '../../types/api'
 import VideoUpload from './VideoUpload.vue'
 
@@ -18,6 +19,8 @@ const emit = defineEmits<{
   'update:summary': [string]
   revision: [number]
 }>()
+
+const videoAspect = ref(16 / 9)
 </script>
 
 <template>
@@ -27,7 +30,12 @@ const emit = defineEmits<{
     </header>
 
       <div class="video-canvas__layout" data-media-layout>
-      <section class="video-canvas__viewfinder" data-video-viewfinder data-aspect="16:9">
+      <section
+        class="video-canvas__viewfinder"
+        data-video-viewfinder
+        :data-aspect="videoAspect"
+        :style="{ '--video-aspect': String(videoAspect), aspectRatio: String(videoAspect) }"
+      >
       <div class="video-canvas__upload-shell">
         <VideoUpload
           v-if="props.entry || props.ensureEntry"
@@ -37,6 +45,7 @@ const emit = defineEmits<{
           :disabled="props.disabled"
           data-video-upload
           @revision="emit('revision', $event)"
+          @aspect="videoAspect = $event"
         />
         <div v-else class="video-canvas__empty" data-video-empty>
           <strong>主视频会出现在这里</strong>
@@ -104,7 +113,10 @@ const emit = defineEmits<{
 .video-canvas__viewfinder {
   position: relative;
   display: grid;
-  aspect-ratio: 16 / 9;
+  width: min(100%, calc(70vh * var(--video-aspect, 1.7778)));
+  max-height: 70vh;
+  justify-self: center;
+  aspect-ratio: var(--video-aspect, 1.7778);
   align-items: center;
   padding: clamp(var(--space-4), 5vw, var(--space-5));
   border: 1px solid color-mix(in srgb, var(--c-ink) 10%, transparent);

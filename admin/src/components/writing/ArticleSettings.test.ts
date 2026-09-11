@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Category, EntryDetail } from '../../types/api'
 import ArticleSettings from './ArticleSettings.vue'
 
+const { uploadMedia } = vi.hoisted(() => ({ uploadMedia: vi.fn() }))
+vi.mock('../../media', () => ({ uploadMedia }))
+
 const entry: EntryDetail = {
   id: 42,
   revision: 3,
@@ -103,6 +106,20 @@ describe('ArticleSettings', () => {
     })
 
     expect(wrapper.get('[aria-label="文章标签"]').text()).toContain('旅行')
+  })
+
+  it('offers cover editing for video entries', async () => {
+    uploadMedia.mockResolvedValue({ url: 'https://example.test/video-cover.jpg' })
+    const wrapper = mount(ArticleSettings, {
+      props: { open: true, entry: { ...entry, world: 'video' }, categories },
+    })
+    const input = wrapper.get('[data-cover-input]')
+    Object.defineProperty(input.element, 'files', { value: [new File(['cover'], 'cover.jpg', { type: 'image/jpeg' })] })
+
+    await input.trigger('change')
+
+    expect(uploadMedia).toHaveBeenCalledWith(expect.any(File), expect.objectContaining({ entryId: entry.id }))
+    expect(wrapper.emitted('update')).toContainEqual([{ cover_url: 'https://example.test/video-cover.jpg' }])
   })
 
   it('requires explicit confirmation before emitting delete', async () => {

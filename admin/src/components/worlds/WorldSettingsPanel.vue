@@ -4,7 +4,7 @@ import { computed, ref, watch } from 'vue'
 import { worldsApi, toUserMessage, type ApiClientError } from '../../api'
 import type { AdminWorldDefinition } from '../../content-worlds/registry'
 import type { AdminWorldSetting, WorldStatus, WorldViewMode } from '../../types/api'
-import { UiButton, UiIcon, UiIconButton } from '../ui'
+import { UiButton, UiIcon, UiIconButton, UiSelect } from '../ui'
 
 interface DraftState {
   status: WorldStatus
@@ -27,6 +27,17 @@ const emit = defineEmits<{
 const busy = ref(false)
 const error = ref<string | null>(null)
 const draft = ref<DraftState>(buildDraft(props.setting))
+const statusOptions = [
+  { value: 'unopened', label: '未开放', description: '不显示，也不能发布' },
+  { value: 'open', label: '已开放', description: '前台可见并允许发布' },
+  { value: 'hidden', label: '暂时隐藏', description: '导航隐藏，原链接仍可访问' },
+]
+const viewOptions = [
+  { value: '', label: '跟随世界默认' },
+  { value: 'stream', label: '流式' },
+  { value: 'wall', label: '纸片墙' },
+  { value: 'focus', label: '一句模式' },
+]
 
 const isDirty = computed(() =>
   draft.value.status !== props.setting.status ||
@@ -111,20 +122,18 @@ async function save(): Promise<void> {
     <p v-if="error" class="world-settings__alert" role="alert">{{ error }}</p>
 
     <div class="world-settings__body">
-      <label class="field">
+      <div class="field">
         <span>状态</span>
-        <select
+        <UiSelect
           data-world-status
-          :value="draft.status"
+          :model-value="draft.status"
+          :options="statusOptions"
+          label="状态"
           :disabled="busy"
-          @change="draft.status = ($event.target as HTMLSelectElement).value as WorldStatus"
-        >
-          <option value="unopened">未开放</option>
-          <option value="open">已开放</option>
-          <option value="hidden">暂时隐藏</option>
-        </select>
+          @change="draft.status = $event as WorldStatus"
+        />
         <small class="field-help">{{ statusHelp(draft.status) }}</small>
-      </label>
+      </div>
 
       <label class="field">
         <span>导航名称</span>
@@ -135,20 +144,17 @@ async function save(): Promise<void> {
         />
       </label>
 
-      <label v-if="definition.key === 'saying'" class="field">
+      <div v-if="definition.key === 'saying'" class="field">
         <span>默认浏览</span>
-        <select
+        <UiSelect
           data-world-default-view
-          :value="draft.defaultView"
+          :model-value="draft.defaultView"
+          :options="viewOptions"
+          label="默认浏览"
           :disabled="busy"
-          @change="draft.defaultView = ($event.target as HTMLSelectElement).value as WorldViewMode"
-        >
-          <option value="">跟随世界默认</option>
-          <option value="stream">流式</option>
-          <option value="wall">纸片墙</option>
-          <option value="focus">一句模式</option>
-        </select>
-      </label>
+          @change="draft.defaultView = $event as WorldViewMode"
+        />
+      </div>
     </div>
 
     <div class="world-settings__footer">
@@ -244,8 +250,7 @@ async function save(): Promise<void> {
   line-height: 1.45;
 }
 
-.world-settings input,
-.world-settings select {
+.world-settings input {
   width: 100%;
   min-height: 2.75rem;
   padding: 0.5rem var(--space-3);

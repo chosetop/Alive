@@ -335,6 +335,47 @@ func TestRepositorySlugExists(t *testing.T) {
 	}
 }
 
+func TestRepositoryReorderPublishedControlsPublicOrderWithoutTouchingEditTime(t *testing.T) {
+	repo, _, authorID := newTestRepository(t)
+	ctx := context.Background()
+
+	createPublished := func(label string) entry.Entry {
+		params := validCreate(authorID, dbtest.Slug(t, label))
+		params.Status = entry.StatusPublished
+		params.PublishedAt = time.Now().UTC()
+		created, err := repo.Create(ctx, params)
+		if err != nil {
+			t.Fatalf("create %s: %v", label, err)
+		}
+		return created
+	}
+	first := createPublished("order-first")
+	second := createPublished("order-second")
+
+	if err := repo.ReorderPublished(ctx, contentworld.Journal, []int64{first.ID, second.ID}); err != nil {
+		t.Fatalf("ReorderPublished: %v", err)
+	}
+	ordered, err := repo.ListPublishedForOrdering(ctx, contentworld.Journal)
+	if err != nil {
+		t.Fatalf("ListPublishedForOrdering: %v", err)
+	}
+	positions := make(map[int64]int, len(ordered))
+	for index, item := range ordered {
+		positions[item.ID] = index
+	}
+	if positions[first.ID] >= positions[second.ID] {
+		t.Fatalf("positions = %v, want first before second", positions)
+	}
+
+	after, err := repo.GetByID(ctx, first.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if !after.UpdatedAt.Equal(first.UpdatedAt) {
+		t.Errorf("updated_at changed from %v to %v during reorder", first.UpdatedAt, after.UpdatedAt)
+	}
+}
+
 func TestRepositoryMetaRoundTrip(t *testing.T) {
 	repo, _, authorID := newTestRepository(t)
 	ctx := context.Background()

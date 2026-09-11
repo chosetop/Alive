@@ -3,8 +3,13 @@ import { computed } from 'vue'
 import type { EntryListItem, WorldKey } from '../types/api'
 import { UiIcon } from './ui'
 
-const props = defineProps<{ entry: EntryListItem }>()
-const emit = defineEmits<{ settings: [EntryListItem] }>()
+const props = withDefaults(defineProps<{ entry: EntryListItem; reorderable?: boolean; dragging?: boolean; first?: boolean; last?: boolean }>(), {
+  reorderable: false,
+  dragging: false,
+  first: false,
+  last: false,
+})
+const emit = defineEmits<{ settings: [EntryListItem]; move: [-1 | 1] }>()
 
 const STATUS_LABEL: Record<EntryListItem['status'], string> = {
   draft: '草稿',
@@ -73,7 +78,8 @@ function formatDate(value: string): string {
 </script>
 
 <template>
-  <li class="row">
+  <li class="row" :class="{ 'row--dragging': dragging }">
+    <span v-if="reorderable" class="drag-handle" aria-hidden="true" title="拖动排序">⋮⋮</span>
     <button class="main" type="button" data-entry-settings @click="emit('settings', entry)">
       <span class="head">
         <span :class="['title', { 'title--excerpt': entry.world === 'saying' }]">{{ displayTitle }}</span>
@@ -99,6 +105,10 @@ function formatDate(value: string): string {
     <RouterLink class="body-edit" data-body-edit :to="{ name: 'entry-edit', params: { id: entry.id } }">
       编辑正文<UiIcon class="body-edit__icon" name="chevron-right" />
     </RouterLink>
+    <span v-if="reorderable" class="order-buttons">
+      <button type="button" :disabled="first" :aria-label="`上移${displayTitle}`" @click="emit('move', -1)">↑</button>
+      <button type="button" :disabled="last" :aria-label="`下移${displayTitle}`" @click="emit('move', 1)">↓</button>
+    </span>
   </li>
 </template>
 
@@ -112,6 +122,28 @@ function formatDate(value: string): string {
 }
 
 .row:hover { background: var(--c-surface-sunken); }
+.row--dragging { opacity: 0.45; }
+
+.drag-handle {
+  flex: none;
+  color: var(--c-ink-faint);
+  font-size: 1rem;
+  letter-spacing: -0.22rem;
+  cursor: grab;
+  user-select: none;
+}
+
+.order-buttons { display: inline-flex; gap: var(--space-1); }
+.order-buttons button {
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-control);
+  background: var(--c-paper);
+  color: var(--c-ink-muted);
+  cursor: pointer;
+}
+.order-buttons button:disabled { opacity: 0.3; cursor: default; }
 
 .row + .row {
   border-top: 1px solid var(--c-line);

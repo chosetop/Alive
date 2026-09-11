@@ -6,11 +6,11 @@ import type { Category, WorldKey } from '~/types'
  * This exists because `useAsyncData` keys the cache by its first argument, and
  * two call sites using the same key with different options is a real conflict:
  * Nuxt warns, and which set of options takes effect depends on which component
- * mounted first. Both the layout's footer nav and the category page need this
- * list, so the call lives in one place and they both go through it.
+ * mounted first. World indexes and category pages both use this list, so the
+ * call lives in one place and they all go through it.
  *
  * Failure is deliberately non-fatal. Categories are navigation; if the request
- * fails the footer is empty, but the entry the reader came for still renders.
+ * fails the index is empty, but the entry the reader came for still renders.
  * `default` supplies an empty array so no caller has to handle `null`.
  */
 export function useSiteCategories(world: WorldKey = 'journal') {

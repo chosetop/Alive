@@ -3,6 +3,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EntryDetail, EntryListItem, PaginatedResponse } from '../types/api'
 import Entries from './Entries.vue'
+import { UiSelect } from '../components/ui'
 
 const api = vi.hoisted(() => ({
   entriesApi: {
@@ -10,6 +11,8 @@ const api = vi.hoisted(() => ({
     getEntry: vi.fn(),
     updateEntry: vi.fn(),
     deleteEntry: vi.fn(),
+    listPublishedOrder: vi.fn(),
+    reorderPublished: vi.fn(),
   },
   categoriesApi: { listCategoriesAdmin: vi.fn() },
 }))
@@ -89,6 +92,8 @@ describe('Entries filters', () => {
     api.entriesApi.getEntry.mockReset()
     api.entriesApi.updateEntry.mockReset()
     api.entriesApi.deleteEntry.mockReset()
+    api.entriesApi.listPublishedOrder.mockReset()
+    api.entriesApi.reorderPublished.mockReset()
   })
 
   it('restores search and category from URL and sends them together', async () => {
@@ -107,7 +112,7 @@ describe('Entries filters', () => {
     const { router, wrapper } = await render()
 
     await wrapper.get('[data-test="entry-search"]').setValue('mountain')
-    await wrapper.get('[data-test="entry-category"]').setValue('travel')
+    wrapper.findAllComponents(UiSelect).find((select) => select.props('label') === '按分类筛选')?.vm.$emit('change', 'travel')
     await flushPromises()
 
     expect(router.currentRoute.value.query).toMatchObject({ q: 'mountain', category: 'travel' })
@@ -158,5 +163,53 @@ describe('Entries filters', () => {
       title: '新标题',
     })
     expect(wrapper.get('[data-entry-settings]').text()).toContain('一句话')
+  })
+
+  it('reorders the published journal list and persists the complete order', async () => {
+    const first = { ...entryDetail(), id: 7, world: 'journal' as const, title: '第一篇' }
+    const second = { ...entryDetail(), id: 8, world: 'journal' as const, title: '第二篇' }
+    api.entriesApi.listPublishedOrder.mockResolvedValue([first, second])
+    api.entriesApi.reorderPublished.mockResolvedValue(undefined)
+    const { wrapper } = await render()
+
+    await wrapper.get('[data-entry-order-toggle]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[aria-label="下移第一篇"]').trigger('click')
+    await flushPromises()
+
+    expect(api.entriesApi.listPublishedOrder).toHaveBeenCalledWith('journal')
+    expect(api.entriesApi.reorderPublished).toHaveBeenCalledWith('journal', [8, 7])
+    expect(wrapper.findAll('[data-entry-settings]').map((row) => row.text())).toEqual([
+      expect.stringContaining('第二篇'),
+      expect.stringContaining('第一篇'),
+    ])
+  })
+
+  it('reorders one category without changing the other categories relative positions', async () => {
+    const travel = { id: 1, name: '旅行', slug: 'travel' }
+    const reading = { id: 2, name: '阅读', slug: 'reading' }
+    const first = { ...entryDetail(), id: 7, world: 'journal' as const, title: '旅行一', category: travel }
+    const middle = { ...entryDetail(), id: 8, world: 'journal' as const, title: '阅读一', category: reading }
+    const last = { ...entryDetail(), id: 9, world: 'journal' as const, title: '旅行二', category: travel }
+    api.categoriesApi.listCategoriesAdmin.mockResolvedValue([
+      { ...travel, world: 'journal', description: '', created_at: '', updated_at: '' },
+      { ...reading, world: 'journal', description: '', created_at: '', updated_at: '' },
+    ])
+    api.entriesApi.listPublishedOrder.mockResolvedValue([first, middle, last])
+    api.entriesApi.reorderPublished.mockResolvedValue(undefined)
+    const { wrapper } = await render()
+
+    await wrapper.get('[data-entry-order-toggle]').trigger('click')
+    await flushPromises()
+    wrapper.findAllComponents(UiSelect).find((select) => select.props('label') === '排序分类')?.vm.$emit('change', 'travel')
+    await flushPromises()
+    await wrapper.get('[aria-label="下移旅行一"]').trigger('click')
+    await flushPromises()
+
+    expect(api.entriesApi.reorderPublished).toHaveBeenCalledWith('journal', [9, 8, 7])
+    expect(wrapper.findAll('[data-entry-settings]').map((row) => row.text())).toEqual([
+      expect.stringContaining('旅行二'),
+      expect.stringContaining('旅行一'),
+    ])
   })
 })

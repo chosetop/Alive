@@ -14,6 +14,11 @@ type dashboardMetrics struct {
 	TotalWords       int64 `json:"total_words"`
 }
 
+type reorderEntriesRequest struct {
+	World      string  `json:"world"`
+	OrderedIDs []int64 `json:"ordered_ids"`
+}
+
 // createEntryRequest is the create body.
 //
 // All fields are optional because creation starts an incomplete draft. world and

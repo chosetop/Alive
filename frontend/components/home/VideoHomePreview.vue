@@ -30,19 +30,43 @@ const previewItems = computed(() => props.items.slice(0, 3))
 <style scoped>
 .preview {
   display: grid;
-  gap: var(--space-4);
+  gap: var(--space-5);
 }
 
 .section-head {
+  position: relative;
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--c-line);
+}
+
+.section-head::after {
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: var(--space-7);
+  height: 2px;
+  background: var(--c-accent);
+  content: '';
+}
+
+.section-head h2 {
+  color: var(--c-ink);
+  font-size: var(--text-xl);
+  letter-spacing: var(--tracking-display);
 }
 
 .section-head a {
   color: var(--c-ink-muted);
   font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.section-head a:hover {
+  color: var(--c-accent);
 }
 
 .strip {

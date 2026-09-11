@@ -23,6 +23,12 @@ describe('getPublishChecks', () => {
     expect(checks.blockers.map((check) => check.field)).not.toContain('content_md')
   })
 
+  it('blocks video publication when its required cover is missing', () => {
+    const checks = getPublishChecks({ ...complete, world: 'video', cover_url: '' })
+    expect(checks.blockers.map((check) => check.field)).toContain('cover_url')
+    expect(checks.reminders.map((check) => check.field)).not.toContain('cover_url')
+  })
+
   it('does not require a title for saying entries', () => {
     const checks = getPublishChecks({ ...complete, world: 'saying', title: '' })
     expect(checks.blockers.map((check) => check.field)).not.toContain('title')

@@ -211,8 +211,8 @@ func (r *Repository) GetLinkByWorldSlug(ctx context.Context, world contentworld.
 	}), nil
 }
 
-// ListPublic returns one page of published, public entries, newest happening
-// first, along with the total under the same filter.
+// ListPublic returns one page of published, public entries in the owner's
+// display order, along with the total under the same filter.
 //
 // Two queries, and deliberately not one with a window function: count(*) OVER ()
 // yields nothing when no row does, so an offset past the end would report a total
@@ -537,22 +537,87 @@ func (r *Repository) ListAdmin(ctx context.Context, world *contentworld.Key, cat
 
 	entries := make([]Entry, 0, len(rows))
 	for _, row := range rows {
-		contentMD := ""
-		if row.ContentMd != nil {
-			contentMD = *row.ContentMd
-		}
 		entries = append(entries, entryFromRow(rowFields{
 			ID: row.ID, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
 			CategoryName: row.CategoryName, CategorySlug: row.CategorySlug,
 			World: row.World, Kind: row.Kind, Title: row.Title,
 			Slug: row.Slug, Summary: row.Summary, CoverURL: row.CoverUrl,
 			Status: row.Status, Visibility: row.Visibility, Meta: row.Meta,
-			ContentMD: contentMD, WordCount: row.WordCount, HappenedAt: row.HappenedAt,
+			ContentMD: row.ContentMd, WordCount: row.WordCount, HappenedAt: row.HappenedAt,
 			PublishedAt: row.PublishedAt, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		}))
 	}
 
 	return entries, total, nil
+}
+
+func (r *Repository) ListPublishedForOrdering(ctx context.Context, world contentworld.Key) ([]Entry, error) {
+	rows, err := r.q.ListPublishedEntriesForOrdering(ctx, string(world))
+	if err != nil {
+		return nil, fmt.Errorf("entry: list published order: %w", err)
+	}
+	entries := make([]Entry, 0, len(rows))
+	for _, row := range rows {
+		entries = append(entries, entryFromRow(rowFields{
+			ID: row.ID, AuthorID: row.AuthorID, CategoryID: row.CategoryID,
+			CategoryName: row.CategoryName, CategorySlug: row.CategorySlug,
+			World: row.World, Kind: row.Kind, Title: row.Title, Slug: row.Slug,
+			Summary: row.Summary, ContentMD: row.ContentMd, CoverURL: row.CoverUrl,
+			Status: row.Status, Visibility: row.Visibility, Meta: row.Meta,
+			WordCount: row.WordCount, HappenedAt: row.HappenedAt,
+			PublishedAt: row.PublishedAt, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		}))
+	}
+	return entries, nil
+}
+
+func (r *Repository) ReorderPublished(ctx context.Context, world contentworld.Key, orderedIDs []int64) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("entry: begin reorder: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	rows, err := tx.Query(ctx, `
+		SELECT id
+		FROM entries
+		WHERE world = $1 AND deleted_at IS NULL AND status = 'published'
+		FOR UPDATE`, string(world))
+	if err != nil {
+		return fmt.Errorf("entry: lock published order: %w", err)
+	}
+	current := make(map[int64]struct{}, len(orderedIDs))
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return fmt.Errorf("entry: scan published order: %w", err)
+		}
+		current[id] = struct{}{}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("entry: read published order: %w", err)
+	}
+	if len(current) != len(orderedIDs) {
+		return ErrInvalidDisplayOrder
+	}
+	for _, id := range orderedIDs {
+		if _, exists := current[id]; !exists {
+			return ErrInvalidDisplayOrder
+		}
+	}
+
+	for index, id := range orderedIDs {
+		order := int64(len(orderedIDs) - index)
+		if _, err := tx.Exec(ctx, `UPDATE entries SET display_order = $1 WHERE id = $2`, order, id); err != nil {
+			return fmt.Errorf("entry: write display order: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("entry: commit reorder: %w", err)
+	}
+	return nil
 }
 
 // DashboardMetrics returns active entry counters without loading content bodies.

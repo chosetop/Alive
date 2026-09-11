@@ -192,9 +192,46 @@ func (h *Handler) RegisterAdmin(api *gin.RouterGroup, requireAuth gin.HandlerFun
 	group := api.Group("/admin/entries", requireAuth)
 
 	group.GET("", h.ListAdmin)
+	group.GET("/order", h.ListPublishedOrder)
+	group.PUT("/order", h.ReorderPublished)
 	group.GET("/:id", h.GetByID)
 	group.PUT("/:id/tags", h.ReplaceTags)
 	api.GET("/admin/dashboard", requireAuth, h.Dashboard)
+}
+
+func (h *Handler) ListPublishedOrder(c *gin.Context) {
+	world := contentworld.Key(c.Query("world"))
+	items, err := h.service.ListPublishedForOrdering(c.Request.Context(), world)
+	if err != nil {
+		if errors.Is(err, entry.ErrInvalidWorld) {
+			httpx.Error(c, invalidField("world", "must be one of journal, saying, video", err))
+			return
+		}
+		httpx.Error(c, apperr.From(err))
+		return
+	}
+	httpx.OK(c, newAdminEntrySummaries(items))
+}
+
+func (h *Handler) ReorderPublished(c *gin.Context) {
+	var req reorderEntriesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Error(c, apperr.InvalidInput("this request body is not valid JSON").WithCause(err))
+		return
+	}
+	if err := h.service.ReorderPublished(c.Request.Context(), contentworld.Key(req.World), req.OrderedIDs); err != nil {
+		if errors.Is(err, entry.ErrInvalidWorld) {
+			httpx.Error(c, invalidField("world", "must be one of journal, saying, video", err))
+			return
+		}
+		if errors.Is(err, entry.ErrInvalidDisplayOrder) {
+			httpx.Error(c, invalidField("ordered_ids", "must contain every published entry in this world exactly once", err))
+			return
+		}
+		httpx.Error(c, apperr.From(err))
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 // Create stores a new entry owned by the authenticated account.
@@ -234,7 +271,7 @@ func (h *Handler) Create(c *gin.Context) {
 	httpx.Created(c, newOwnerEntryDetail(created))
 }
 
-// List returns one page of published public entries, newest happening first.
+// List returns one page of published public entries in the owner's display order.
 func (h *Handler) List(c *gin.Context) {
 	world := contentworld.Journal
 	page, err := intQuery(c, "page")

@@ -156,6 +156,7 @@
    behind, but every keyboard arrival must show one. */
 .ui-button:focus-visible,
 .ui-icon-button:focus-visible,
+.ui-select__trigger:focus-visible,
 .ui-menu__item:focus-visible {
   outline: 3px solid var(--c-focus);
   outline-offset: 2px;
@@ -207,6 +208,7 @@
 }
 
 .ui-popover__content,
+.ui-select__content,
 .ui-menu__content {
   z-index: 50;
   min-width: 10rem;
@@ -216,6 +218,133 @@
   background: var(--c-glass);
   box-shadow: var(--shadow-float);
   backdrop-filter: blur(18px) saturate(140%);
+}
+
+/* Selects ------------------------------------------------------------------ */
+
+.ui-select__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.55rem 0.75rem 0.55rem 0.875rem;
+  border: 1px solid var(--c-line-strong);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--c-surface) 92%, var(--c-accent));
+  box-shadow: var(--shadow-control);
+  color: var(--c-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
+}
+
+.ui-select__trigger[data-size='compact'] {
+  min-height: 2.5rem;
+  font-size: 0.875rem;
+}
+
+.ui-select__trigger:hover:not([data-disabled]),
+.ui-select__trigger[data-state='open'] {
+  border-color: color-mix(in srgb, var(--c-accent) 60%, var(--c-line-strong));
+  background: var(--c-surface);
+}
+
+.ui-select__trigger[data-disabled] {
+  color: var(--c-ink-faint);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.ui-select__chevron {
+  display: inline-flex;
+  width: 0.875rem;
+  height: 0.875rem;
+  flex: 0 0 auto;
+  color: var(--c-ink-muted);
+  transition: transform var(--motion-fast) ease;
+}
+
+.ui-select__chevron svg,
+.ui-select__indicator svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ui-select__trigger[data-state='open'] .ui-select__chevron {
+  transform: rotate(180deg);
+}
+
+.ui-select__content {
+  min-width: var(--reka-select-trigger-width);
+  max-height: min(20rem, var(--reka-select-content-available-height));
+  overflow: hidden;
+  padding: 0;
+  transform-origin: var(--reka-select-content-transform-origin);
+  animation: ui-select-open var(--motion-fast) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ui-select__viewport {
+  padding: var(--space-1);
+}
+
+.ui-select__item {
+  position: relative;
+  display: flex;
+  min-height: 2.5rem;
+  align-items: center;
+  padding: 0.45rem 0.75rem 0.45rem 2.25rem;
+  border-radius: calc(var(--radius-sm) - 4px);
+  color: var(--c-ink);
+  font-size: 0.875rem;
+  line-height: 1.35;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ui-select__item[data-highlighted] {
+  background: var(--c-surface-sunken);
+  outline: none;
+}
+
+.ui-select__item[data-state='checked'] {
+  color: var(--c-accent);
+}
+
+.ui-select__item[data-disabled] {
+  color: var(--c-ink-faint);
+  cursor: not-allowed;
+}
+
+.ui-select__indicator {
+  position: absolute;
+  left: 0.75rem;
+  display: inline-flex;
+  width: 0.9rem;
+  height: 0.9rem;
+  transform: rotate(-4deg);
+}
+
+.ui-select__copy {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.ui-select__copy small {
+  color: var(--c-ink-faint);
+  font-size: 0.75rem;
+}
+
+@keyframes ui-select-open {
+  from { opacity: 0; transform: translateY(-0.2rem) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .ui-popover__content {
@@ -352,7 +481,12 @@
 
 @media (prefers-reduced-motion: reduce) {
   .ui-button,
-  .ui-icon-button {
+  .ui-icon-button,
+  .ui-select__chevron {
     transition: none;
+  }
+
+  .ui-select__content {
+    animation: none;
   }
 }

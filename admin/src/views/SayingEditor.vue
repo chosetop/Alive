@@ -6,6 +6,7 @@ import { entriesApi, toUserMessage } from '../api'
 import { resolveAdminWorld } from '../content-worlds/registry'
 import TagPicker from '../components/writing/TagPicker.vue'
 import WorkspaceHeader from '../components/writing/WorkspaceHeader.vue'
+import { UiSelect } from '../components/ui'
 import type { Tag } from '../api/tags'
 import type { SaveStatus } from '../editor/save-coordinator'
 import type { EntryDetail, EntryVisibility } from '../types/api'
@@ -23,6 +24,11 @@ const bodyElement = ref<HTMLTextAreaElement | null>(null)
 const source = ref('')
 const author = ref('')
 const visibility = ref<EntryVisibility>('public')
+const visibilityOptions = [
+  { value: 'public', label: '公开', description: '所有人都能看到' },
+  { value: 'unlisted', label: '不列出', description: '仅通过链接访问' },
+  { value: 'private', label: '私密', description: '只留给自己' },
+]
 const isSaving = ref(false)
 const isCreating = ref(false)
 const isPublishing = ref(false)
@@ -72,6 +78,11 @@ function scheduleSave(): void {
     saveTimer = null
     void save()
   }, 650)
+}
+
+function selectVisibility(value: string): void {
+  visibility.value = value as EntryVisibility
+  scheduleSave()
 }
 
 function handleBodyInput(): void {
@@ -236,14 +247,10 @@ onBeforeRouteUpdate(async () => ((await flushBeforeRouteChange()) ? undefined : 
       </section>
       <section v-if="entry" class="saying-settings" data-saying-settings aria-label="片语设置">
         <h2>片语设置</h2>
-        <label class="setting-field">
+        <div class="setting-field">
           <span>公开状态</span>
-          <select v-model="visibility" aria-label="公开状态" @change="scheduleSave">
-            <option value="public">公开</option>
-            <option value="unlisted">不列出</option>
-            <option value="private">私密</option>
-          </select>
-        </label>
+          <UiSelect :model-value="visibility" :options="visibilityOptions" label="公开状态" @change="selectVisibility" />
+        </div>
         <div class="setting-fields">
           <input v-model="source" placeholder="来源（可选）" aria-label="来源" @input="scheduleSave" />
           <input v-model="author" placeholder="原作者（可选）" aria-label="原作者" @input="scheduleSave" />
@@ -278,8 +285,7 @@ onBeforeRouteUpdate(async () => ((await flushBeforeRouteChange()) ? undefined : 
 }
 
 button,
-input,
-select {
+input {
   min-height: 2.75rem;
   border: 1px solid var(--c-line);
   border-radius: var(--radius-control);

@@ -5,6 +5,7 @@ import { ref, type Ref } from 'vue'
 
 import WorkspaceHeader from '../components/writing/WorkspaceHeader.vue'
 import ArticleSettings from '../components/writing/ArticleSettings.vue'
+import { UiSelect } from '../components/ui'
 import { useWritingStore, writingFlushKey } from '../stores/writing'
 
 import { ApiClientError, NETWORK_ERROR } from '../api/errors'
@@ -218,7 +219,7 @@ describe('EntryEditor autosave integration', () => {
     })
     const wrapper = await mountEditor(server.current)
 
-    expect(wrapper.get('[data-video-viewfinder]').attributes('data-aspect')).toBe('16:9')
+    expect(Number(wrapper.get('[data-video-viewfinder]').attributes('data-aspect'))).toBeCloseTo(16 / 9)
 
     await wrapper.get('[data-video-title]').setValue('新的影像标题')
     await vi.advanceTimersByTimeAsync(1000)
@@ -277,7 +278,7 @@ describe('EntryEditor autosave integration', () => {
       })
     }
 
-    await wrapper.get('#e-category').setValue('7')
+    wrapper.findComponent(UiSelect).vm.$emit('change', '7')
     await vi.advanceTimersByTimeAsync(1000)
     expect(api.updateEntry).toHaveBeenNthCalledWith(3, server.current.id, {
       revision: 3,

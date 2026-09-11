@@ -49,6 +49,19 @@ export function listEntriesAdmin(
   })
 }
 
+/** Complete published order for the drag-and-drop editor. */
+export function listPublishedOrder(world: EntryListQuery['world']): Promise<EntryListItem[]> {
+  return request<EntryListItem[]>('/admin/entries/order', { query: { world } })
+}
+
+/** Persist the complete published order for one content world. */
+export function reorderPublished(world: NonNullable<EntryListQuery['world']>, orderedIds: number[]): Promise<void> {
+  return request<void>('/admin/entries/order', {
+    method: 'PUT',
+    body: { world, ordered_ids: orderedIds },
+  })
+}
+
 /**
  * GET /api/v1/admin/entries/:id
  *

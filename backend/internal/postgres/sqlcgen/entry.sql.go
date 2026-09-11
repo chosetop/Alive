@@ -619,7 +619,7 @@ SELECT
     e.title,
     e.slug,
     e.summary,
-    CASE WHEN e.world = 'saying' THEN e.content_md ELSE NULL END AS content_md,
+    CASE WHEN e.world = 'saying' THEN e.content_md ELSE ''::text END AS content_md,
     e.cover_url,
     e.status,
     e.visibility,
@@ -667,7 +667,7 @@ type ListAdminEntriesRow struct {
 	Title        string
 	Slug         string
 	Summary      *string
-	ContentMd    *string
+	ContentMd    string
 	CoverUrl     *string
 	Status       string
 	Visibility   string
@@ -759,7 +759,7 @@ WHERE e.world = $1
   AND e.visibility = 'public'
   AND ($2::bigint IS NULL
        OR e.category_id = $2::bigint)
-ORDER BY COALESCE(e.happened_at, e.published_at) DESC, e.id DESC
+ORDER BY e.display_order DESC, COALESCE(e.happened_at, e.published_at) DESC, e.id DESC
 LIMIT $4 OFFSET $3
 `
 
@@ -839,15 +839,121 @@ func (q *Queries) ListPublicEntries(ctx context.Context, arg ListPublicEntriesPa
 	return items, nil
 }
 
+const listPublishedEntriesForOrdering = `-- name: ListPublishedEntriesForOrdering :many
+SELECT
+    e.id,
+    e.author_id,
+    e.category_id,
+    c.name AS category_name,
+    c.slug AS category_slug,
+    e.world,
+    e.kind,
+    e.title,
+    e.slug,
+    e.summary,
+    CASE WHEN e.world = 'saying' THEN e.content_md ELSE ''::text END AS content_md,
+    e.cover_url,
+    e.status,
+    e.visibility,
+    e.meta,
+    e.word_count,
+    e.happened_at,
+    e.published_at,
+    e.created_at,
+    e.updated_at
+FROM entries e
+LEFT JOIN categories c
+    ON c.id = e.category_id
+   AND c.world = e.world
+WHERE e.world = $1
+  AND e.deleted_at IS NULL
+  AND e.status = 'published'
+ORDER BY e.display_order DESC, e.id DESC
+`
+
+type ListPublishedEntriesForOrderingRow struct {
+	ID           int64
+	AuthorID     int64
+	CategoryID   *int64
+	CategoryName *string
+	CategorySlug *string
+	World        string
+	Kind         string
+	Title        string
+	Slug         string
+	Summary      *string
+	ContentMd    string
+	CoverUrl     *string
+	Status       string
+	Visibility   string
+	Meta         json.RawMessage
+	WordCount    int32
+	HappenedAt   *time.Time
+	PublishedAt  *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+func (q *Queries) ListPublishedEntriesForOrdering(ctx context.Context, world string) ([]ListPublishedEntriesForOrderingRow, error) {
+	rows, err := q.db.Query(ctx, listPublishedEntriesForOrdering, world)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPublishedEntriesForOrderingRow{}
+	for rows.Next() {
+		var i ListPublishedEntriesForOrderingRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AuthorID,
+			&i.CategoryID,
+			&i.CategoryName,
+			&i.CategorySlug,
+			&i.World,
+			&i.Kind,
+			&i.Title,
+			&i.Slug,
+			&i.Summary,
+			&i.ContentMd,
+			&i.CoverUrl,
+			&i.Status,
+			&i.Visibility,
+			&i.Meta,
+			&i.WordCount,
+			&i.HappenedAt,
+			&i.PublishedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const publishEntry = `-- name: PublishEntry :one
 UPDATE entries
 SET
     revision = revision + 1,
     status = 'published',
-    published_at = COALESCE(published_at, $1)
-WHERE id = $2
-  AND revision = $3
-  AND deleted_at IS NULL
+    published_at = COALESCE(published_at, $1),
+    display_order = CASE
+      WHEN status <> 'published' THEN (
+        SELECT COALESCE(MAX(other.display_order), 0) + 1
+        FROM entries other
+        WHERE other.world = entries.world
+          AND other.deleted_at IS NULL
+          AND other.status = 'published'
+      )
+      ELSE display_order
+    END
+WHERE entries.id = $2
+  AND entries.revision = $3
+  AND entries.deleted_at IS NULL
 RETURNING
     id,
     revision,

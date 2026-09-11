@@ -5,6 +5,7 @@ import { ApiClientError } from '../../api/errors'
 import { ADMIN_WORLD_REGISTRY } from '../../content-worlds/registry'
 import type { AdminWorldSetting } from '../../types/api'
 import WorldSettingsPanel from './WorldSettingsPanel.vue'
+import { UiSelect } from '../ui'
 
 const api = vi.hoisted(() => ({
   updateWorld: vi.fn(),
@@ -99,7 +100,8 @@ describe('WorldSettingsPanel', () => {
 
     expect(wrapper.get('[data-world-save]').attributes('disabled')).toBeDefined()
 
-    await wrapper.get('[data-world-status]').setValue('hidden')
+    wrapper.findAllComponents(UiSelect).find((select) => select.props('label') === '状态')?.vm.$emit('change', 'hidden')
+    await wrapper.vm.$nextTick()
     expect(wrapper.get('[data-world-save]').attributes('disabled')).toBeUndefined()
 
     await wrapper.get('[data-world-save]').trigger('click')
@@ -131,7 +133,8 @@ describe('WorldSettingsPanel', () => {
 
     const wrapper = mountPanel('saying', reload)
 
-    await wrapper.get('[data-world-status]').setValue('hidden')
+    wrapper.findAllComponents(UiSelect).find((select) => select.props('label') === '状态')?.vm.$emit('change', 'hidden')
+    await wrapper.vm.$nextTick()
     await wrapper.get('[data-world-save]').trigger('click')
     await flushPromises()
 

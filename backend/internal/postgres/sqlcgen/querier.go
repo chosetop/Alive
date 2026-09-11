@@ -81,6 +81,7 @@ type Querier interface {
 	ListOpenWorlds(ctx context.Context) ([]SiteWorld, error)
 	ListPublicEntries(ctx context.Context, arg ListPublicEntriesParams) ([]ListPublicEntriesRow, error)
 	ListPublicEntriesByTag(ctx context.Context, arg ListPublicEntriesByTagParams) ([]ListPublicEntriesByTagRow, error)
+	ListPublishedEntriesForOrdering(ctx context.Context, world string) ([]ListPublishedEntriesForOrderingRow, error)
 	ListTags(ctx context.Context, arg ListTagsParams) ([]ListTagsRow, error)
 	ListTagsByEntryID(ctx context.Context, entryID int64) ([]Tag, error)
 	PublishEntry(ctx context.Context, arg PublishEntryParams) (PublishEntryRow, error)

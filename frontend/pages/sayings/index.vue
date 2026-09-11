@@ -1,21 +1,21 @@
 <script setup lang="ts">
-import { onMounted, ref, nextTick } from 'vue'
+import { onMounted, nextTick } from 'vue'
 
-import { resolvePublicWorld } from '~/content-worlds/registry'
+import { defaultWorldCategoryPath, resolvePublicWorld } from '~/content-worlds/registry'
 import { useSayingsApi } from '~/composables/useSayingsApi'
-import { consumeSayingAnchor, useSayingView } from '~/composables/useSayingView'
-import { useSiteWorlds } from '~/composables/useSiteWorlds'
+import { consumeSayingAnchor } from '~/composables/useSayingView'
+import { useSiteCategories } from '~/composables/useSiteCategories'
 import { markdownToText } from '~/utils/markdown'
 
 const route = useRoute()
 const sayingsWorld = resolvePublicWorld('saying')
 const { list } = useSayingsApi()
-const { data: worldSettings } = await useSiteWorlds()
+const { data: categories } = await useSiteCategories('saying')
+const defaultCategoryPath = defaultWorldCategoryPath('saying', categories.value)
 
-const sayingDefaultView = computed(() => {
-  const setting = worldSettings.value.find((item) => item.world === 'saying')
-  return setting?.default_view || 'stream'
-})
+if (defaultCategoryPath) {
+  await navigateTo(defaultCategoryPath, { redirectCode: 302, replace: true })
+}
 
 const page = computed(() => {
   const raw = Number(route.query.page)
@@ -34,8 +34,6 @@ if (error.value) {
 
 const items = computed(() => data.value?.data ?? [])
 const meta = computed(() => data.value?.meta)
-const { view, choose } = useSayingView(sayingDefaultView)
-const heading = ref<HTMLElement | null>(null)
 const pendingAnchor = import.meta.client && typeof window !== 'undefined' ? consumeSayingAnchor(window.history) : null
 
 onMounted(async () => {
@@ -51,7 +49,6 @@ onMounted(async () => {
     return
   }
 
-  heading.value?.focus({ preventScroll: true })
 })
 
 useSeoMeta({
@@ -90,69 +87,33 @@ useHead({
 
 <template>
   <div class="sayings-page">
-    <header class="head">
-        <h1 ref="heading" tabindex="-1" class="title">片语</h1>
-      <SayingViewPicker :view="view" @change="choose" />
-    </header>
+    <WorldBrowseLayout>
+      <template v-if="categories.length > 0" #navigation>
+        <WorldCategoryNav world="saying" :categories="categories" />
+      </template>
 
-    <SayingStream v-if="view === 'stream'" :items="items" />
-    <SayingWall v-else-if="view === 'wall'" :items="items" />
-    <SayingStream v-else :items="items" />
+      <SayingWall :items="items" />
 
-    <p v-if="items.length === 0" class="empty">还没有公开的片语。</p>
+      <p v-if="items.length === 0" class="empty">还没有公开的片语。</p>
 
-    <ThePager
-      v-if="meta"
-      :page="meta.page"
-      :page-size="meta.page_size"
-      :total="meta.total"
-      base-path="/sayings"
-    />
+      <ThePager
+        v-if="meta"
+        :page="meta.page"
+        :page-size="meta.page_size"
+        :total="meta.total"
+        base-path="/sayings"
+      />
+    </WorldBrowseLayout>
   </div>
 </template>
 
 <style scoped>
 .sayings-page {
-  display: grid;
-  gap: var(--space-7);
-}
-
-.head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-6);
-}
-
-.kicker {
-  margin-bottom: var(--space-2);
-  color: var(--c-ink-faint);
-  font-family: var(--font-ui);
-  font-size: var(--text-xs);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.title {
-  margin-bottom: var(--space-2);
-  font-family: var(--font-heading);
-  font-size: clamp(1.75rem, 4vw, 2.6rem);
-}
-
-.desc {
-  max-width: 32rem;
-  color: var(--c-ink-muted);
+  min-width: 0;
 }
 
 .empty {
   padding-block: var(--space-9);
   color: var(--c-ink-faint);
-}
-
-@media (max-width: 42rem) {
-  .head {
-    align-items: flex-start;
-    flex-direction: column;
-  }
 }
 </style>

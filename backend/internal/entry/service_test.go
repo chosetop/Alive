@@ -1101,6 +1101,25 @@ func TestListAdminIsAWorkQueue(t *testing.T) {
 	})
 }
 
+func TestReorderPublishedValidatesAndDelegatesTheCompleteOrder(t *testing.T) {
+	service, store := newTestService(t)
+	store.Seed(entry.Entry{ID: 7, World: contentworld.Journal, Status: entry.StatusPublished})
+	store.Seed(entry.Entry{ID: 8, World: contentworld.Journal, Status: entry.StatusPublished})
+
+	if err := service.ReorderPublished(context.Background(), contentworld.Journal, []int64{8, 7}); err != nil {
+		t.Fatalf("ReorderPublished: %v", err)
+	}
+	if store.ReorderPublishedCalls != 1 || !slices.Equal(store.LastReorderIDs, []int64{8, 7}) {
+		t.Fatalf("reorder calls = %d, ids = %v", store.ReorderPublishedCalls, store.LastReorderIDs)
+	}
+
+	for _, ids := range [][]int64{nil, {7, 7}, {7}} {
+		if err := service.ReorderPublished(context.Background(), contentworld.Journal, ids); !errors.Is(err, entry.ErrInvalidDisplayOrder) {
+			t.Errorf("ReorderPublished(%v) = %v, want ErrInvalidDisplayOrder", ids, err)
+		}
+	}
+}
+
 // TestIDBoundsAreRefusedWithoutAQuery covers the ids that cannot name a row. Every
 // method that takes one refuses it before reaching the store, so a zero from a
 // caller's uninitialised variable does not become a query.

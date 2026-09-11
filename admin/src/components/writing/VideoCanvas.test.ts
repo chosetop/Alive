@@ -18,7 +18,7 @@ vi.mock('./VideoUpload.vue', async () => {
         revision: { type: Number, required: true },
         disabled: { type: Boolean, default: false },
       },
-      emits: ['revision'],
+      emits: ['revision', 'aspect'],
       template:
         '<button data-video-upload type="button" :disabled="disabled" @click="$emit(\'revision\', revision + 1)">上传</button>',
     }),
@@ -62,7 +62,7 @@ describe('VideoCanvas', () => {
     })
 
     expect(wrapper.get('[data-video-viewfinder]').element).toBeTruthy()
-    expect(wrapper.get('[data-video-viewfinder]').attributes('data-aspect')).toBe('16:9')
+    expect(Number(wrapper.get('[data-video-viewfinder]').attributes('data-aspect'))).toBeCloseTo(16 / 9)
     expect(wrapper.get('[data-video-title]').element).toBeTruthy()
     expect(wrapper.get('[data-video-summary]').element).toBeTruthy()
   })
@@ -113,10 +113,15 @@ describe('VideoCanvas', () => {
     expect(wrapper.get('[data-video-upload]').attributes('disabled')).toBeDefined()
   })
 
-  it('pins the viewfinder to a 16:9 aspect ratio in source as well as DOM metadata', () => {
+  it('starts at 16:9 and lets video metadata control the viewfinder ratio', async () => {
     const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'VideoCanvas.vue'), 'utf8')
 
-    expect(source).toMatch(/\.video-canvas__viewfinder\s*\{[\s\S]*aspect-ratio:\s*16\s*\/\s*9/)
+    const wrapper = mount(VideoCanvas, { props: { entry: entry(), title: '落日片段', summary: '' } })
+    wrapper.getComponent({ name: 'VideoUpload' }).vm.$emit('aspect', 9 / 16)
+    await wrapper.vm.$nextTick()
+
+    expect(Number(wrapper.get('[data-video-viewfinder]').attributes('data-aspect'))).toBeCloseTo(9 / 16)
+    expect(source).toContain("aspectRatio: String(videoAspect)")
   })
 
   it('uses a desktop split with a stable media column and a mobile fallback', () => {

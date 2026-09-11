@@ -3,16 +3,14 @@ import { onMounted, ref, nextTick } from 'vue'
 
 import { resolvePublicWorld } from '~/content-worlds/registry'
 import { useSayingsApi } from '~/composables/useSayingsApi'
-import { consumeSayingAnchor, useSayingView } from '~/composables/useSayingView'
+import { consumeSayingAnchor } from '~/composables/useSayingView'
 import { useSiteCategories } from '~/composables/useSiteCategories'
-import { useSiteWorlds } from '~/composables/useSiteWorlds'
 import { markdownToText } from '~/utils/markdown'
 
 const route = useRoute()
 const sayingsWorld = resolvePublicWorld('saying')
 const { list } = useSayingsApi()
 const { data: categories } = await useSiteCategories('saying')
-const { data: worldSettings } = await useSiteWorlds()
 
 const slug = computed(() => String(route.params.slug))
 const page = computed(() => {
@@ -21,17 +19,11 @@ const page = computed(() => {
 })
 
 const category = computed(() => categories.value.find((item) => item.slug === slug.value) ?? null)
-const sayingDefaultView = computed(() => {
-  const setting = worldSettings.value.find((item) => item.world === 'saying')
-  return setting?.default_view || 'stream'
-})
-
 const { data, error } = await useAsyncData(
   () => `sayings-category-${slug.value}-${page.value}`,
   () => list({ page: page.value, category: slug.value }),
   { watch: [slug, page] },
 )
-
 if (error.value) {
   const status = (error.value as { status?: number }).status
   throw createError({
@@ -43,7 +35,6 @@ if (error.value) {
 
 const items = computed(() => data.value?.data ?? [])
 const meta = computed(() => data.value?.meta)
-const { view, choose } = useSayingView(sayingDefaultView)
 const heading = ref<HTMLElement | null>(null)
 const pendingAnchor = import.meta.client && typeof window !== 'undefined' ? consumeSayingAnchor(window.history) : null
 
@@ -105,36 +96,38 @@ useHead({
 
 <template>
   <div class="sayings-page">
-    <header class="head">
-      <div>
-        <p class="kicker">分类</p>
-        <h1 ref="heading" tabindex="-1" class="title">{{ title }}</h1>
-        <p v-if="category?.description" class="desc">{{ category.description }}</p>
-      </div>
+    <WorldBrowseLayout>
+      <template #header>
+        <header class="head">
+          <div>
+            <h1 ref="heading" tabindex="-1" class="title">{{ title }}</h1>
+            <p v-if="category?.description" class="desc">{{ category.description }}</p>
+          </div>
+        </header>
+      </template>
 
-      <SayingViewPicker :view="view" @change="choose" />
-    </header>
+      <template #navigation>
+        <WorldCategoryNav world="saying" :categories="categories" :active-slug="slug" />
+      </template>
 
-    <SayingStream v-if="view === 'stream'" :items="items" />
-    <SayingWall v-else-if="view === 'wall'" :items="items" />
-    <SayingStream v-else :items="items" />
+      <SayingWall :items="items" />
 
-    <p v-if="items.length === 0" class="empty">这个分类下还没有公开的片语。</p>
+      <p v-if="items.length === 0" class="empty">这个分类下还没有公开的片语。</p>
 
-    <ThePager
-      v-if="meta"
-      :page="meta.page"
-      :page-size="meta.page_size"
-      :total="meta.total"
-      :base-path="sayingsWorld?.categoryPath(slug) ?? `/sayings/categories/${slug}`"
-    />
+      <ThePager
+        v-if="meta"
+        :page="meta.page"
+        :page-size="meta.page_size"
+        :total="meta.total"
+        :base-path="sayingsWorld?.categoryPath(slug) ?? `/sayings/categories/${slug}`"
+      />
+    </WorldBrowseLayout>
   </div>
 </template>
 
 <style scoped>
 .sayings-page {
-  display: grid;
-  gap: var(--space-7);
+  min-width: 0;
 }
 
 .head {
@@ -142,15 +135,6 @@ useHead({
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--space-6);
-}
-
-.kicker {
-  margin-bottom: var(--space-2);
-  color: var(--c-ink-faint);
-  font-family: var(--font-ui);
-  font-size: var(--text-xs);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
 }
 
 .title {

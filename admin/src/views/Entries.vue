@@ -5,6 +5,7 @@ import { categoriesApi, entriesApi, toUserMessage } from '../api'
 import type { Category, EntryDetail, EntryListItem, EntryPatchFields, EntryStatus, WorldKey } from '../types/api'
 import EntryRow from '../components/EntryRow.vue'
 import ArticleSettings from '../components/writing/ArticleSettings.vue'
+import { UiSelect, type UiSelectOption } from '../components/ui'
 
 /**
  * The article list: a todo queue first, an archive second.
@@ -40,6 +41,10 @@ const settingsPatch = ref<EntryPatchFields>({})
 const settingsOpen = ref(false)
 const settingsSaving = ref(false)
 const settingsError = ref<string | null>(null)
+const isOrdering = ref(false)
+const orderingSaving = ref(false)
+const draggedId = ref<number | null>(null)
+const orderingItems = ref<EntryListItem[]>([])
 
 const route = useRoute()
 const router = useRouter()
@@ -58,10 +63,32 @@ const total = ref(0)
 const totalPages = computed(() => (total.value === 0 ? 0 : Math.ceil(total.value / pageSize.value)))
 const hasPrev = computed(() => page.value > 1)
 const hasNext = computed(() => page.value < totalPages.value)
-const isEmpty = computed(() => !isLoading.value && items.value.length === 0)
+const displayedItems = computed(() => {
+  if (!isOrdering.value) return items.value
+  if (!activeCategory.value) return orderingItems.value
+  return orderingItems.value.filter((item) => item.category?.slug === activeCategory.value)
+})
+const isEmpty = computed(() => !isLoading.value && displayedItems.value.length === 0)
 const settingsDirty = computed(() => Object.keys(settingsPatch.value).length > 0)
+const worldOptions: UiSelectOption[] = [
+  { value: '', label: '全部世界' },
+  { value: 'journal', label: '日志' },
+  { value: 'saying', label: '片语' },
+  { value: 'video', label: '影像' },
+]
+const categoryOptions = computed<UiSelectOption[]>(() => [
+  { value: '', label: '全部分类' },
+  ...categories.value.map((category) => ({ value: category.slug, label: category.name })),
+])
+const orderingWorldOptions = worldOptions.filter((option) => option.value !== '')
+const orderingScopeLabel = computed(() => {
+  const world = worldOptions.find((option) => option.value === activeWorld.value)?.label ?? ''
+  const category = categoryOptions.value.find((option) => option.value === activeCategory.value)?.label ?? '全部分类'
+  return activeCategory.value ? `「${world} / ${category}」` : `「${world}」`
+})
 
 async function load(): Promise<void> {
+  if (isOrdering.value) return
   isLoading.value = true
   loadError.value = null
   try {
@@ -85,6 +112,89 @@ async function load(): Promise<void> {
   } finally {
     isLoading.value = false
   }
+}
+
+async function enterOrdering(): Promise<void> {
+  isOrdering.value = true
+  loadError.value = null
+  if (!activeWorld.value) {
+    activeWorld.value = 'journal'
+    activeCategory.value = ''
+  }
+  activeStatus.value = 'published'
+  activeSearch.value = ''
+  page.value = 1
+  syncFiltersToUrl()
+  await loadCategories()
+  await loadOrdering()
+}
+
+async function loadOrdering(): Promise<void> {
+  if (!activeWorld.value) return
+  isLoading.value = true
+  try {
+    const ordered = await entriesApi.listPublishedOrder(activeWorld.value)
+    orderingItems.value = ordered
+    total.value = ordered.length
+    pageSize.value = Math.max(ordered.length, 1)
+  } catch (error) {
+    loadError.value = toUserMessage(error)
+  } finally {
+    isLoading.value = false
+  }
+}
+
+function leaveOrdering(): void {
+  isOrdering.value = false
+  draggedId.value = null
+  orderingItems.value = []
+  void load()
+}
+
+async function persistOrder(previous: EntryListItem[]): Promise<void> {
+  if (!activeWorld.value || orderingSaving.value) return
+  orderingSaving.value = true
+  loadError.value = null
+  try {
+    await entriesApi.reorderPublished(activeWorld.value, orderingItems.value.map((item) => item.id))
+  } catch (error) {
+    orderingItems.value = previous
+    loadError.value = toUserMessage(error)
+  } finally {
+    orderingSaving.value = false
+  }
+}
+
+function moveEntry(entryId: number, targetIndex: number): void {
+  if (orderingSaving.value) return
+  const scopedItems = displayedItems.value
+  const from = scopedItems.findIndex((item) => item.id === entryId)
+  if (from < 0 || targetIndex < 0 || targetIndex >= scopedItems.length || from === targetIndex) return
+  const previous = [...orderingItems.value]
+  const next = [...scopedItems]
+  const [moved] = next.splice(from, 1)
+  next.splice(targetIndex, 0, moved)
+  if (activeCategory.value) {
+    let scopedIndex = 0
+    orderingItems.value = orderingItems.value.map((item) =>
+      item.category?.slug === activeCategory.value ? next[scopedIndex++]! : item,
+    )
+  } else {
+    orderingItems.value = next
+  }
+  void persistOrder(previous)
+}
+
+function moveBy(entryId: number, delta: -1 | 1): void {
+  const from = displayedItems.value.findIndex((item) => item.id === entryId)
+  moveEntry(entryId, from + delta)
+}
+
+function dropOn(targetId: number): void {
+  if (draggedId.value === null) return
+  const targetIndex = displayedItems.value.findIndex((item) => item.id === targetId)
+  moveEntry(draggedId.value, targetIndex)
+  draggedId.value = null
 }
 
 onMounted(load)
@@ -142,6 +252,21 @@ function selectWorld(value: string): void {
 function selectCategory(value: string): void {
   activeCategory.value = value
   page.value = 1
+  syncFiltersToUrl()
+}
+
+async function selectOrderingWorld(value: string): Promise<void> {
+  activeWorld.value = value as WorldKey
+  activeCategory.value = ''
+  page.value = 1
+  syncFiltersToUrl()
+  await loadCategories()
+  await loadOrdering()
+}
+
+function selectOrderingCategory(value: string): void {
+  activeCategory.value = value
+  draggedId.value = null
   syncFiltersToUrl()
 }
 
@@ -266,19 +391,40 @@ async function deleteFromSettings(): Promise<void> {
       <div>
         <h1 class="title">内容</h1>
       </div>
-      <RouterLink class="btn btn--primary" :to="{ name: 'entry-new' }">写一篇</RouterLink>
+      <div class="head-actions">
+        <button class="btn" type="button" data-entry-order-toggle @click="isOrdering ? leaveOrdering() : enterOrdering()">
+          {{ isOrdering ? '完成排序' : '调整前台顺序' }}
+        </button>
+        <RouterLink class="btn btn--primary" :to="{ name: 'entry-new' }">写一篇</RouterLink>
+      </div>
     </header>
 
-    <div class="filters" aria-label="内容筛选">
-      <label class="world-field">
-        <span class="sr-only">按世界筛选</span>
-        <select class="input" data-test="entry-world" :value="activeWorld" aria-label="按世界筛选" @change="selectWorld(($event.target as HTMLSelectElement).value)">
-          <option value="">全部世界</option>
-          <option value="journal">日志</option>
-          <option value="saying">片语</option>
-          <option value="video">影像</option>
-        </select>
-      </label>
+    <div v-if="isOrdering" class="order-panel">
+      <p class="order-note" role="status">
+        正在调整{{ orderingScopeLabel }}的前台顺序。拖动条目，或使用上下按钮；每次移动都会自动保存。
+      </p>
+      <div class="order-scope" aria-label="排序范围">
+        <UiSelect
+          :model-value="activeWorld"
+          :options="orderingWorldOptions"
+          label="排序世界"
+          size="compact"
+          @change="(value) => void selectOrderingWorld(value)"
+        />
+        <UiSelect
+          :model-value="activeCategory"
+          :options="categoryOptions"
+          label="排序分类"
+          size="compact"
+          @change="selectOrderingCategory"
+        />
+      </div>
+    </div>
+
+    <div v-if="!isOrdering" class="filters" aria-label="内容筛选">
+      <div class="world-field" data-test="entry-world">
+        <UiSelect :model-value="activeWorld" :options="worldOptions" label="按世界筛选" size="compact" @change="selectWorld" />
+      </div>
       <label class="search-field">
         <span class="sr-only">搜索文章</span>
         <input
@@ -290,27 +436,15 @@ async function deleteFromSettings(): Promise<void> {
           @input="updateSearch"
         />
       </label>
-      <label class="category-field">
-        <span class="sr-only">按分类筛选</span>
-        <select
-          :value="activeCategory"
-          class="input"
-          data-test="entry-category"
-          aria-label="按分类筛选"
-          @change="selectCategory(($event.target as HTMLSelectElement).value)"
-        >
-          <option value="">全部分类</option>
-          <option v-for="category in categories" :key="category.id" :value="category.slug">
-            {{ category.name }}
-          </option>
-        </select>
-      </label>
+      <div class="category-field" data-test="entry-category">
+        <UiSelect :model-value="activeCategory" :options="categoryOptions" label="按分类筛选" size="compact" @change="selectCategory" />
+      </div>
     </div>
     <p v-if="categoriesError" class="filter-error" role="status">分类暂时无法载入，仍可使用搜索。</p>
 
     <!-- Tabs, not a select: four values, and the current one should be visible
          without opening anything. -->
-    <div class="tabs" role="tablist" aria-label="按状态筛选">
+    <div v-if="!isOrdering" class="tabs" role="tablist" aria-label="按状态筛选">
       <button
         v-for="tab in TABS"
         :key="tab.label"
@@ -332,18 +466,33 @@ async function deleteFromSettings(): Promise<void> {
     <p v-else-if="isEmpty" class="state state--empty">{{ emptyMessage }}</p>
 
     <template v-else>
-      <ul class="list">
-        <EntryRow v-for="item in items" :key="item.id" :entry="item" @settings="openQuickSettings" />
+      <ul class="list" :aria-busy="orderingSaving ? 'true' : undefined">
+        <EntryRow
+          v-for="(item, index) in displayedItems"
+          :key="item.id"
+          :entry="item"
+          :reorderable="isOrdering"
+          :dragging="draggedId === item.id"
+          :first="index === 0"
+          :last="index === displayedItems.length - 1"
+          :draggable="isOrdering"
+          @dragstart="draggedId = item.id"
+          @dragend="draggedId = null"
+          @dragover.prevent
+          @drop.prevent="dropOn(item.id)"
+          @move="moveBy(item.id, $event)"
+          @settings="openQuickSettings"
+        />
       </ul>
 
       <!-- Shown only when there is more than one page. A pager reading
            "1 / 1" is furniture. -->
-      <nav v-if="totalPages > 1" class="pager" aria-label="分页">
+      <nav v-if="!isOrdering && totalPages > 1" class="pager" aria-label="分页">
         <button class="btn" type="button" :disabled="!hasPrev" @click="page -= 1">上一页</button>
         <span class="pager-state">第 {{ page }} / {{ totalPages }} 页，共 {{ total }} 条</span>
         <button class="btn" type="button" :disabled="!hasNext" @click="page += 1">下一页</button>
       </nav>
-      <p v-else class="count">共 {{ total }} 条</p>
+      <p v-else class="count">共 {{ isOrdering ? displayedItems.length : total }} 条</p>
     </template>
 
     <p v-if="settingsError && !settingsOpen" class="alert" role="alert">{{ settingsError }}</p>
@@ -378,6 +527,31 @@ async function deleteFromSettings(): Promise<void> {
   justify-content: space-between;
   gap: var(--space-4);
   margin-bottom: var(--space-5);
+}
+
+.head-actions { display: flex; align-items: center; gap: var(--space-2); }
+.order-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-control);
+  background: var(--c-surface-sunken);
+}
+
+.order-note {
+  margin: 0;
+  color: var(--c-ink-muted);
+  font-size: 0.8125rem;
+}
+
+.order-scope {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .btn--primary {
@@ -558,6 +732,16 @@ async function deleteFromSettings(): Promise<void> {
 }
 
 @media (max-width: 40rem) {
+  .order-panel,
+  .order-scope {
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .order-scope {
+    display: grid;
+  }
+
   .filters {
     flex-direction: column;
   }

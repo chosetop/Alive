@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { listPublicWorlds, resolvePublicWorld } from './registry'
+import { defaultWorldCategoryPath, listPublicWorlds, resolvePublicWorld } from './registry'
 
 describe('public world registry', () => {
   it('resolves journal to the public journal route set', () => {
@@ -34,5 +34,12 @@ describe('public world registry', () => {
       seoType: 'VideoObject',
     })
     expect(resolvePublicWorld('unknown')).toBeNull()
+  })
+
+  it('uses the first configured category as a world root default', () => {
+    expect(defaultWorldCategoryPath('journal', [{ slug: 'travel' }, { slug: 'reading' }]))
+      .toBe('/journal/categories/travel')
+    expect(defaultWorldCategoryPath('saying', [{ slug: 'daily' }])).toBe('/sayings/categories/daily')
+    expect(defaultWorldCategoryPath('video', [])).toBeNull()
   })
 })

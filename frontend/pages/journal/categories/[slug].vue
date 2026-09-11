@@ -21,7 +21,6 @@ const { data, error } = await useAsyncData(
   () => list({ page: page.value, category: slug.value }),
   { watch: [slug, page] },
 )
-
 if (error.value) {
   const status = (error.value as { status?: number }).status
   throw createError({
@@ -58,12 +57,17 @@ useHead({
 </script>
 
 <template>
-  <div>
-    <header class="head">
-      <p class="kicker">分类</p>
-      <h1 class="title">{{ title }}</h1>
-      <p v-if="category?.description" class="desc">{{ category.description }}</p>
-    </header>
+  <WorldBrowseLayout>
+    <template #header>
+      <header class="head">
+        <h1 class="title">{{ title }}</h1>
+        <p v-if="category?.description" class="desc">{{ category.description }}</p>
+      </header>
+    </template>
+
+    <template #navigation>
+      <WorldCategoryNav world="journal" :categories="categories" :active-slug="slug" />
+    </template>
 
     <EntryTimeline v-if="entries.length > 0" :entries="entries" />
 
@@ -76,5 +80,23 @@ useHead({
       :total="meta.total"
       :base-path="journal?.categoryPath(slug) ?? `/journal/categories/${slug}`"
     />
-  </div>
+  </WorldBrowseLayout>
 </template>
+
+<style scoped>
+.head {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.title {
+  font-family: var(--font-heading);
+  font-size: clamp(2.2rem, 4vw, 3.2rem);
+  font-weight: 500;
+}
+
+.desc {
+  max-width: var(--measure);
+  color: var(--c-ink-muted);
+}
+</style>

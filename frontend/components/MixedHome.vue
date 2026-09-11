@@ -13,8 +13,11 @@ const [{ data: journals }, { data: sayings }, { data: videos }] = await Promise.
 
 <template>
   <div class="mixed-home">
-    <section v-if="journals?.data?.length" aria-labelledby="journal-preview">
-      <h2 id="journal-preview">日志</h2>
+    <section v-if="journals?.data?.length" class="preview" aria-labelledby="journal-preview">
+      <div class="section-head">
+        <h2 id="journal-preview">日志</h2>
+        <NuxtLink to="/journal">浏览全部</NuxtLink>
+      </div>
       <EntryTimeline :entries="journals.data" />
     </section>
 
@@ -25,6 +28,46 @@ const [{ data: journals }, { data: sayings }, { data: videos }] = await Promise.
 
 <style scoped>
 .mixed-home{display:grid;gap:3rem}
-.mixed-home h2{font-size:var(--text-lg);margin-bottom:1rem}
-#journal-preview{font-size:1.5rem}
+
+.preview {
+  display: grid;
+  gap: var(--space-5);
+  padding-top: var(--space-4);
+}
+
+.section-head {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--c-line);
+}
+
+.section-head::after {
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: var(--space-7);
+  height: 2px;
+  background: var(--c-accent);
+  content: '';
+}
+
+.section-head h2 {
+  color: var(--c-ink);
+  font-size: var(--text-xl);
+  letter-spacing: var(--tracking-display);
+}
+
+.section-head a {
+  color: var(--c-ink-muted);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.section-head a:hover {
+  color: var(--c-accent);
+}
 </style>

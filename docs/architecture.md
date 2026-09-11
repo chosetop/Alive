@@ -187,6 +187,7 @@ JSONB 不是免费的。你会在两件事上付钱：
 | word_count | INT NOT NULL DEFAULT 0 | 字数，写入时算，列表页免读正文 |
 | happened_at | TIMESTAMPTZ NULL | 事情**发生**的时间 |
 | published_at | TIMESTAMPTZ NULL | 首次发布时间 |
+| display_order | BIGINT NOT NULL DEFAULT 0 | 前台手动展示顺序 |
 | created_at | TIMESTAMPTZ NOT NULL | 记录创建时间 |
 | updated_at | TIMESTAMPTZ NOT NULL | 最后修改时间 |
 | deleted_at | TIMESTAMPTZ NULL | 软删除标记 |
@@ -201,7 +202,7 @@ JSONB 不是免费的。你会在两件事上付钱：
 **`happened_at` 为什么必须独立于 `created_at`？**
 你的需求是「记录我活过」，不是「记录我什么时候打字」。补写三年前的一趟旅行时，`created_at` 是今天，`happened_at` 是三年前。前台的人生时间线必须按 `happened_at` 排，否则那条时间线记录的是你的写作习惯，不是你的人生。这个字段是整个模型里最贴合你项目定位的一个。
 
-`happened_at` 为空时回落到 `published_at`——排序与显示用的是同一个 `COALESCE` 表达式（2026-08-25 定，见 `api.md` 的 `GET /api/v1/entries`）。一条没有发生日期的内容，读者看到的日期就是它的发布日期，那它也必须排在那个位置上。
+`happened_at` 为空时，前台展示日期仍回落到 `published_at`；列表位置则由 `display_order` 独立控制。这样作者可以调整阅读顺序，而不篡改一篇日志真实发生或发布的时间。
 
 **`published_at` 语义定死：首次发布时间。**
 重新编辑已发布的内容不更新它，否则前台按发布时间排序会因为你修个错别字就把三年前的日志顶到首页。
@@ -221,11 +222,9 @@ CREATE INDEX idx_entries_timeline
   ON entries (happened_at DESC)
   WHERE deleted_at IS NULL AND status = 'published';
 
--- 前台列表实际用的那一个（migration 000005）。
--- 表达式索引，因为 ORDER BY 用的是 COALESCE：Postgres 只在索引表达式与排序
--- 表达式文本一致时才拿它排序，上面那个 (happened_at DESC) 顶不了这个用。
-CREATE INDEX idx_entries_public_timeline
-  ON entries (COALESCE(happened_at, published_at) DESC, id DESC)
+-- 前台列表实际使用的手动顺序（migration 000018）。
+CREATE INDEX idx_entries_world_public_display_order
+  ON entries (world, display_order DESC, id DESC)
   WHERE deleted_at IS NULL
     AND status = 'published'
     AND visibility = 'public';

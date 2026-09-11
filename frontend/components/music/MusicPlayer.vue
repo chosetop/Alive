@@ -54,6 +54,9 @@ function outside(event: PointerEvent) {
 function value(event: Event) {
   return Number((event.target as HTMLInputElement).value)
 }
+function selectPlaylist(id: string) {
+  player.value?.select(Number(id), undefined, false)
+}
 onMounted(() => {
   document.addEventListener('keydown', keydown)
   document.addEventListener('pointerdown', outside)
@@ -109,21 +112,14 @@ onBeforeUnmount(() => {
               <span class="now-kicker">正在播放</span>
               <strong>{{ player.track.value.title }}</strong>
               <span class="now-artist">{{ player.track.value.artist || '背景音乐' }}</span>
-              <label class="sr-only" for="music-playlist">选择歌单</label>
-              <select
-                id="music-playlist"
-                :value="player.state.playlistId"
-                aria-label="选择歌单"
-                @change="player.select(value($event), undefined, false)"
-              >
-                <option
-                  v-for="list in player.state.catalog.playlists"
-                  :key="list.id"
-                  :value="list.id"
-                >
-                  {{ list.name }}
-                </option>
-              </select>
+              <UiSelect
+                class="playlist-select"
+                :model-value="String(player.state.playlistId ?? '')"
+                :options="player.state.catalog.playlists.map((list) => ({ value: String(list.id), label: list.name }))"
+                label="选择歌单"
+                size="compact"
+                @change="selectPlaylist"
+              />
             </div>
             <div class="volume-control">
               <label for="music-volume" aria-label="音量">
@@ -311,9 +307,18 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .music-player {
+  --music-glass-fallback: color-mix(in srgb, var(--c-surface-sunken) 82%, var(--c-paper) 18%);
+  --music-glass-bar: color-mix(in srgb, var(--c-surface-sunken) 76%, transparent);
+  --music-glass-panel: color-mix(in srgb, var(--c-surface-sunken) 84%, transparent);
+  --music-glass-border: color-mix(in srgb, var(--c-ink) 13%, transparent);
+  --music-glass-highlight: color-mix(in srgb, white 24%, transparent);
+  --music-glass-blur-bar: 20px;
+  --music-glass-blur-panel: 28px;
+  --music-glass-shadow-bar: 0 0.75rem 2rem color-mix(in srgb, var(--c-shadow-float) 72%, transparent);
+  --music-glass-shadow-panel: 0 1.25rem 3.5rem color-mix(in srgb, var(--c-shadow-float) 86%, transparent);
   position: fixed;
   left: 50%;
-  bottom: max(var(--space-5), env(safe-area-inset-bottom));
+  bottom: max(1rem, env(safe-area-inset-bottom));
   z-index: 50;
   width: min(47.5rem, calc(100vw - 2rem));
   color: var(--c-ink);
@@ -326,11 +331,34 @@ onBeforeUnmount(() => {
 .music-panel,
 .music-notice,
 .music-error {
-  border: 1px solid color-mix(in srgb, var(--c-line) 82%, transparent);
-  background: color-mix(in srgb, var(--c-paper) 96%, transparent);
-  box-shadow: 0 0.75rem 2.5rem var(--c-shadow-float);
+  border: 1px solid var(--music-glass-border);
+  background: var(--music-glass-fallback);
+  box-shadow:
+    inset 0 1px 0 var(--music-glass-highlight),
+    var(--music-glass-shadow-bar);
+}
+.music-bar,
+.music-panel {
+  border-color: var(--c-glass-border);
+}
+.music-bar {
+  background: var(--music-glass-bar);
+  -webkit-backdrop-filter: blur(var(--music-glass-blur-bar)) saturate(155%);
+  backdrop-filter: blur(var(--music-glass-blur-bar)) saturate(155%);
+  box-shadow:
+    inset 0 1px 0 var(--music-glass-highlight),
+    var(--music-glass-shadow-bar);
 }
 .music-panel {
+  background: var(--music-glass-panel);
+  -webkit-backdrop-filter: blur(var(--music-glass-blur-panel)) saturate(155%);
+  backdrop-filter: blur(var(--music-glass-blur-panel)) saturate(155%);
+  box-shadow:
+    inset 0 1px 0 var(--music-glass-highlight),
+    var(--music-glass-shadow-panel);
+}
+.music-panel {
+  position: relative;
   max-height: calc(100dvh - 8.5rem);
   margin-bottom: var(--space-3);
   overflow-y: auto;
@@ -348,6 +376,27 @@ onBeforeUnmount(() => {
   padding: 0.625rem 0.75rem;
   border-radius: 1.25rem;
   transition: opacity var(--duration-mid) var(--ease-out);
+}
+.music-bar::before,
+.music-panel::before {
+  position: absolute;
+  pointer-events: none;
+  content: '';
+  border-radius: inherit;
+  background: linear-gradient(112deg, color-mix(in srgb, white 22%, transparent), transparent 34%);
+  opacity: 0.72;
+}
+.music-bar::before {
+  inset: 1px;
+}
+.music-panel::before {
+  inset: 1px;
+  height: 3.5rem;
+  border-radius: 1.4rem 1.4rem 0 0;
+}
+.music-panel > * {
+  position: relative;
+  z-index: 1;
 }
 .is-expanded .music-bar {
   grid-template-columns: 1fr;
@@ -371,7 +420,6 @@ button:active {
   transform: scale(0.96);
 }
 button:focus-visible,
-select:focus-visible,
 input:focus-visible {
   outline: 2px solid var(--c-accent);
   outline-offset: 2px;
@@ -516,18 +564,10 @@ svg text {
   color: var(--c-ink-muted);
   font-size: var(--text-sm);
 }
-select {
+.playlist-select {
   width: auto;
   max-width: 12rem;
-  min-height: 2.25rem;
   margin-top: var(--space-3);
-  border: 0;
-  border-radius: 999px;
-  background: var(--c-surface-sunken);
-  padding: 0.35rem 1.9rem 0.35rem 0.75rem;
-  color: var(--c-accent);
-  font-size: 0.75rem;
-  cursor: pointer;
 }
 .seek-row {
   display: grid;
@@ -701,6 +741,8 @@ small {
   }
 }
 .track-trigger {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   min-width: 0;
@@ -725,6 +767,8 @@ small {
   height: 1rem;
 }
 .bar-progress {
+  position: relative;
+  z-index: 1;
   height: 2px;
   overflow: hidden;
   border-radius: 999px;
@@ -737,6 +781,8 @@ small {
   background: var(--c-accent);
 }
 .transport {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   flex-shrink: 0;
@@ -761,7 +807,7 @@ small {
 }
 @media (max-width: 46rem) {
   .music-player {
-    bottom: max(0.75rem, env(safe-area-inset-bottom));
+    bottom: max(0.625rem, env(safe-area-inset-bottom));
     width: calc(100vw - 1.5rem);
   }
   .music-panel {
@@ -836,6 +882,24 @@ small {
     width: 2.75rem;
     min-height: 2.75rem;
     border-radius: 0.85rem;
+  }
+}
+@supports not ((backdrop-filter: blur(1px))) {
+  .music-bar,
+  .music-panel,
+  .music-notice,
+  .music-error {
+    background: var(--music-glass-fallback);
+  }
+}
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  .music-bar,
+  .music-panel,
+  .music-notice,
+  .music-error {
+    background: var(--music-glass-fallback);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {

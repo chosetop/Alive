@@ -20,6 +20,7 @@ import ArticleDirectory from './ArticleDirectory.vue'
 
 const api = vi.hoisted(() => ({
   listEntriesAdmin: vi.fn(),
+  listCategoriesAdmin: vi.fn(),
   createEntry: vi.fn(),
   deleteEntry: vi.fn(),
 }))
@@ -36,6 +37,7 @@ vi.mock('../../api', async () => {
   return {
     ...errors,
     entriesApi: { listEntriesAdmin: api.listEntriesAdmin, createEntry: api.createEntry, deleteEntry: api.deleteEntry },
+    categoriesApi: { listCategoriesAdmin: api.listCategoriesAdmin },
   }
 })
 
@@ -104,6 +106,7 @@ describe('ArticleDirectory', () => {
     recovery.records = []
     recovery.listRejection = null
     setActivePinia(createPinia())
+    api.listCategoriesAdmin.mockResolvedValue([])
     api.listEntriesAdmin.mockResolvedValue(page([item()]))
     api.deleteEntry.mockResolvedValue(undefined)
   })
@@ -132,33 +135,50 @@ describe('ArticleDirectory', () => {
     expect(brand.attributes('aria-label')).toBe('返回 Dashboard')
   })
 
-  it('does not request any status group until one is opened', async () => {
-    const wrapper = await mountDirectory({ world: 'saying' })
-    expect(api.listEntriesAdmin).toHaveBeenCalledOnce()
+  it('groups the current world by category and removes the article library', async () => {
+    api.listCategoriesAdmin.mockResolvedValue([
+      { id: 3, world: 'journal', name: '旅行', slug: 'travel', description: '', created_at: '', updated_at: '' },
+    ])
+    api.listEntriesAdmin.mockResolvedValue(page([
+      item({ id: 7, category: { id: 3, name: '旅行', slug: 'travel' } }),
+      item({ id: 8, category: null }),
+    ]))
 
-    await wrapper.get('[data-status-group="draft"]').trigger('click')
-    await flushPromises()
+    const wrapper = await mountDirectory()
 
-    expect(api.listEntriesAdmin).toHaveBeenLastCalledWith({ world: 'saying', status: 'draft', page_size: 20 })
-    expect(wrapper.get('[data-status-list="draft"]').element).toBeTruthy()
+    expect(wrapper.get('[data-directory-category="travel"]').text()).toContain('山中一日')
+    expect(wrapper.get('[data-directory-category="__uncategorised"]').text()).toContain('未分类')
+    expect(wrapper.text()).not.toContain('文章库')
+    expect(wrapper.text()).not.toContain('最近')
   })
 
-  it('announces group expansion and does not refetch a group already loaded', async () => {
+  it('lets each category reveal or hide its own articles', async () => {
+    api.listCategoriesAdmin.mockResolvedValue([
+      { id: 3, world: 'journal', name: '旅行', slug: 'travel', description: '', created_at: '', updated_at: '' },
+    ])
+    api.listEntriesAdmin.mockResolvedValue(page([
+      item({ id: 7, title: '山中一日', category: { id: 3, name: '旅行', slug: 'travel' } }),
+    ]))
     const wrapper = await mountDirectory()
-    const toggle = wrapper.get('[data-status-group="published"]')
+    const toggle = wrapper.get('[data-category-toggle="travel"]')
+
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.text()).toContain('山中一日')
+
+    await toggle.trigger('click')
     expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.text()).not.toContain('山中一日')
 
     await toggle.trigger('click')
-    await flushPromises()
     expect(toggle.attributes('aria-expanded')).toBe('true')
-    const afterFirstOpen = api.listEntriesAdmin.mock.calls.length
+    expect(wrapper.text()).toContain('山中一日')
+  })
 
-    await toggle.trigger('click')
-    await toggle.trigger('click')
-    await flushPromises()
+  it('falls back to recent only when the current world has no categories', async () => {
+    const wrapper = await mountDirectory()
 
-    expect(toggle.attributes('aria-expanded')).toBe('true')
-    expect(api.listEntriesAdmin.mock.calls.length).toBe(afterFirstOpen)
+    expect(wrapper.get('#directory-recent-heading').text()).toBe('最近')
+    expect(wrapper.find('[data-directory-category]').exists()).toBe(false)
   })
 
   it('debounces the search by 250ms into a single request', async () => {

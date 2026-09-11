@@ -2,11 +2,11 @@
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { isNavigationFailure, useRouter } from 'vue-router'
 
-import { entriesApi, toUserMessage } from '../../api'
+import { categoriesApi, entriesApi, toUserMessage } from '../../api'
 import { resolveAdminWorld } from '../../content-worlds/registry'
 import { EntryRecoveryStore } from '../../editor/recovery-store'
 import { useWritingStore, writingFlushKey } from '../../stores/writing'
-import type { EntryListItem, EntryStatus, WorldKey } from '../../types/api'
+import type { Category, EntryListItem, EntryStatus, WorldKey } from '../../types/api'
 import { UiButton, UiIcon, UiIconButton } from '../ui'
 
 /**
@@ -32,12 +32,6 @@ const RECENT_PAGE_SIZE = 20
  * the autosave PATCHes it must not delay.
  */
 const SEARCH_DEBOUNCE_MS = 250
-
-const STATUS_GROUPS: ReadonlyArray<{ status: EntryStatus; label: string }> = [
-  { status: 'draft', label: '草稿' },
-  { status: 'published', label: '已发布' },
-  { status: 'archived', label: '已归档' },
-]
 
 const STATUS_LABEL: Record<EntryStatus, string> = {
   draft: '草稿',
@@ -75,11 +69,10 @@ const createLabel = computed(() => worldDefinition.value?.createLabel ?? '新建
 const collapseLabel = computed(() => `${props.drawer ? '关闭' : '收起'}${directoryLabel.value}`)
 
 const recent = ref<EntryListItem[]>([])
+const categories = ref<Category[]>([])
 const searchResults = ref<EntryListItem[]>([])
-const groups = ref<Partial<Record<EntryStatus, EntryListItem[]>>>({})
-const openGroups = ref<Set<EntryStatus>>(new Set())
-const loadingGroups = ref<Set<EntryStatus>>(new Set())
 const unsyncedIds = ref<Set<number>>(new Set())
+const collapsedCategoryKeys = ref<Set<string>>(new Set())
 
 const isLoadingRecent = ref(true)
 const isSearching = ref(false)
@@ -100,9 +93,20 @@ const visibleRecent = computed(() =>
   writing.directoryEntries,
 )
 const selectedRecentCount = computed(() => selectedRecentIds.value.size)
+const hasCategories = computed(() => categories.value.length > 0)
+const categorySections = computed(() => {
+  const sections = categories.value.map((category) => ({
+    key: category.slug,
+    label: category.name,
+    entries: visibleRecent.value.filter((entry) => entry.category?.id === category.id),
+  }))
+  const uncategorised = visibleRecent.value.filter((entry) => entry.category === null)
+  if (uncategorised.length > 0) sections.push({ key: '__uncategorised', label: '未分类', entries: uncategorised })
+  return sections
+})
 
 onMounted(() => {
-  void loadRecent()
+  void loadDirectory()
   void loadUnsynced()
 })
 
@@ -136,13 +140,28 @@ watch(trimmedQuery, (query) => {
   }, SEARCH_DEBOUNCE_MS)
 })
 
-async function loadRecent(): Promise<void> {
+async function loadDirectory(): Promise<void> {
   isLoadingRecent.value = true
   try {
-    const page = await entriesApi.listEntriesAdmin({ world: props.world, page_size: RECENT_PAGE_SIZE })
+    try {
+      categories.value = await categoriesApi.listCategoriesAdmin({ world: props.world })
+    } catch {
+      // The directory remains useful when taxonomy is temporarily unavailable:
+      // fall back to the recent view rather than hiding every article.
+      categories.value = []
+    }
+    const pageSize = hasCategories.value ? 50 : RECENT_PAGE_SIZE
+    const first = await entriesApi.listEntriesAdmin({ world: props.world, page_size: pageSize })
+    const rest = hasCategories.value
+      ? await Promise.all(Array.from(
+          { length: Math.max(0, Math.ceil(first.meta.total / first.meta.page_size) - 1) },
+          (_, index) => entriesApi.listEntriesAdmin({ world: props.world, page: index + 2, page_size: first.meta.page_size }),
+        ))
+      : []
+    const items = [first, ...rest].flatMap((part) => part.data)
     if (disposed) return
-    recent.value = page.data
-    writing.setDirectoryEntries(page.data)
+    recent.value = items
+    writing.setDirectoryEntries(items)
     error.value = null
   } catch (loadFailure) {
     if (!disposed) error.value = toUserMessage(loadFailure)
@@ -177,35 +196,6 @@ async function runSearch(query: string): Promise<void> {
     if (!disposed && generation === searchGeneration) error.value = toUserMessage(searchFailure)
   } finally {
     if (!disposed && generation === searchGeneration) isSearching.value = false
-  }
-}
-
-async function toggleGroup(status: EntryStatus): Promise<void> {
-  const open = new Set(openGroups.value)
-  if (open.has(status)) {
-    open.delete(status)
-    openGroups.value = open
-    return
-  }
-  open.add(status)
-  openGroups.value = open
-
-  // Fetched once per session. Reopening a group a second time should not spend a
-  // request to redraw rows already on hand.
-  if (groups.value[status] !== undefined) return
-
-  loadingGroups.value = new Set(loadingGroups.value).add(status)
-  try {
-    const page = await entriesApi.listEntriesAdmin({ world: props.world, status, page_size: RECENT_PAGE_SIZE })
-    if (!disposed) groups.value = { ...groups.value, [status]: page.data }
-  } catch (groupFailure) {
-    if (!disposed) error.value = toUserMessage(groupFailure)
-  } finally {
-    if (!disposed) {
-      const loading = new Set(loadingGroups.value)
-      loading.delete(status)
-      loadingGroups.value = loading
-    }
   }
 }
 
@@ -366,6 +356,17 @@ function editedAt(item: EntryListItem): string {
 function isUnsynced(item: EntryListItem): boolean {
   return unsyncedIds.value.has(item.id)
 }
+
+function isCategoryCollapsed(key: string): boolean {
+  return collapsedCategoryKeys.value.has(key)
+}
+
+function toggleCategory(key: string): void {
+  const next = new Set(collapsedCategoryKeys.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  collapsedCategoryKeys.value = next
+}
 </script>
 
 <template>
@@ -454,9 +455,10 @@ function isUnsynced(item: EntryListItem): boolean {
     </section>
 
     <template v-else>
-      <section class="group" aria-labelledby="directory-recent-heading">
+      <section class="group" :aria-labelledby="hasCategories ? 'directory-category-heading' : 'directory-recent-heading'">
         <div class="group-heading">
-          <h2 id="directory-recent-heading" class="group-title">最近</h2>
+          <h2 v-if="hasCategories" id="directory-category-heading" class="group-title">分类</h2>
+          <h2 v-else id="directory-recent-heading" class="group-title">最近</h2>
           <div class="recent-actions">
             <template v-if="confirmingBulkDelete">
               <button type="button" class="manage-action manage-action--danger" data-recent-delete-confirm @click="deleteSelectedRecent">
@@ -480,6 +482,59 @@ function isUnsynced(item: EntryListItem): boolean {
         </div>
         <p v-if="isLoadingRecent" class="state">载入中…</p>
         <p v-else-if="visibleRecent.length === 0" class="state">还没有文章</p>
+        <template v-else-if="hasCategories">
+          <section v-for="(section, sectionIndex) in categorySections" :key="section.key" class="category-group" :data-directory-category="section.key">
+            <h3 class="category-title">
+              <button
+                class="category-toggle"
+                type="button"
+                :aria-expanded="!isCategoryCollapsed(section.key)"
+                :aria-controls="`directory-category-articles-${sectionIndex}`"
+                :data-category-toggle="section.key"
+                @click="toggleCategory(section.key)"
+              >
+                <UiIcon :class="['category-chevron', { 'category-chevron--collapsed': isCategoryCollapsed(section.key) }]" name="chevron-down" />
+                <span>{{ section.label }}</span>
+                <span class="category-count">{{ section.entries.length }}</span>
+              </button>
+            </h3>
+            <div
+              v-if="!isCategoryCollapsed(section.key)"
+              :id="`directory-category-articles-${sectionIndex}`"
+              class="category-articles"
+            >
+              <p v-if="section.entries.length === 0" class="state state--category">这里还是空的</p>
+              <ul v-else class="list">
+              <li v-for="item in section.entries" :key="item.id">
+                <input
+                  v-if="isManagingRecent"
+                  class="recent-checkbox"
+                  type="checkbox"
+                  :checked="selectedRecentIds.has(item.id)"
+                  :data-recent-select="item.id"
+                  :aria-label="`选择${titleOf(item)}`"
+                  @change="toggleRecentSelection(item.id)"
+                />
+                <button
+                  :class="['item', { 'item--selectable': isManagingRecent }]"
+                  type="button"
+                  :data-entry-id="item.id"
+                  :aria-current="item.id === writing.activeEntryId ? 'true' : undefined"
+                  @click="isManagingRecent ? toggleRecentSelection(item.id) : openEntry(item.id)"
+                >
+                  <span v-if="item.id === writing.activeEntryId" class="item-cursor" data-alive-cursor aria-hidden="true" />
+                  <span :class="['item-title', { 'item-title--excerpt': world === 'saying' }]" :data-saying-excerpt="world === 'saying' ? true : undefined">{{ titleOf(item) }}</span>
+                  <span class="item-meta">
+                    <span>{{ STATUS_LABEL[item.status] }}</span>
+                    <span>{{ editedAt(item) }}</span>
+                    <span v-if="isUnsynced(item)" class="dot" data-unsynced><span class="ui-visually-hidden">未同步</span></span>
+                  </span>
+                </button>
+              </li>
+              </ul>
+            </div>
+          </section>
+        </template>
         <ul v-else class="list" data-directory-recent>
           <li v-for="item in visibleRecent" :key="item.id">
             <input
@@ -517,51 +572,6 @@ function isUnsynced(item: EntryListItem): boolean {
         </ul>
       </section>
 
-      <section class="group" aria-labelledby="directory-library-heading">
-        <h2 id="directory-library-heading" class="group-title">文章库</h2>
-        <div v-for="group in STATUS_GROUPS" :key="group.status" class="status-group">
-          <!-- aria-expanded, not a rotated chevron alone: the open state has to
-               be announced, and the group's own request depends on it. -->
-          <button
-            class="group-toggle"
-            type="button"
-            :data-status-group="group.status"
-            :aria-expanded="openGroups.has(group.status) ? 'true' : 'false'"
-            @click="toggleGroup(group.status)"
-          >
-            {{ group.label }}
-          </button>
-          <template v-if="openGroups.has(group.status)">
-            <p v-if="loadingGroups.has(group.status)" class="state">载入中…</p>
-            <p v-else-if="(groups[group.status] ?? []).length === 0" class="state">这里还是空的</p>
-            <ul v-else class="list" :data-status-list="group.status">
-              <li v-for="item in groups[group.status]" :key="item.id">
-                <button
-                  class="item"
-                  type="button"
-                  :data-entry-id="item.id"
-                  :aria-current="item.id === writing.activeEntryId ? 'true' : undefined"
-                  @click="openEntry(item.id)"
-                >
-                  <span
-                    v-if="item.id === writing.activeEntryId"
-                    class="item-cursor"
-                    data-alive-cursor
-                    aria-hidden="true"
-                  />
-                  <span :class="['item-title', { 'item-title--excerpt': world === 'saying' }]" :data-saying-excerpt="world === 'saying' ? true : undefined">{{ titleOf(item) }}</span>
-                  <span class="item-meta">
-                    <span>{{ editedAt(item) }}</span>
-                    <span v-if="isUnsynced(item)" class="dot" data-unsynced>
-                      <span class="ui-visually-hidden">未同步</span>
-                    </span>
-                  </span>
-                </button>
-              </li>
-            </ul>
-          </template>
-        </div>
-      </section>
     </template>
 
     <div class="footer">
@@ -606,6 +616,59 @@ function isUnsynced(item: EntryListItem): boolean {
 .directory::-webkit-scrollbar-thumb:hover {
   background: var(--c-ink-faint);
   background-clip: content-box;
+}
+
+.category-group { display: grid; gap: var(--space-2); }
+.category-group + .category-group { margin-top: var(--space-4); }
+.category-title {
+  margin: 0;
+}
+.category-toggle {
+  display: grid;
+  grid-template-columns: 0.875rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 2rem;
+  padding: 0 var(--space-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--c-ink-muted);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.category-toggle:hover,
+.category-toggle:focus-visible {
+  background: var(--c-surface);
+  color: var(--c-ink);
+}
+.category-toggle:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 1px;
+}
+.category-chevron {
+  width: 0.75rem;
+  height: 0.75rem;
+  color: var(--c-ink-faint);
+  transition: transform var(--motion-fast) ease;
+}
+.category-chevron--collapsed {
+  transform: rotate(-90deg);
+}
+.category-count {
+  color: var(--c-ink-faint);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+.state--category { padding-block: var(--space-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .category-chevron { transition: none; }
 }
 
 .brand {
@@ -668,6 +731,7 @@ function isUnsynced(item: EntryListItem): boolean {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 
 .group-heading .group-title {

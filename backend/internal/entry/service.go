@@ -57,6 +57,8 @@ type Store interface {
 	// optionally narrowed to a text search. A nil search is no text filter.
 	// A nil status means every status.
 	ListAdmin(ctx context.Context, world *contentworld.Key, categoryID int64, status *Status, search *string, limit, offset int) ([]Entry, int64, error)
+	ListPublishedForOrdering(ctx context.Context, world contentworld.Key) ([]Entry, error)
+	ReorderPublished(ctx context.Context, world contentworld.Key, orderedIDs []int64) error
 	DashboardMetrics(ctx context.Context) (DashboardMetrics, error)
 
 	// SlugExistsExcluding reports whether a live entry other than excludedID holds
@@ -580,6 +582,37 @@ func (s *Service) ListAdmin(ctx context.Context, world *contentworld.Key, catego
 		PageSize: pageSize,
 		Total:    total,
 	}, nil
+}
+
+// ListPublishedForOrdering returns the complete published list for one world.
+// It is an owner-only editing surface, so it is intentionally not paginated:
+// the reorder request must describe the whole order rather than one page.
+func (s *Service) ListPublishedForOrdering(ctx context.Context, world contentworld.Key) ([]Entry, error) {
+	if err := ValidateWorld(world); err != nil {
+		return nil, fmt.Errorf("%w: %s", err, world)
+	}
+	return s.store.ListPublishedForOrdering(ctx, world)
+}
+
+// ReorderPublished replaces the complete published order for one world.
+func (s *Service) ReorderPublished(ctx context.Context, world contentworld.Key, orderedIDs []int64) error {
+	if err := ValidateWorld(world); err != nil {
+		return fmt.Errorf("%w: %s", err, world)
+	}
+	if len(orderedIDs) == 0 {
+		return ErrInvalidDisplayOrder
+	}
+	seen := make(map[int64]struct{}, len(orderedIDs))
+	for _, id := range orderedIDs {
+		if id <= 0 {
+			return ErrInvalidDisplayOrder
+		}
+		if _, exists := seen[id]; exists {
+			return ErrInvalidDisplayOrder
+		}
+		seen[id] = struct{}{}
+	}
+	return s.store.ReorderPublished(ctx, world, orderedIDs)
 }
 
 // DashboardMetrics reads the complete active-library counters from storage.

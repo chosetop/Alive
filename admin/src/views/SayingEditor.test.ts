@@ -174,10 +174,9 @@ describe('SayingEditor', () => {
   it('keeps slug, visibility, and tags together in always-visible saying settings', async () => {
     const wrapper = await mountEditor(entry({ id: 80 }))
 
-    expect(wrapper.find('button[aria-expanded]').exists()).toBe(false)
     expect(wrapper.find('[data-saying-settings]').exists()).toBe(true)
     expect(wrapper.find('input[aria-label="片语 slug"]').exists()).toBe(false)
-    expect(wrapper.get('select[aria-label="公开状态"]')).toBeTruthy()
+    expect(wrapper.get('button[role="combobox"][aria-label="公开状态"]')).toBeTruthy()
     expect(wrapper.get('[data-tag-picker]')).toBeTruthy()
   })
 

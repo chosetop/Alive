@@ -30,8 +30,14 @@ export function getPublishChecks(entry: Pick<EntryDetail, 'title' | 'slug' | 'co
   if (entry.world === 'journal' && entry.category_id === 0) missing.add('category_id')
   if (entry.world !== 'journal' && entry.cover_url.trim() === '') missing.add('cover_url')
 
+  const videoCoverMissing = entry.world === 'video' && missing.has('cover_url')
+
   return {
-    blockers: BLOCKERS.filter(([field]) => missing.has(field)).map(([field, label]) => ({ field, label, kind: 'blocker' })),
-    reminders: REMINDERS.filter(([field]) => missing.has(field)).map(([field, label]) => ({ field, label, kind: 'reminder' })),
+    blockers: [
+      ...BLOCKERS.filter(([field]) => missing.has(field)).map(([field, label]) => ({ field, label, kind: 'blocker' as const })),
+      ...(videoCoverMissing ? [{ field: 'cover_url' as const, label: '封面', kind: 'blocker' as const }] : []),
+    ],
+    reminders: REMINDERS.filter(([field]) => missing.has(field) && !(videoCoverMissing && field === 'cover_url'))
+      .map(([field, label]) => ({ field, label, kind: 'reminder' })),
   }
 }

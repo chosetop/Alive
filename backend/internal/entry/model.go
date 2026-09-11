@@ -77,6 +77,10 @@ var (
 
 	// ErrWorldNotOpen reports a public publish attempt into an unopened world.
 	ErrWorldNotOpen = errors.New("entry: world not open")
+
+	// ErrInvalidDisplayOrder reports a reorder payload that is incomplete,
+	// duplicated, or contains an entry outside the requested world.
+	ErrInvalidDisplayOrder = errors.New("entry: invalid display order")
 )
 
 // Status is how finished an entry is.
@@ -201,7 +205,7 @@ func ValidateForPublish(e Entry) error {
 	if err := ValidateSlug(e.Slug); err != nil {
 		return err
 	}
-	if strings.TrimSpace(e.ContentMD) == "" {
+	if e.World != contentworld.Video && strings.TrimSpace(e.ContentMD) == "" {
 		return ErrEmptyContent
 	}
 	if !e.Visibility.Valid() {

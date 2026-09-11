@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 
 import { fromFormDateTime, toFormDateTime } from '../../api'
 import type { Category, EntryDetail, EntryPatchFields, EntryVisibility } from '../../types/api'
-import { UiButton, UiIcon, UiIconButton } from '../ui'
+import { UiButton, UiIcon, UiIconButton, UiSelect } from '../ui'
 import TagPicker from './TagPicker.vue'
 import type { Tag } from '../../api/tags'
+import { uploadMedia } from '../../media'
 
 const props = withDefaults(
   defineProps<{
@@ -42,12 +43,18 @@ const emit = defineEmits<{
 
 const confirmingDelete = ref(false)
 const returnFocus = shallowRef<HTMLElement | null>(null)
+const coverProgress = ref<number | null>(null)
+const coverError = ref<string | null>(null)
 
 const VISIBILITIES: ReadonlyArray<{ value: EntryVisibility; label: string }> = [
   { value: 'public', label: '公开' },
   { value: 'unlisted', label: '不列出' },
   { value: 'private', label: '私密' },
 ]
+const categoryOptions = computed(() => [
+  { value: '0', label: '未分类' },
+  ...props.categories.map((category) => ({ value: String(category.id), label: category.name })),
+])
 
 function update(fields: EntryPatchFields): void {
   if (!props.disabled) emit('update', fields)
@@ -74,6 +81,26 @@ function confirmDelete(): void {
   confirmingDelete.value = false
   emit('delete')
 }
+
+async function chooseCover(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  coverError.value = null
+  coverProgress.value = 0
+  try {
+    const media = await uploadMedia(file, {
+      entryId: props.entry.id,
+      onProgress: (value) => { coverProgress.value = value },
+    })
+    update({ cover_url: media.url })
+  } catch (cause) {
+    coverError.value = cause instanceof Error ? cause.message : '封面上传失败'
+  } finally {
+    coverProgress.value = null
+    input.value = ''
+  }
+}
 </script>
 
 <template>
@@ -86,8 +113,8 @@ function confirmDelete(): void {
     data-surface="elevated"
   >
     <div class="article-settings__header">
-      <h2 id="settings-title">文章设置</h2>
-      <UiIconButton label="关闭文章设置" data-settings-close @click="close">
+      <h2 id="settings-title">{{ entry.world === 'video' ? '影像设置' : '文章设置' }}</h2>
+      <UiIconButton :label="entry.world === 'video' ? '关闭影像设置' : '关闭文章设置'" data-settings-close @click="close">
         <UiIcon name="close" />
       </UiIconButton>
     </div>
@@ -101,13 +128,30 @@ function confirmDelete(): void {
         <input id="e-slug" :value="entry.slug" :disabled="disabled" @input="update({ slug: ($event.target as HTMLInputElement).value })" />
       </template>
       <label class="field" for="e-category">分类</label>
-      <select id="e-category" :value="entry.category_id" :disabled="disabled" @change="update({ category_id: Number(($event.target as HTMLSelectElement).value) })">
-        <option value="0">未分类</option>
-        <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
-      </select>
+      <UiSelect
+        :model-value="String(entry.category_id)"
+        :options="categoryOptions"
+        label="分类"
+        :disabled="disabled"
+        @change="update({ category_id: Number($event) })"
+      />
 
       <label class="field" for="e-happened">发生时间</label>
       <input id="e-happened" type="datetime-local" :value="toFormDateTime(entry.happened_at)" :disabled="disabled" @input="update({ happened_at: ($event.target as HTMLInputElement).value === '' ? '0001-01-01T00:00:00Z' : fromFormDateTime(($event.target as HTMLInputElement).value) })" />
+
+      <section v-if="entry.world === 'video'" class="settings-section cover-setting" aria-label="影像封面">
+        <div class="cover-setting__heading">
+          <h3>封面</h3>
+          <span>用于影像列表与分享预览</span>
+        </div>
+        <img v-if="entry.cover_url" class="cover-setting__preview" :src="entry.cover_url" alt="当前影像封面" data-cover-preview />
+        <label class="cover-setting__picker" for="e-cover">
+          {{ entry.cover_url ? '更换封面' : '选择封面' }}
+          <input id="e-cover" type="file" accept="image/jpeg,image/png,image/webp,image/gif" :disabled="disabled || coverProgress !== null" data-cover-input @change="chooseCover" />
+        </label>
+        <progress v-if="coverProgress !== null" :value="coverProgress" max="100" aria-label="封面上传进度">{{ coverProgress }}%</progress>
+        <p v-if="coverError" class="article-settings__error" role="alert">{{ coverError }}</p>
+      </section>
 
       <fieldset>
         <legend class="field">可见性</legend>
@@ -176,6 +220,14 @@ function confirmDelete(): void {
 .article-settings fieldset { display: grid; gap: var(--space-2); margin: var(--space-3) 0; padding: 0; border: 0; }
 .settings-section { display: grid; gap: var(--space-2); margin: var(--space-3) 0; padding-top: var(--space-3); border-top: 1px solid var(--c-line); }
 .settings-section h3 { font-size: 0.8125rem; font-weight: 600; }
+.cover-setting { gap: var(--space-3); }
+.cover-setting__heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.cover-setting__heading span { color: var(--c-ink-faint); font-size: 0.75rem; }
+.cover-setting__preview { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border: 1px solid var(--c-line); border-radius: var(--radius-control); background: var(--c-paper); }
+.cover-setting__picker { position: relative; display: grid; place-items: center; min-height: 2.5rem; border: 1px solid var(--c-line-strong); border-radius: var(--radius-control); color: var(--c-ink); font-size: 0.8125rem; cursor: pointer; }
+.cover-setting__picker:focus-within { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+.cover-setting__picker input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.cover-setting progress { width: 100%; }
 .visibility-option { display: flex; align-items: center; gap: var(--space-2); min-height: 2.5rem; }
 .article-settings__danger { margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--c-line); }
 .article-settings__save { display: grid; gap: var(--space-2); margin-top: var(--space-4); }

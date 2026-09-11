@@ -49,3 +49,13 @@ export function listPublicWorlds(): readonly PublicWorldDefinition[] {
 export function resolvePublicWorld(key: WorldKey | string): PublicWorldDefinition | null {
   return key === 'journal' ? JOURNAL_WORLD : key === 'saying' ? SAYING_WORLD : key === 'video' ? VIDEO_WORLD : null
 }
+
+/** The world root opens its first configured category when one exists. */
+export function defaultWorldCategoryPath(
+  key: WorldKey,
+  categories: readonly { slug: string }[],
+): string | null {
+  const world = resolvePublicWorld(key)
+  const first = categories[0]
+  return world && first ? world.categoryPath(first.slug) : null
+}
